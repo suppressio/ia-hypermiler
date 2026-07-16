@@ -1,0 +1,88 @@
+/* settings.css — finestra impostazioni, stile sobrio coerente con style.css */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #fafafa;
+  color: #1a1a1a;
+}
+
+#settings-app { padding: 16px 20px 32px; max-width: 460px; margin: 0 auto; }
+
+h1 { font-size: 18px; margin: 0 0 12px; }
+h2 { font-size: 14px; margin: 0 0 10px; }
+
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; gap: 6px; }
+
+select, input[type="number"], input[type="time"], input[type="color"], input[type="password"] {
+  font-size: 13px;
+  padding: 5px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+}
+
+.field-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.field-row > label { flex: 1; min-width: 140px; }
+
+.hint { font-size: 11px; color: #6b7280; }
+.warning { font-size: 11px; color: #92400e; background: #fef3c7; border-radius: 5px; padding: 6px 8px; }
+
+.btn-secondary {
+  font-size: 12px;
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f3f4f6;
+  cursor: pointer;
+}
+.btn-secondary:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.connect-row { align-items: center; }
+.connection-status { font-size: 12px; color: #6b7280; }
+.connection-status.connected { color: #16a34a; font-weight: 600; }
+
+.week-grid { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; align-items: center; margin-bottom: 10px; }
+.week-grid label { flex-direction: row; margin: 0; }
+
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  background: #fafafa;
+  padding: 10px 0 4px;
+}
+.btn-primary {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+.btn-primary:hover { background: #1d4ed8; }
+
+.save-status { font-size: 12px; color: #16a34a; min-height: 16px; }

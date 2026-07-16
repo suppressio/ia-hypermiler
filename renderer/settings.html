@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>IA Hypermiler — Impostazioni</title>
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+  <main id="settings-app">
+    <h1>Impostazioni</h1>
+
+    <section class="card" data-account="claude">
+      <h2>Claude</h2>
+      <label><input type="checkbox" data-field="accounts.claude.enabled" /> Account collegato/abilitato</label>
+
+      <div class="field-row">
+        <label>Ambito account
+          <select data-field="accounts.claude.accountScope">
+            <option value="personal">Personale</option>
+            <option value="organization">Aziendale (seat organizzazione)</option>
+          </select>
+        </label>
+        <label>Metodo di login
+          <select data-field="accounts.claude.authMethod">
+            <option value="password">Email e password</option>
+            <option value="google">Google</option>
+            <option value="sso">SSO aziendale</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label>Piano
+          <select data-field="accounts.claude.planTier">
+            <option value="free">Free</option>
+            <option value="pro">Pro</option>
+            <option value="max_5x">Max 5x</option>
+            <option value="max_20x">Max 20x</option>
+            <option value="team">Team</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </label>
+        <label>Giorno di rinnovo (del mese)
+          <input type="number" min="1" max="31" data-field="accounts.claude.subscription.renewalRule.day" />
+        </label>
+      </div>
+
+      <div class="field-row connect-row">
+        <button type="button" class="btn-secondary" id="btn-connect-claude">Connetti…</button>
+        <span class="connection-status" id="claude-connection-status">Non connesso</span>
+      </div>
+      <p class="hint">Si apre una finestra di login claude.ai (funziona anche con SSO aziendale): nessun cookie da incollare a mano.</p>
+    </section>
+
+    <section class="card" data-account="copilot">
+      <h2>GitHub Copilot</h2>
+      <label><input type="checkbox" data-field="accounts.copilot.enabled" /> Account collegato/abilitato</label>
+
+      <div class="field-row">
+        <label>Ambito account
+          <select data-field="accounts.copilot.accountScope">
+            <option value="personal">Personale</option>
+            <option value="organization">Aziendale (seat organizzazione)</option>
+          </select>
+        </label>
+        <label>Metodo di autenticazione
+          <select data-field="accounts.copilot.authMethod">
+            <option value="fine_grained_pat">Personal Access Token (fine-grained)</option>
+            <option value="classic_pat">Personal Access Token (classic)</option>
+            <option value="oauth_device">OAuth Device Flow</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label>Piano
+          <select data-field="accounts.copilot.planTier">
+            <option value="free">Free</option>
+            <option value="individual">Individual (Pro)</option>
+            <option value="pro_plus">Pro+</option>
+            <option value="business">Business</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </label>
+        <label>Giorno di rinnovo (del mese)
+          <input type="number" min="1" max="31" data-field="accounts.copilot.subscription.renewalRule.day" />
+        </label>
+      </div>
+
+      <label>Quota mensile richieste premium (non esposta dall'API, inseriscila da contratto/piano)
+        <input type="number" min="0" data-field="accounts.copilot.manualQuota" />
+      </label>
+
+      <p class="warning" id="copilot-org-warning" hidden>
+        Con un seat aziendale non esiste un endpoint ufficiale self-service (vedi RESEARCH.md):
+        il dato Copilot sarà mostrato come funzionalità sperimentale/best-effort.
+      </p>
+      <label class="hint">
+        <input type="checkbox" data-field="accounts.copilot.experimentalWarningAcknowledged" />
+        Ho capito che il monitoraggio Copilot aziendale è sperimentale
+      </label>
+
+      <label>Personal Access Token
+        <input type="password" id="copilot-token-input" placeholder="github_pat_… (permesso 'Plan' in lettura)" />
+      </label>
+      <div class="field-row connect-row">
+        <button type="button" class="btn-secondary" id="btn-connect-copilot">Salva token</button>
+        <span class="connection-status" id="copilot-connection-status">Non connesso</span>
+      </div>
+      <p class="hint">Il token viene salvato cifrato e non passa mai in chiaro nel renderer dopo il salvataggio.</p>
+    </section>
+
+    <section class="card">
+      <h2>Calendario di lavoro</h2>
+      <div class="week-grid" id="week-grid">
+        <!-- generato da settings.js -->
+      </div>
+      <label>Ore lavorative al giorno (per fine tuning futuro, es. pacing infra-giornaliero)
+        <input type="number" min="1" max="24" step="0.5" data-field="workSchedule.hoursPerDay" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Aspetto</h2>
+      <div class="field-row">
+        <label>Stile finestra
+          <select data-field="ui.windowStyle">
+            <option value="filled">Pieno (classico)</option>
+            <option value="transparent-digital">Trasparente / digitale</option>
+          </select>
+        </label>
+        <label>Intervallo grafico
+          <select data-field="ui.chartRange">
+            <option value="week">Settimana</option>
+            <option value="month">Mese</option>
+          </select>
+        </label>
+      </div>
+      <div class="field-row">
+        <label><input type="checkbox" data-field="ui.alwaysOnTop" /> Sempre in primo piano</label>
+        <label>Colore accento <input type="color" data-field="ui.accentColor" /></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Notifiche</h2>
+      <label>Soglia di allarme (%)
+        <input type="number" min="1" max="100" data-field="ui.notificationThresholdPercent" />
+      </label>
+    </section>
+
+    <div class="save-bar">
+      <button type="button" id="btn-save" class="btn-primary">Salva impostazioni</button>
+      <span class="save-status" id="save-status"></span>
+    </div>
+  </main>
+
+  <script src="settings.js"></script>
+</body>
+</html>
