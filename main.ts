@@ -271,8 +271,9 @@ function registerIpcHandlers(): void {
     store.set('ui.windowStyle', style);
     const wasVisible = mainWindow ? mainWindow.isVisible() : true;
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
-    mainWindow = createMainWindow(store);
-    if (!wasVisible) mainWindow.hide();
+    const newWindow = createMainWindow(store);
+    mainWindow = newWindow;
+    if (!wasVisible) newWindow.hide();
     return style;
   });
 
@@ -314,7 +315,8 @@ function registerIpcHandlers(): void {
 app.whenReady().then(() => {
   registerIpcHandlers();
 
-  mainWindow = createMainWindow(store);
+  const win = createMainWindow(store);
+  mainWindow = win;
   createTray({
     getMainWindow: () => mainWindow,
     openSettings: () => {
@@ -324,7 +326,7 @@ app.whenReady().then(() => {
     store,
   });
 
-  mainWindow.webContents.once('did-finish-load', () => refreshAndBroadcast());
+  win.webContents.once('did-finish-load', () => refreshAndBroadcast());
 
   refreshTimer = setInterval(refreshAndBroadcast, REFRESH_INTERVAL_MS);
 

@@ -64,7 +64,11 @@ npm test
 npm run package
 ```
 
-Build + `electron-builder`: produce l'installer per la piattaforma corrente (`.dmg` su macOS, `.exe`/NSIS su Windows, `.AppImage` su Linux).
+Build + `electron-builder`: produce l'installer per la piattaforma corrente (`.dmg` su macOS, `.exe`/NSIS su Windows, `.AppImage` e `.deb` su Linux) in `release/`.
+
+### Build multipiattaforma (GitHub Actions)
+
+`.github/workflows/build.yml` builda in parallelo su macOS/Windows/Linux dallo stesso commit, senza bisogno di tre macchine fisiche. Parte solo pushando un tag `v*` (es. `v0.1.0`) o manualmente dalla tab Actions; i pacchetti risultanti restano scaricabili come artifact della run (nessuna Release pubblicata automaticamente). I pacchetti non sono firmati: su macOS/Windows l'installazione mostrerà un avviso di sicurezza finché non verranno aggiunti certificati di firma reali.
 
 ---
 
@@ -109,9 +113,10 @@ Sviluppo per sessioni, tracciato in dettaglio nella tabella "Stato avanzamento" 
 - ✅ Fallback su ultimo dato noto con timestamp se una fetch fallisce; storico giornaliero costruito localmente (né Claude né Copilot lo espongono via API)
 - ✅ Test unitari su logica di budget e service (mock, no rete) + test di integrazione predisposti
 - 🟨 Agente consigli (`agents/advisor.ts`) ancora uno stub: da collegare all'SDK Anthropic reale
-- ⬜ Rifinitura notifiche/robustezza e build cross-platform finale (in arrivo)
+- 🟨 CI multipiattaforma definita (`.github/workflows/build.yml`), non ancora verificata con una run reale su GitHub
+- ⬜ Rifinitura notifiche/robustezza e subagent review finale (in arrivo)
 
-Limite noto: i test di integrazione e l'avvio reale dell'app non sono ancora stati verificati contro account Claude/Copilot veri — vanno provati in locale (`npm test` con `.env.test` compilato, `npm start` con un account collegato dalle Impostazioni).
+Limite noto: i test di integrazione, l'avvio reale dell'app e la CI di GitHub Actions non sono ancora stati verificati contro account/ambienti veri — vanno provati in locale (`npm test` con `.env.test` compilato, `npm start` con un account collegato dalle Impostazioni) e pushando un tag `v*` per la CI.
 
 ## Licenza
 
