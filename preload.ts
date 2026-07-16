@@ -1,15 +1,16 @@
-// preload.js — bridge sicuro renderer <-> main via contextBridge
+// preload.ts — bridge sicuro renderer <-> main via contextBridge
 // nodeIntegration: false e contextIsolation: true sono obbligatori (vedi CLAUDE.md).
 // Espone solo i canali IPC necessari, nessun accesso diretto a Node/Electron nel renderer.
 
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
+import type { HypermilerBridge, UsageSnapshot } from './types/index';
 
-contextBridge.exposeInMainWorld('hypermiler', {
+const bridge: HypermilerBridge = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
 
-  onUsageUpdate: (callback) => {
-    const listener = (_event, snapshot) => callback(snapshot);
+  onUsageUpdate: (callback: (snapshot: UsageSnapshot) => void) => {
+    const listener = (_event: unknown, snapshot: UsageSnapshot) => callback(snapshot);
     ipcRenderer.on('usage:update', listener);
     return () => ipcRenderer.removeListener('usage:update', listener);
   },
@@ -24,4 +25,6 @@ contextBridge.exposeInMainWorld('hypermiler', {
 
   connectClaude: () => ipcRenderer.invoke('auth:connectClaude'),
   connectCopilot: (token) => ipcRenderer.invoke('auth:connectCopilot', token),
-});
+};
+
+contextBridge.exposeInMainWorld('hypermiler', bridge);

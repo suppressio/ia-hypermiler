@@ -1,20 +1,34 @@
-// services/claude.js — fetch utilizzo Claude (vedi RESEARCH.md v3 §1 e ARCHITECTURE.md §0)
+// services/claude.ts — fetch utilizzo Claude (vedi RESEARCH.md v3 §1 e ARCHITECTURE.md §0)
 //
 // Non esiste un endpoint ufficiale per i piani Pro/Max/Team/Enterprise a livello di
 // singolo utente: usiamo l'endpoint interno (non documentato, stabile nell'uso da parte
 // di tool di terze parti) che alimenta la barra "Usage" di claude.ai, autenticato con il
 // cookie di sessione dell'utente (sessionKey), catturato via login browser embedded
-// (vedi main/claude-auth.js) — mai chiesto in chiaro all'utente.
-//
-// Interfaccia: vedi CLAUDE.md / ARCHITECTURE.md §0.
-// @param {{ sessionKey: string, organizationId?: string, planTier?: string }} credentials
-// @returns {Promise<{ planTier, subscriptionRenewsAt: null, quotaWindows: Array }>}
+// (vedi main/claude-auth.ts) — mai chiesto in chiaro all'utente.
 
-const { fetchJson } = require('./_http');
+import { fetchJson } from './_http';
+import type { ClaudeCredentials, QuotaWindow, RawAccountUsage } from '../types/index';
 
 const BASE_URL = 'https://claude.ai/api';
 
-function authHeaders(sessionKey) {
+interface ClaudeOrganization {
+  uuid?: string;
+  id?: string;
+  name?: string;
+}
+
+interface ClaudeUsageWindowResponse {
+  utilization?: number;
+  resets_at?: string;
+}
+
+interface ClaudeUsageResponse {
+  five_hour?: ClaudeUsageWindowResponse;
+  seven_day?: ClaudeUsageWindowResponse;
+  seven_day_opus?: ClaudeUsageWindowResponse;
+}
+
+function authHeaders(sessionKey: string): Record<string, string> {
   return {
     Cookie: `sessionKey=${sessionKey}`,
     Accept: 'application/json',
@@ -25,32 +39,30 @@ function authHeaders(sessionKey) {
  * Elenca le organizzazioni disponibili per l'account autenticato (serve a scegliere
  * l'organizationId da usare per l'endpoint di usage — un account personale ne ha
  * tipicamente una sola, un membro di più workspace può averne più di una).
- * @param {string} sessionKey
- * @returns {Promise<Array<{ id: string, name: string }>>}
  */
-async function listOrganizations(sessionKey) {
+export async function listOrganizations(sessionKey: string): Promise<Array<{ id: string; name: string }>> {
   if (!sessionKey) {
-    throw new Error('Claude: sessionKey mancante — collega l\'account dalle Impostazioni');
+    throw new Error("Claude: sessionKey mancante — collega l'account dalle Impostazioni");
   }
-  const data = await fetchJson(`${BASE_URL}/organizations`, {
+  const data = await fetchJson<ClaudeOrganization[]>(`${BASE_URL}/organizations`, {
     headers: authHeaders(sessionKey),
     label: 'claude.ai/api/organizations',
   });
   if (!Array.isArray(data)) {
     throw new Error('Claude: risposta inattesa da /api/organizations (formato non riconosciuto)');
   }
-  return data.map((org) => ({ id: org.uuid || org.id, name: org.name || 'Organizzazione' }));
+  return data.map((org) => ({ id: (org.uuid || org.id) as string, name: org.name || 'Organizzazione' }));
 }
 
 /**
- * Converte la risposta dell'endpoint interno di usage nel modello quotaWindows
+ * Converte la risposta dell'endpoint interno di usage nel modello QuotaWindow
  * condiviso da ARCHITECTURE.md §0. Il formato esatto della risposta non è documentato
  * ufficialmente: se un campo atteso manca semplicemente non generiamo quella finestra,
  * invece di assumere un valore e mostrare un dato sbagliato.
  */
-function buildQuotaWindows(usage) {
-  const windows = [];
-  const specs = [
+export function buildQuotaWindows(usage: ClaudeUsageResponse): QuotaWindow[] {
+  const windows: QuotaWindow[] = [];
+  const specs: Array<{ key: keyof ClaudeUsageResponse; id: string; label: string }> = [
     { key: 'five_hour', id: 'five_hour', label: 'Limite 5 ore' },
     { key: 'seven_day', id: 'seven_day', label: 'Limite settimanale (tutti i modelli)' },
     { key: 'seven_day_opus', id: 'seven_day_opus', label: 'Limite settimanale Opus' },
@@ -72,15 +84,15 @@ function buildQuotaWindows(usage) {
   }
 
   if (windows.length === 0) {
-    throw new Error('Claude: nessuna finestra di quota riconosciuta nella risposta — il formato dell\'endpoint interno potrebbe essere cambiato (vedi RESEARCH.md)');
+    throw new Error("Claude: nessuna finestra di quota riconosciuta nella risposta — il formato dell'endpoint interno potrebbe essere cambiato (vedi RESEARCH.md)");
   }
   return windows;
 }
 
-async function fetchUsage(credentials) {
-  const { sessionKey, planTier } = credentials || {};
+export async function fetchUsage(credentials: ClaudeCredentials): Promise<RawAccountUsage> {
+  const { sessionKey, planTier } = credentials || ({} as ClaudeCredentials);
   if (!sessionKey) {
-    throw new Error('Claude: sessionKey mancante — collega l\'account dalle Impostazioni');
+    throw new Error("Claude: sessionKey mancante — collega l'account dalle Impostazioni");
   }
 
   let organizationId = credentials.organizationId;
@@ -92,7 +104,7 @@ async function fetchUsage(credentials) {
     organizationId = orgs[0].id;
   }
 
-  const usage = await fetchJson(`${BASE_URL}/organizations/${organizationId}/usage`, {
+  const usage = await fetchJson<ClaudeUsageResponse>(`${BASE_URL}/organizations/${organizationId}/usage`, {
     headers: authHeaders(sessionKey),
     label: 'claude.ai/api/organizations/{id}/usage',
   });
@@ -104,8 +116,6 @@ async function fetchUsage(credentials) {
     subscriptionRenewsAt: null,
     quotaWindows: buildQuotaWindows(usage),
     // Nessuno storico giornaliero disponibile da questa API: lo storico viene
-    // costruito localmente dall'app poll dopo poll (vedi main.js + store.history).
+    // costruito localmente dall'app poll dopo poll (vedi main.ts + store.history).
   };
 }
-
-module.exports = { fetchUsage, listOrganizations };
