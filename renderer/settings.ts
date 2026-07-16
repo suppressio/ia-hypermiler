@@ -136,7 +136,7 @@ function bindEvents(): void {
     const touchedKeys = new Set<string>();
     fieldElements().forEach((el) => {
       const field = el.dataset.field as string;
-      setPath(settings, field, readFieldValue(el));
+      setPath(settings as PlainRecord, field, readFieldValue(el));
       touchedKeys.add(topLevelKey(field));
     });
     for (const key of touchedKeys) {

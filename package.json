@@ -32,8 +32,11 @@
     "files": [
       "dist/**/*"
     ],
+    "directories": {
+      "output": "release"
+    },
     "mac": { "target": "dmg" },
     "win": { "target": "nsis" },
-    "linux": { "target": "AppImage" }
+    "linux": { "target": ["AppImage", "deb"] }
   }
 }

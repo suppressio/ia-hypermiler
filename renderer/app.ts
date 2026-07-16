@@ -195,8 +195,9 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
 }
 
 async function init(): Promise<void> {
-  state.settings = await window.hypermiler.getSettings();
-  applyWindowStyle(state.settings.ui.windowStyle);
+  const settings = await window.hypermiler.getSettings();
+  state.settings = settings;
+  applyWindowStyle(settings.ui.windowStyle);
 
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     window.hypermiler.openSettingsWindow();
