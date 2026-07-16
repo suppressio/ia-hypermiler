@@ -1,20 +1,21 @@
-// main/tray.js — system tray cross-platform (vedi ARCHITECTURE.md §4)
+// main/tray.ts — system tray cross-platform (vedi ARCHITECTURE.md §4)
 
-const { Tray, Menu, nativeImage, app } = require('electron');
-const path = require('path');
+import { Tray, Menu, nativeImage, app, BrowserWindow, MenuItem } from 'electron';
+import path from 'path';
+import type Store from 'electron-store';
+import type { AppSettings } from '../types/index';
 
 const ICON_PATH = path.join(__dirname, '..', 'renderer', 'assets', 'tray-icon.png');
 
-/**
- * Crea l'icona di tray con menu contestuale.
- * @param {object} deps
- * @param {() => BrowserWindow} deps.getMainWindow
- * @param {() => void} deps.openSettings
- * @param {() => void} deps.refreshNow
- * @param {import('electron-store')} deps.store
- * @returns {Tray}
- */
-function createTray({ getMainWindow, openSettings, refreshNow, store }) {
+export interface CreateTrayDeps {
+  getMainWindow: () => BrowserWindow | null;
+  openSettings: () => void;
+  refreshNow: () => void;
+  store: Store<AppSettings>;
+}
+
+/** Crea l'icona di tray con menu contestuale. */
+export function createTray({ getMainWindow, openSettings, refreshNow, store }: CreateTrayDeps): Tray {
   // Se l'icona custom non esiste ancora (asset da fornire in Sessione 2 avanzata),
   // usiamo un'icona vuota di fallback: Electron non crasha, ma va sostituita
   // prima della build finale con un asset reale multi-piattaforma.
@@ -47,7 +48,7 @@ function createTray({ getMainWindow, openSettings, refreshNow, store }) {
         label: 'Sempre in primo piano',
         type: 'checkbox',
         checked: !!ui.alwaysOnTop,
-        click: (menuItem) => {
+        click: (menuItem: MenuItem) => {
           store.set('ui.alwaysOnTop', menuItem.checked);
           const win = getMainWindow();
           if (win && !win.isDestroyed()) win.setAlwaysOnTop(menuItem.checked, 'floating');
@@ -67,5 +68,3 @@ function createTray({ getMainWindow, openSettings, refreshNow, store }) {
 
   return tray;
 }
-
-module.exports = { createTray };

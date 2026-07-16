@@ -41,7 +41,7 @@ Se preferisci restare più semplici e trattare solo la finestra più rilevante p
 
 ## 1. Impostazioni (settings) — schema dati
 
-Estende `store/index.js`. Tutto ciò che è segreto (session cookie, PAT, token) resta cifrato via `encryptionKey` di `electron-store` e non passa mai dal renderer se non tramite IPC verso il main.
+Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token) resta cifrato via `encryptionKey` di `electron-store` e non passa mai dal renderer se non tramite IPC verso il main.
 
 ```js
 {
@@ -86,7 +86,7 @@ Estende `store/index.js`. Tutto ciò che è segreto (session cookie, PAT, token)
       sun: 'full' | 'half' | 'off',
     },
     hoursPerDay: number, // semplificato da intervallo inizio/fine su feedback utente (Giorno 2):
-                         // budget.js lavora a granularità giorno/mezza-giornata e non usa ancora
+                         // budget.ts lavora a granularità giorno/mezza-giornata e non usa ancora
                          // orari puntuali; riservato per un futuro pacing infra-giornaliero (es.
                          // finestra Claude delle 5 ore).
   },
@@ -154,7 +154,7 @@ Riquadro metriche:
 - **Picco massimo vs media giornaliera** *(aggiunta)* — per capire se i problemi sono concentrati in giornate anomale o distribuiti.
 - **Streak sotto budget** *(aggiunta)* — giorni lavorativi consecutivi entro il budget ideale, per rinforzo positivo leggero (in linea con "sobria", quindi solo un numero, non badge/gamification vistosa).
 - **Vista combinata multi-servizio** *(aggiunta, se entrambi Claude e Copilot attivi)* — un indicatore di "salute generale" che aggrega le percentuali delle finestre più critiche dei due servizi, utile per uno sguardo d'insieme prima di aprire il dettaglio.
-- **Tips/consigli del giorno** — richiesto: pannello alimentato da `agents/advisor.js` (Claude Sonnet, cache 24h come da `CLAUDE.md`), che ora riceverà come contesto anche calendario di lavoro ed efficienza calcolata, non solo `dailyHistory` grezzo.
+- **Tips/consigli del giorno** — richiesto: pannello alimentato da `agents/advisor.ts` (Claude Sonnet, cache 24h come da `CLAUDE.md`), che ora riceverà come contesto anche calendario di lavoro ed efficienza calcolata, non solo `dailyHistory` grezzo.
 
 ---
 
@@ -183,14 +183,15 @@ Per Claude Code questi dati sono già presenti nei JSONL locali (modello, conteg
 ## 6. Impatto sulla struttura file (rispetto allo scheletro in `CLAUDE.md`)
 
 Aggiunte proposte in Sessione 2 (confermate e implementate):
-- `renderer/settings.html` + `renderer/settings.js` + `renderer/settings.css` — finestra impostazioni separata.
-- `main/windows.js` — creazione/gestione delle due `BrowserWindow` (skin pieno/trasparente) e della finestra impostazioni, per non appesantire `main.js`.
-- `main/tray.js` — logica tray isolata.
-- `budget.js` — esteso per multi-finestra, efficienza, previsionale, autonomia stimata (resta comunque un modulo puro, testabile da terminale come richiesto in `PLAN.md`).
+- `renderer/settings.html` + `renderer/settings.ts` + `renderer/settings.css` — finestra impostazioni separata.
+- `main/windows.ts` — creazione/gestione delle due `BrowserWindow` (skin pieno/trasparente) e della finestra impostazioni, per non appesantire `main.ts`.
+- `main/tray.ts` — logica tray isolata.
+- `budget.ts` — esteso per multi-finestra, efficienza, previsionale, autonomia stimata (resta comunque un modulo puro, testabile con `budget.test.ts` come richiesto in `PLAN.md`).
 
 Aggiunte ulteriori in Giorno 2, Sessione 1 (services layer reale):
-- `main/claude-auth.js` — cattura della sessione Claude via `BrowserWindow` di login embedded (classico o SSO), mai chiesto in chiaro all'utente.
-- `services/_http.js` — helper HTTP condiviso tra i due service (timeout esplicito, errori leggibili, mai `null` silenzioso — regola CLAUDE.md).
+- `main/claude-auth.ts` — cattura della sessione Claude via `BrowserWindow` di login embedded (classico o SSO), mai chiesto in chiaro all'utente.
+- `services/_http.ts` — helper HTTP condiviso tra i due service (timeout esplicito, errori leggibili, mai `null` silenzioso — regola CLAUDE.md).
+- Migrazione a TypeScript (feedback utente, dopo Giorno 2 Sessione 1): tutti i file convertiti a `.ts`, tipi condivisi in `types/index.ts`, test con `node:test` (`budget.test.ts`, `services/*.test.ts`, `tests/integration/*`). Dettagli in CLAUDE.md §"Build e test".
 - `store.history.lastGood.{claude,copilot}` — cache dell'ultimo snapshot riuscito per servizio, usata come fallback quando una fetch fallisce (mostrato in UI con timestamp e indicazione "dato non aggiornato").
 
 Nessun'altra modifica architetturale non richiesta: services, store, agents restano dove previsto, solo con interfacce estese come discusso al §0.

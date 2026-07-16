@@ -1,4 +1,4 @@
-// services/copilot.js — fetch utilizzo GitHub Copilot (vedi RESEARCH.md v3 §2 e ARCHITECTURE.md §0)
+// services/copilot.ts — fetch utilizzo GitHub Copilot (vedi RESEARCH.md v3 §2 e ARCHITECTURE.md §0)
 //
 // Due percorsi molto diversi in affidabilità:
 // - Piano PERSONALE: endpoint ufficiale e documentato (premium_request/usage), via PAT.
@@ -11,11 +11,37 @@
 // il totale resta un valore configurato manualmente dall'utente (credentials.manualQuota),
 // come già anticipato in ARCHITECTURE.md §0.
 
-const { fetchJson } = require('./_http');
+import { fetchJson } from './_http';
+import type { CopilotCredentials, QuotaWindow, RawAccountUsage } from '../types/index';
 
 const API_BASE = 'https://api.github.com';
 
-function authHeaders(token) {
+interface GithubUserResponse {
+  login?: string;
+}
+
+interface BillingUsageItem {
+  date?: string;
+  quantity?: number;
+  [key: string]: unknown;
+}
+
+interface BillingUsageReport {
+  usageItems?: BillingUsageItem[];
+}
+
+interface CopilotInternalQuotaSnapshot {
+  percent_remaining?: number;
+  [key: string]: unknown;
+}
+
+interface CopilotInternalUserResponse {
+  copilot_plan?: string;
+  quota_reset_date?: string;
+  quota_snapshots?: Record<string, CopilotInternalQuotaSnapshot>;
+}
+
+function authHeaders(token: string): Record<string, string> {
   return {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
@@ -24,9 +50,9 @@ function authHeaders(token) {
 }
 
 /** Risolve lo username GitHub associato al token (usato al momento del "Connetti"). */
-async function resolveUsername(token) {
+export async function resolveUsername(token: string): Promise<string> {
   if (!token) throw new Error('Copilot: token mancante');
-  const data = await fetchJson(`${API_BASE}/user`, {
+  const data = await fetchJson<GithubUserResponse>(`${API_BASE}/user`, {
     headers: authHeaders(token),
     label: 'api.github.com/user',
   });
@@ -37,7 +63,7 @@ async function resolveUsername(token) {
 }
 
 /** Somma le quantità degli usage item del mese corrente da un report di billing. */
-function sumCurrentMonthUsage(report, now) {
+export function sumCurrentMonthUsage(report: BillingUsageReport, now: Date): number {
   const items = report?.usageItems;
   if (!Array.isArray(items)) {
     throw new Error('Copilot: formato risposta inatteso su premium_request/usage (nessun usageItems) — vedi RESEARCH.md');
@@ -53,12 +79,13 @@ function sumCurrentMonthUsage(report, now) {
     .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 }
 
-async function fetchPersonalUsage({ token, manualQuota, now }) {
+async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; manualQuota?: number | null; now: Date }): Promise<RawAccountUsage> {
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const username = await resolveUsername(token);
 
-  const report = await fetchJson(
-    `${API_BASE}/users/${encodeURIComponent(await resolveUsername(token))}/settings/billing/premium_request/usage?year=${year}&month=${month}`,
+  const report = await fetchJson<BillingUsageReport>(
+    `${API_BASE}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage?year=${year}&month=${month}`,
     { headers: authHeaders(token), label: 'users/{username}/settings/billing/premium_request/usage' },
   );
 
@@ -82,21 +109,21 @@ async function fetchPersonalUsage({ token, manualQuota, now }) {
   };
 }
 
-async function fetchOrgManagedUsage({ token, manualQuota }) {
+async function fetchOrgManagedUsage({ token }: { token: string; manualQuota?: number | null; now: Date }): Promise<RawAccountUsage> {
   // ATTENZIONE: endpoint interno non documentato, nessuna garanzia di stabilità o di
   // compatibilità con un token PAT standard (VS Code usa un token Copilot ottenuto con
   // un proprio flusso di autenticazione, non necessariamente un PAT generico) — vedi
   // RESEARCH.md v3 §2.2. Se questa chiamata fallisce con 401/403, è atteso: significa che
   // il token fornito non è accettato da questo endpoint interno.
-  let data;
+  let data: CopilotInternalUserResponse;
   try {
-    data = await fetchJson(`${API_BASE}/copilot_internal/user`, {
+    data = await fetchJson<CopilotInternalUserResponse>(`${API_BASE}/copilot_internal/user`, {
       headers: authHeaders(token),
       label: 'copilot_internal/user (endpoint interno non ufficiale)',
     });
   } catch (err) {
     throw new Error(
-      `Copilot (seat aziendale, best-effort): chiamata fallita — ${err.message}. ` +
+      `Copilot (seat aziendale, best-effort): chiamata fallita — ${(err as Error).message}. ` +
       'Questo endpoint non è ufficiale: potrebbe richiedere un token Copilot diverso da un PAT standard. Vedi RESEARCH.md.',
     );
   }
@@ -106,7 +133,7 @@ async function fetchOrgManagedUsage({ token, manualQuota }) {
     throw new Error('Copilot (seat aziendale, best-effort): risposta senza quota_snapshots — formato cambiato o token non valido per questo endpoint');
   }
 
-  const windows = [];
+  const windows: QuotaWindow[] = [];
   for (const [key, entry] of Object.entries(snapshot)) {
     if (!entry || typeof entry.percent_remaining !== 'number') continue;
     windows.push({
@@ -132,13 +159,10 @@ async function fetchOrgManagedUsage({ token, manualQuota }) {
   };
 }
 
-/**
- * @param {{ token: string, accountScope: 'personal'|'organization', manualQuota?: number }} credentials
- */
-async function fetchUsage(credentials) {
-  const { token, accountScope, manualQuota } = credentials || {};
+export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAccountUsage> {
+  const { token, accountScope, manualQuota } = credentials || ({} as CopilotCredentials);
   if (!token) {
-    throw new Error('Copilot: token mancante — collega l\'account dalle Impostazioni');
+    throw new Error("Copilot: token mancante — collega l'account dalle Impostazioni");
   }
 
   const now = new Date();
@@ -147,5 +171,3 @@ async function fetchUsage(credentials) {
   }
   return fetchPersonalUsage({ token, manualQuota, now });
 }
-
-module.exports = { fetchUsage, resolveUsername };

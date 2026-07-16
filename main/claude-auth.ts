@@ -1,22 +1,26 @@
-// main/claude-auth.js — cattura della sessione Claude via finestra di login embedded.
+// main/claude-auth.ts — cattura della sessione Claude via finestra di login embedded.
 // Vedi RESEARCH.md v3 §1 e CLAUDE.md: mai chiedere all'utente di incollare un cookie
 // a mano. Funziona sia con login classico (email/password, Google) sia con SSO
 // aziendale: in entrambi i casi, al termine del login claude.ai deposita lo stesso
 // cookie di sessione (`sessionKey`), che qui intercettiamo.
 
-const { BrowserWindow, session } = require('electron');
+import { BrowserWindow, session } from 'electron';
 
 const LOGIN_URL = 'https://claude.ai/login';
 const COOKIE_DOMAIN = '.claude.ai';
 const COOKIE_NAME = 'sessionKey';
 const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minuti: oltre, l'utente ha probabilmente abbandonato il login
 
+export interface CapturedClaudeSession {
+  sessionKey: string;
+  capturedAt: string;
+}
+
 /**
  * Apre una finestra di login verso claude.ai e risolve con il cookie di sessione
  * non appena l'utente completa l'accesso (con qualunque metodo).
- * @returns {Promise<{ sessionKey: string, capturedAt: string }>}
  */
-function captureClaudeSession() {
+export function captureClaudeSession(): Promise<CapturedClaudeSession> {
   return new Promise((resolve, reject) => {
     const authWindow = new BrowserWindow({
       width: 480,
@@ -33,7 +37,7 @@ function captureClaudeSession() {
     let settled = false;
     const ses = authWindow.webContents.session ?? session.defaultSession;
 
-    const finish = (fn, value) => {
+    const finish = <T>(fn: (value: T) => void, value: T) => {
       if (settled) return;
       settled = true;
       clearTimeout(safetyTimer);
@@ -66,10 +70,8 @@ function captureClaudeSession() {
       finish(reject, new Error('Login Claude annullato: finestra chiusa prima del completamento'));
     });
 
-    authWindow.loadURL(LOGIN_URL).catch((err) => {
+    authWindow.loadURL(LOGIN_URL).catch((err: Error) => {
       finish(reject, new Error(`Impossibile aprire la pagina di login Claude: ${err.message}`));
     });
   });
 }
-
-module.exports = { captureClaudeSession };
