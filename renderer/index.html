@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>IA Hypermiler</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="style-filled">
+  <div id="titlebar" class="titlebar">
+    <div class="titlebar-drag"></div>
+    <div class="titlebar-controls">
+      <button id="btn-settings" title="Impostazioni" aria-label="Impostazioni">⚙</button>
+      <button id="btn-minimize" title="Riduci a icona" aria-label="Riduci a icona">–</button>
+      <button id="btn-close" title="Nascondi" aria-label="Nascondi">×</button>
+    </div>
+  </div>
+
+  <main id="app">
+    <nav id="account-tabs" class="account-tabs" hidden></nav>
+
+    <section class="current-indicator">
+      <div class="current-value" id="current-value">--%</div>
+      <div class="current-label" id="current-label">In attesa di dati…</div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-header">
+        <span id="chart-title">Andamento settimanale</span>
+      </div>
+      <div id="chart" class="chart"></div>
+    </section>
+
+    <section class="metrics-grid" id="metrics-grid">
+      <div class="metric">
+        <span class="metric-label">Indice efficienza</span>
+        <span class="metric-value" id="metric-efficiency">--</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Previsionale</span>
+        <span class="metric-value" id="metric-projected">--%</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Giorni a scadenza</span>
+        <span class="metric-value" id="metric-days-left">--</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Autonomia stimata</span>
+        <span class="metric-value" id="metric-autonomy">--</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Picco / media</span>
+        <span class="metric-value" id="metric-peak-avg">--</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Streak sotto budget</span>
+        <span class="metric-value" id="metric-streak">--</span>
+      </div>
+    </section>
+
+    <section class="tips-section">
+      <div class="tips-label">Consiglio del giorno</div>
+      <div class="tips-text" id="tips-text">—</div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
