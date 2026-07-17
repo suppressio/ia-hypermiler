@@ -100,3 +100,14 @@ test('fetchUsage (seat aziendale) segnala esplicitamente il fallimento come best
 test('fetchUsage lancia errore esplicito senza token', async () => {
   await assert.rejects(() => copilotService.fetchUsage({ token: '' }), /token mancante/);
 });
+
+test('fetchOrgManagedUsage lancia FormatDriftError con la shape (mai i valori) se manca quota_snapshots', async () => {
+  installFetchMock(async () => jsonResponse({ copilot_plan: 'business', cinder_cove: { used_dollars: 42 } }));
+  try {
+    await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+    assert.fail('doveva lanciare');
+  } catch (err) {
+    assert.equal((err as Error).name, 'FormatDriftError');
+    assert.ok(!JSON.stringify((err as any).shape).includes('42'));
+  }
+});

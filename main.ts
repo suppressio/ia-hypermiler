@@ -3,14 +3,16 @@
 // del mock del Giorno 1. Se una fetch fallisce, si mostra l'ultimo dato noto con
 // timestamp (mai schermata bianca, vedi CLAUDE.md).
 
-import { app, ipcMain, BrowserWindow, Notification } from 'electron';
+import { app, ipcMain, BrowserWindow, Notification, shell } from 'electron';
 import store from './store/index';
 import { createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
-import { captureClaudeSession } from './main/claude-auth';
+import { captureClaudeSession, buildClaudeCookieHeader } from './main/claude-auth';
 import * as budget from './budget';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
+import { FormatDriftError, shapeSignature } from './services/_shape';
+import { buildFormatDriftIssueUrl } from './diagnostics/githubIssue';
 import type { IpcMainInvokeEvent } from 'electron';
 import type {
   AccountId,
@@ -150,10 +152,70 @@ async function fetchAccountOrFallback(
   } catch (err) {
     const error = err as Error;
     console.error(`[main] refresh ${accountId} fallito:`, error.message);
+    // Segnalato qui (non solo nel chiamante) perché un fallback su dato pregresso
+    // valido "assorbe" l'errore sotto — senza questa chiamata un format-drift che
+    // emerge DOPO il primo fetch riuscito non verrebbe mai rilevato.
+    maybeReportFormatDrift(accountId, err);
     const lastGood = store.get(lastGoodKey) as StampedUsage | undefined;
     if (!lastGood) throw err; // nessun dato pregresso: propaga, il chiamante decide come mostrarlo
     return { ...lastGood, stale: true, lastError: error.message };
   }
+}
+
+// Placeholder mostrato quando un account è collegato/abilitato ma la fetch è
+// fallita e non esiste ancora nessun dato pregresso (store.history.lastGood.*):
+// senza questo, il renderer non distingue "non collegato" da "collegato ma la
+// sincronizzazione è appena fallita", e mostra il messaggio sbagliato ("Nessun
+// account collegato") anche quando l'account È collegato — vedi CLAUDE.md,
+// "mai schermata bianca o fallimento silenzioso".
+// ---------------------------------------------------------------------------
+// Auto-segnalazione "format drift" (feedback utente, Giorno 3): se un service
+// rileva che il formato di un endpoint non è più quello atteso (FormatDriftError,
+// vedi services/_shape.ts), apriamo nel browser una bozza di issue GitHub già
+// compilata — MAI valori reali, solo struttura (nomi di campo/tipo) — che
+// l'utente deve rivedere e confermare manualmente. Deduplicata per firma della
+// struttura: non riapre la stessa bozza ad ogni refresh (ogni 30 minuti).
+// ---------------------------------------------------------------------------
+function maybeReportFormatDrift(accountId: AccountId, err: unknown): void {
+  if (!(err instanceof FormatDriftError)) return;
+  if (store.get('diagnostics.autoReportFormatDrift') === false) return;
+
+  const signature = shapeSignature(err.shape);
+  const reported = (store.get('diagnostics.reportedSignatures') as Record<string, string>) || {};
+  if (reported[signature]) return; // già segnalato per questa forma: non riaprire
+
+  const url = buildFormatDriftIssueUrl({ accountId, endpointLabel: err.endpointLabel, shape: err.shape });
+  shell.openExternal(url).catch((openErr: Error) => {
+    console.error('[main] impossibile aprire la bozza di segnalazione nel browser:', openErr.message);
+  });
+
+  if (Notification.isSupported()) {
+    new Notification({
+      title: 'IA Hypermiler',
+      body: `Il formato della risposta ${accountId === 'claude' ? 'Claude' : 'Copilot'} sembra cambiato: ho aperto una bozza di segnalazione nel browser (da confermare tu).`,
+    }).show();
+  }
+
+  reported[signature] = new Date().toISOString();
+  store.set('diagnostics.reportedSignatures', reported);
+}
+
+function emptyAccountSnapshot(accountId: AccountId, planTier: string | null, lastError: string): AccountSnapshot {
+  return {
+    accountId,
+    planTier,
+    subscriptionRenewsAt: null,
+    quotaWindows: [],
+    criticalWindow: null,
+    dailyHistory: [],
+    efficiencyIndex: null,
+    projectedUsage: null,
+    daysUntilReset: null,
+    workingDaysUntilReset: null,
+    estimatedAutonomyWorkingDays: null,
+    stale: true,
+    lastError,
+  };
 }
 
 async function buildUsageSnapshot(): Promise<UsageSnapshot> {
@@ -166,16 +228,20 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
     try {
       const raw = await fetchAccountOrFallback(
         'claude',
-        () => claudeService.fetchUsage({
+        async () => claudeService.fetchUsage({
           sessionKey: accounts.claude.session.sessionKey as string,
           organizationId: accounts.claude.session.organizationId,
           planTier: accounts.claude.planTier,
+          // Letto fresco ad ogni refresh (non persistito): vedi buildClaudeCookieHeader.
+          cookieHeader: await buildClaudeCookieHeader(),
         }),
         'history.lastGood.claude',
       );
       snapshot.claude = computeAccountSnapshot(raw, accounts.claude.subscription, workSchedule, now);
     } catch (err) {
-      console.error('[main] Claude non disponibile e nessun dato pregresso:', (err as Error).message);
+      const message = (err as Error).message;
+      console.error('[main] Claude non disponibile e nessun dato pregresso:', message);
+      snapshot.claude = emptyAccountSnapshot('claude', accounts.claude.planTier, message);
     }
   }
 
@@ -193,7 +259,9 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
       if (!raw.planTier) raw.planTier = accounts.copilot.planTier;
       snapshot.copilot = computeAccountSnapshot(raw, accounts.copilot.subscription, workSchedule, now);
     } catch (err) {
-      console.error('[main] Copilot non disponibile e nessun dato pregresso:', (err as Error).message);
+      const message = (err as Error).message;
+      console.error('[main] Copilot non disponibile e nessun dato pregresso:', message);
+      snapshot.copilot = emptyAccountSnapshot('copilot', accounts.copilot.planTier, message);
     }
   }
 
@@ -289,7 +357,8 @@ function registerIpcHandlers(): void {
     const { sessionKey, capturedAt } = await captureClaudeSession();
     let organizationId: string | null = null;
     try {
-      const orgs = await claudeService.listOrganizations(sessionKey);
+      const cookieHeader = await buildClaudeCookieHeader();
+      const orgs = await claudeService.listOrganizations(sessionKey, cookieHeader);
       organizationId = orgs[0]?.id ?? null;
     } catch (err) {
       console.error('[main] impossibile risolvere organizationId Claude:', (err as Error).message);

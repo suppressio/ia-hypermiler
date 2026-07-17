@@ -79,6 +79,15 @@ export const DEFAULTS: AppSettings = {
   advisorCache: { generatedAt: null, adviceText: null },
 
   meta: { notifiedToday: {} },
+
+  diagnostics: {
+    // Se un endpoint cambia formato, apre una bozza di issue GitHub precompilata
+    // (solo struttura, mai valori reali) invece di fallire silenziosamente — vedi
+    // services/_shape.ts e diagnostics/githubIssue.ts. Attivo di default: non
+    // pubblica nulla da solo, richiede sempre conferma manuale nel browser.
+    autoReportFormatDrift: true,
+    reportedSignatures: {},
+  },
 };
 
 const store = new Store<AppSettings>({

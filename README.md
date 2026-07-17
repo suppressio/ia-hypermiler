@@ -45,7 +45,7 @@ npm test
 
 Compila il progetto ed esegue i test con il runner nativo di Node (`node:test`, nessuna libreria di test esterna):
 
-- **Test unitari** (`budget.test.ts`, `services/claude.test.ts`, `services/copilot.test.ts`): logica pura e parsing/gestione errori con `fetch` mockato. Girano sempre, non toccano la rete.
+- **Test unitari** (`budget.test.ts`, `services/claude.test.ts`, `services/copilot.test.ts`, `services/_shape.test.ts`, `diagnostics/githubIssue.test.ts`): logica pura e parsing/gestione errori con `fetch` mockato. Girano sempre, non toccano la rete.
 - **Test di integrazione** (`tests/integration/`): chiamano le vere API di Claude e GitHub Copilot. Si **auto-skippano** se mancano le credenziali.
 
 Per attivare i test di integrazione in locale, **mai incollando credenziali in chat o in commit**:
@@ -80,6 +80,7 @@ ia-hypermiler/
 ├── main/                      ← finestre (skin filled/transparent-digital), tray, login Claude
 ├── renderer/                  ← widget e finestra impostazioni (HTML/CSS/TS vanilla)
 ├── services/                  ← fetch usage da Claude e Copilot (+ relativi test)
+├── diagnostics/                ← auto-segnalazione "format drift" via bozza issue GitHub (mai valori reali, sempre da confermare a mano)
 ├── store/                     ← persistenza locale (electron-store, cifrata)
 ├── budget.ts                  ← calcolo budget/efficienza/previsionale (+ budget.test.ts)
 ├── agents/                    ← agente Claude per i consigli d'uso (in arrivo)
@@ -112,6 +113,7 @@ Sviluppo per sessioni, tracciato in dettaglio nella tabella "Stato avanzamento" 
 - ✅ `services/claude.ts` e `services/copilot.ts` con dati reali: endpoint interno + sessione per Claude, API ufficiale per Copilot personale, endpoint best-effort per seat Copilot aziendali (segnalato in UI come sperimentale)
 - ✅ Fallback su ultimo dato noto con timestamp se una fetch fallisce; storico giornaliero costruito localmente (né Claude né Copilot lo espongono via API)
 - ✅ Test unitari su logica di budget e service (mock, no rete) + test di integrazione predisposti
+- ✅ Diagnostica: se un endpoint Claude/Copilot cambia formato, l'app apre da sola una bozza di issue GitHub precompilata (solo struttura, mai valori reali) da confermare manualmente — vedi `CLAUDE.md` per i dettagli
 - 🟨 Agente consigli (`agents/advisor.ts`) ancora uno stub: da collegare all'SDK Anthropic reale
 - 🟨 CI multipiattaforma definita (`.github/workflows/build.yml`), non ancora verificata con una run reale su GitHub
 - ⬜ Rifinitura notifiche/robustezza e subagent review finale (in arrivo)

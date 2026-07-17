@@ -122,6 +122,17 @@ export interface HistorySettings {
   };
 }
 
+/**
+ * Segnalazione automatica di "format drift" (vedi services/_shape.ts, main.ts,
+ * diagnostics/githubIssue.ts): quando un service non riconosce più il formato di
+ * un endpoint, l'app apre una bozza di issue GitHub precompilata (mai valori
+ * reali, solo struttura) e la deduplica per firma per non riaprirla ad ogni refresh.
+ */
+export interface DiagnosticsSettings {
+  autoReportFormatDrift: boolean;
+  reportedSignatures: Record<string, string>; // firma -> timestamp ISO di prima segnalazione
+}
+
 export interface AppSettings {
   accounts: {
     claude: ClaudeAccountSettings;
@@ -132,6 +143,7 @@ export interface AppSettings {
   history: HistorySettings;
   advisorCache: { generatedAt: string | null; adviceText: string | null };
   meta: { notifiedToday: Record<string, boolean> };
+  diagnostics: DiagnosticsSettings;
 }
 
 /** Credenziali passate a services/claude.ts fetchUsage(). */
@@ -139,6 +151,12 @@ export interface ClaudeCredentials {
   sessionKey: string;
   organizationId?: string | null;
   planTier?: string | null;
+  // Header Cookie completo (sessionKey + cf_clearance + eventuali altri cookie
+  // Cloudflare/claude.ai), letto fresco dalla sessione Electron al momento della
+  // richiesta — vedi main/claude-auth.ts:buildClaudeCookieHeader(). Se assente,
+  // si ricade sul solo sessionKey (compatibilità/test), ma senza cf_clearance
+  // claude.ai risponde con la pagina di verifica Cloudflare invece dei dati.
+  cookieHeader?: string | null;
 }
 
 /** Credenziali passate a services/copilot.ts fetchUsage(). */

@@ -33,6 +33,22 @@ Raggiungibile con il **solo cookie di sessione (`sessionKey`) del developer stes
 
 **In pratica per l'app:** basta far fare all'utente un login "vero" in una finestra browser embedded (Electron `BrowserWindow`, sia con password/Google sia con SSO), catturare il cookie `sessionKey`, e interrogare l'endpoint interno periodicamente. In alternativa/complemento, se il developer usa Claude Code, si può leggere `/usage` o i JSONL locali senza rete.
 
+**Addendum (Giorno 3 — verificato con un account reale): claude.ai è dietro Cloudflare.** Il solo cookie `sessionKey` non basta per superare il bot management di Cloudflare da una richiesta HTTP "nuda" (senza motore browser): senza anche il cookie `cf_clearance` (ottenuto dalla stessa sessione browser reale usata per il login) e uno User-Agent plausibile, l'endpoint risponde `403` con la pagina interstitial "Just a moment..." invece del JSON atteso. Fix implementato: `main/claude-auth.ts` ricostruisce l'header Cookie completo leggendo a runtime tutti i cookie della sessione Electron per il dominio claude.ai (non solo `sessionKey`), e `services/claude.ts` invia anche uno User-Agent da browser desktop. Limite noto non ancora risolto: se `cf_clearance` scade e Cloudflare richiede una nuova verifica JS interattiva, serve rifare il login (che riapre una vera `BrowserWindow` e quindi supera di nuovo la verifica) — non c'è ancora un meccanismo di refresh automatico in background.
+
+**Addendum 2 (Giorno 3 — verificato con un account reale): i nomi dei campi della risposta usage non sono stabili.** Dopo aver superato Cloudflare, la risposta reale ricevuta da un account collegato NON conteneva più `five_hour`/`seven_day`/`seven_day_opus` valorizzati (tutti presenti ma `null`, insieme ad altri nomi storici come `seven_day_sonnet`/`seven_day_oauth_apps`/`seven_day_cowork`/`seven_day_omelette`, anch'essi `null`), bensì chiavi con nomi arbitrari non documentati — osservati in pratica: `cinder_cove`, `omelette_promotional`, `tangelo`, `iguana_necktie`, `nimbus_quill`. Esempio reale (valori reali della risposta, NON quelli mostrati in una eventuale segnalazione automatica — vedi sotto):
+
+```json
+{
+  "five_hour": null, "seven_day": null, "seven_day_opus": null,
+  "omelette_promotional": { "utilization": 0, "resets_at": null, "limit_dollars": null, "used_dollars": null, "remaining_dollars": null },
+  "cinder_cove": { "utilization": 39.52, "resets_at": "2026-09-13T14:38:47Z", "limit_dollars": 1000, "used_dollars": 395.17, "remaining_dollars": 604.83 }
+}
+```
+
+Ipotesi più probabile: offuscamento intenzionale lato Anthropic dei nomi dei campi (nomi-codice non semantici, es. nomi di frutta/luoghi), forse per scoraggiare lo scraping da parte di tool di terze parti come quelli citati sopra — non una semplice rinomina occasionale, dato che nessuno dei nomi storici documentati è sopravvissuto. Non è da escludere che i nomi ruotino ulteriormente in futuro.
+
+**Fix implementato in `services/claude.ts` (`buildQuotaWindows`):** non si legge più per nome di campo fisso, ma per **forma del valore** — qualunque chiave il cui valore abbia un `utilization` numerico viene trattata come una finestra di quota valida, a prescindere dal nome. Se la finestra espone anche `limit_dollars`/`used_dollars` numerici (come `cinder_cove` sopra — verosimilmente un credito extra a consumo in dollari), viene modellata come `unit: 'count'` con gli importi reali invece che come semplice percentuale, sfruttando il modello multi-finestra già esistente (vedi ARCHITECTURE.md §0). Le finestre a 0% senza data di reset e senza importi (come `omelette_promotional` sopra) vengono scartate perché indistinguibili da un campo non applicabile al piano dell'account. Il vantaggio di questo approccio è che sopravvive a un'ulteriore rotazione dei nomi, finché la forma del JSON (un `utilization` numerico per finestra) resta la stessa — se anche quella dovesse cambiare, scatta comunque la diagnostica auto-segnalazione format-drift (vedi CLAUDE.md).
+
 ---
 
 ## 2. GitHub Copilot — self-tracking del developer
