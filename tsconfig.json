@@ -21,6 +21,7 @@
     "services/**/*.ts",
     "agents/**/*.ts",
     "main/**/*.ts",
+    "diagnostics/**/*.ts",
     "types/**/*.ts",
     "tests/**/*.ts"
   ],

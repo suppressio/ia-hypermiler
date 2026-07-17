@@ -170,8 +170,15 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   const resetLabel = win?.resetsAt ? ` · rinnovo ${new Date(win.resetsAt).toLocaleDateString('it-IT')}` : '';
   let label = win ? `${win.label}${resetLabel}` : 'In attesa di dati…';
   if (account.stale) {
-    const ts = account.lastUpdatedAt ? new Date(account.lastUpdatedAt).toLocaleString('it-IT') : 'sconosciuto';
-    label += ` — dato non aggiornato (ultimo aggiornamento riuscito: ${ts})`;
+    if (account.lastUpdatedAt) {
+      const ts = new Date(account.lastUpdatedAt).toLocaleString('it-IT');
+      label += ` — dato non aggiornato (ultimo aggiornamento riuscito: ${ts})`;
+    } else {
+      // Mai una sincronizzazione riuscita finora: l'account è collegato, ma la
+      // primissima fetch è fallita — non confondere questo caso con "non collegato".
+      label = 'Account collegato — prima sincronizzazione non riuscita';
+    }
+    if (account.lastError) label += ` (${account.lastError})`;
   }
   document.getElementById('current-label')!.textContent = label;
 

@@ -12,6 +12,7 @@
 // come già anticipato in ARCHITECTURE.md §0.
 
 import { fetchJson } from './_http';
+import { extractShape, FormatDriftError } from './_shape';
 import type { CopilotCredentials, QuotaWindow, RawAccountUsage } from '../types/index';
 
 const API_BASE = 'https://api.github.com';
@@ -66,7 +67,11 @@ export async function resolveUsername(token: string): Promise<string> {
 export function sumCurrentMonthUsage(report: BillingUsageReport, now: Date): number {
   const items = report?.usageItems;
   if (!Array.isArray(items)) {
-    throw new Error('Copilot: formato risposta inatteso su premium_request/usage (nessun usageItems) — vedi RESEARCH.md');
+    throw new FormatDriftError(
+      'Copilot: formato risposta inatteso su premium_request/usage (nessun usageItems) — vedi RESEARCH.md',
+      'users/{username}/settings/billing/premium_request/usage',
+      extractShape(report),
+    );
   }
   const month = now.getUTCMonth();
   const year = now.getUTCFullYear();
@@ -130,7 +135,11 @@ async function fetchOrgManagedUsage({ token }: { token: string; manualQuota?: nu
 
   const snapshot = data?.quota_snapshots;
   if (!snapshot) {
-    throw new Error('Copilot (seat aziendale, best-effort): risposta senza quota_snapshots — formato cambiato o token non valido per questo endpoint');
+    throw new FormatDriftError(
+      'Copilot (seat aziendale, best-effort): risposta senza quota_snapshots — formato cambiato o token non valido per questo endpoint',
+      'copilot_internal/user',
+      extractShape(data),
+    );
   }
 
   const windows: QuotaWindow[] = [];
@@ -149,7 +158,11 @@ async function fetchOrgManagedUsage({ token }: { token: string; manualQuota?: nu
   }
 
   if (windows.length === 0) {
-    throw new Error('Copilot (seat aziendale, best-effort): nessuna finestra di quota riconosciuta nella risposta');
+    throw new FormatDriftError(
+      'Copilot (seat aziendale, best-effort): nessuna finestra di quota riconosciuta nella risposta',
+      'copilot_internal/user',
+      extractShape(snapshot),
+    );
   }
 
   return {

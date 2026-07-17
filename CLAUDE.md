@@ -59,8 +59,11 @@ ia-hypermiler/
 │   └── advisor.ts          ← agente Claude per i consigli d'uso
 ├── services/
 │   ├── _http.ts            ← helper fetch condiviso (timeout 10s, errori espliciti)
+│   ├── _shape.ts           ← riduzione risposta a "solo struttura" (mai valori reali) + relativo _shape.test.ts, usata dalla diagnostica auto-segnalazione format-drift (vedi sotto)
 │   ├── claude.ts           ← fetch utilizzo Claude + relativo claude.test.ts
 │   └── copilot.ts          ← fetch utilizzo Copilot + relativo copilot.test.ts
+├── diagnostics/
+│   └── githubIssue.ts      ← costruisce l'URL di una issue GitHub precompilata quando un service rileva un formato di risposta non riconosciuto (FormatDriftError) + relativo githubIssue.test.ts
 ├── store/
 │   └── index.ts            ← wrapper electron-store, schema completo in ARCHITECTURE.md §1
 ├── budget.ts               ← logica multi-finestra: pacing, efficienza, previsionale, autonomia (ARCHITECTURE.md §0/§3) + budget.test.ts
@@ -102,6 +105,29 @@ Se un service non riesce a recuperare i dati, deve **lanciare un errore esplicit
 - Ogni chiamata di rete ha un timeout esplicito (max 10 secondi)
 - Se le API non rispondono, la UI mostra l'ultimo dato noto con il timestamp dell'ultimo aggiornamento riuscito
 - Mai schermata bianca o crash silenzioso
+
+### Diagnostica: auto-segnalazione "format drift" (Giorno 3, feedback utente)
+Quando un service (`services/claude.ts` o `services/copilot.ts`) riceve una risposta il cui
+formato non corrisponde più a quello atteso (nessuna finestra di quota riconosciuta, campo
+chiave mancante, ecc.), lancia un `FormatDriftError` (`services/_shape.ts`) invece di un
+`Error` generico. `main.ts` intercetta questo errore in `fetchAccountOrFallback()` (punto
+centrale condiviso da Claude e Copilot) e chiama `maybeReportFormatDrift()`:
+
+- **Mai pubblicazione automatica**: si apre solo una bozza precompilata di issue GitHub nel
+  browser di sistema (`shell.openExternal`, via `diagnostics/githubIssue.ts`) — l'utente deve
+  sempre rivedere e confermare manualmente l'invio. L'app non ha né usa un token GitHub.
+- **Mai valori reali nella segnalazione**: il corpo della issue contiene solo la "shape" della
+  risposta (nomi di campo + `typeof`, prodotta da `extractShape()` in `services/_shape.ts`),
+  mai percentuali di utilizzo, importi o date reali. Regola nata da un caso reale (vedi "Stato
+  avanzamento" sotto) in cui una risposta di debug ha esposto `used_dollars`/`limit_dollars` di
+  un account reale in chat.
+- **Deduplicata per firma struttura** (`shapeSignature()`): la stessa forma non riapre una
+  seconda bozza ad ogni refresh (ogni 30 minuti). Le firme già segnalate vivono in
+  `store.diagnostics.reportedSignatures`.
+- **Disattivabile** dall'utente: checkbox "Diagnostica" in Impostazioni
+  (`diagnostics.autoReportFormatDrift`, default `true`).
+- Copre **entrambi i servizi da subito** (Claude e Copilot), perché il punto di intercettazione
+  è condiviso (`fetchAccountOrFallback`), non duplicato per account.
 
 ### Agente advisor
 - Il system prompt di `advisor.js` deve chiedere consigli **specifici e pratici**, non generici
@@ -196,5 +222,7 @@ Aggiorna questa sezione manualmente a fine di ogni sessione.
 | — | Rifinitura impostazioni (feedback utente) | ✅ fatto | Aggiunto pulsante "Salva impostazioni" esplicito oltre al salvataggio automatico per campo. Semplificato "orario di lavoro" da intervallo inizio/fine a un singolo campo `hoursPerDay` (non ancora usato da `budget.ts`, che lavora a granularità giorno/mezza giornata — riservato per un futuro pacing infra-giornaliero, es. finestra Claude delle 5 ore) |
 | — | Migrazione TypeScript (feedback utente) | ✅ fatto | Tutti i file sorgente convertiti da `.js` a `.ts` con tipi condivisi in `types/index.ts` (copia locale ridotta in `renderer/types.ts` per tenere isolato il tsconfig del renderer). Due config (`tsconfig.json` main/CommonJS, `tsconfig.renderer.json` browser/ES module nativo) + `scripts/copy-assets.js`. `package.json` aggiornato (`main`: `dist/main.js`, script `build`/`start`/`test`/`package`). Nessun `any` nel codebase. `tsc` non installabile in sandbox (registro npm bloccato): verificato eseguendo davvero il codice con il TS runtime nativo di Node 22 (erasure dei tipi, no type-check) — 34 test unitari passati, più uno smoke test end-to-end di `main.ts` (stub di `electron`/`electron-store`: finestra creata, tray creato, tutti gli handler IPC registrati e funzionanti) e parsing pulito di `preload.ts`/`agents/advisor.ts`/`renderer/*.ts`. Resta comunque da far girare `tsc` reale in locale (`npm install`) per il type-check completo, che qui non è verificabile |
 | — | Test (feedback utente) | ✅ fatto (unitari, eseguiti davvero) / 🟨 integrazione predisposta | `budget.test.ts` (17 casi, logica pura) e `services/claude.test.ts` + `services/copilot.test.ts` (17 casi, fetch mockato, no rete) — 34/34 passati con `node --test`. `tests/integration/*.test.ts` predisposti e auto-skippati finché l'utente non fornisce credenziali reali in locale via `.env.test` (mai in chat: vedi sezione "Build e test" sopra) |
+| 3 | Diagnostica: auto-segnalazione format-drift (feedback utente) | ✅ fatto | A valle del bug reale sotto ("nessuna finestra di quota riconosciuta"), l'utente ha chiesto che sia l'app stessa — non un intervento manuale in chat — a segnalare quando un endpoint cambia formato. Decisioni vincolanti raccolte via domanda esplicita: (1) bozza precompilata da aprire e confermare a mano, mai pubblicazione automatica via API; (2) corpo della segnalazione solo struttura (nomi/tipi di campo), mai valori reali; (3) copre Claude e Copilot da subito. Implementato: `services/_shape.ts` (`extractShape`/`shapeSignature`/`FormatDriftError`), `diagnostics/githubIssue.ts` (`buildFormatDriftIssueUrl`, URL precompilato senza bisogno di token GitHub), `main.ts` (`maybeReportFormatDrift`, agganciato centralmente in `fetchAccountOrFallback` così copre anche un drift che emerge dopo settimane di refresh riusciti, non solo al primo collegamento), nuovo campo `diagnostics` in `AppSettings`/store con default `autoReportFormatDrift: true`, checkbox dedicata in `renderer/settings.html`. `services/claude.ts` e `services/copilot.ts` (3 punti) aggiornati per lanciare `FormatDriftError` invece di `Error` generico dove rilevano un formato non riconosciuto. Verificato: 55/55 test unitari (budget + services + nuovi `_shape.test.ts`/`githubIssue.test.ts`, inclusi test espliciti che confermano che nessun valore reale sopravvive a `extractShape`/nel corpo della issue), più smoke test di avvio di `main.ts` (IPC, finestra, tray). Non ancora committato |
 | 3 | Notifiche + robustezza | ⬜ da fare | |
+| 3 | Primo test con account Claude reale (feedback utente) | ✅ fix applicati, in attesa di riconferma finale sul widget | Collegato un account Claude reale (Enterprise/SSO): il widget mostrava "Nessun account collegato" nonostante la connessione riuscita. Causa 1 (UI): `main.ts`/`renderer/app.ts` non distinguevano "non collegato" da "collegato ma prima sincronizzazione fallita" — corretto con `emptyAccountSnapshot()` e un messaggio esplicito nel widget che mostra anche `lastError`. Causa 2 (rete): claude.ai è dietro Cloudflare — il solo cookie `sessionKey` non basta, serve anche `cf_clearance` (+ uno User-Agent plausibile), altrimenti risponde 403 con la pagina "Just a moment..." invece del JSON. Fix: `main/claude-auth.ts` (`buildClaudeCookieHeader()`) legge a runtime tutti i cookie della sessione Electron per claude.ai. Causa 3 (parsing, bloccava ancora i dati dopo aver superato Cloudflare): i nomi dei campi della risposta usage sono risultati offuscati/rinominati lato Anthropic (`cinder_cove`, `omelette_promotional`, ecc. al posto di `five_hour`/`seven_day`/`seven_day_opus`, tutti null) — vedi RESEARCH.md addendum 2. Fix: `services/claude.ts` (`buildQuotaWindows`) riconosce ora le finestre per **forma** del valore (`utilization` numerico), non per nome campo; le finestre con `limit_dollars`/`used_dollars` numerici vengono modellate come `unit: 'count'` con importi reali; le finestre a 0%/non applicabili vengono scartate senza generare un falso format-drift. Verificato: 55/55 test unitari (inclusi 5 nuovi casi su `buildQuotaWindows`, uno con il payload reale ricevuto) + smoke test IPC/finestre. **Il widget non è ancora stato riverificato con l'account reale dopo questo fix** — in attesa di un nuovo tentativo dopo rebuild |
 | 3 | Review + Build | 🟨 CI definita | Workflow `.github/workflows/build.yml` creato: build parallela mac/win/linux via electron-builder (Linux produce sia `.AppImage` che `.deb`), trigger solo su tag `v*` o manuale, artifact-only (no release automatica), nessuna firma codice. Risolto anche un conflitto latente: l'output di `electron-builder` (`directories.output`) è stato spostato in `release/` perché di default coincide con `dist/`, la cartella già usata da `tsc` per il codice compilato. Sintassi YAML validata in locale; **non ancora verificata con una run reale** (nessun accesso di rete a GitHub da questo ambiente) — da provare pushando un tag. Restano da fare: subagent review di `agents/`/`services/`/`main.ts` e le rifiniture di robustezza/notifiche del Giorno 3 Sessione 1 |

@@ -149,6 +149,19 @@
       </label>
     </section>
 
+    <section class="card">
+      <h2>Diagnostica</h2>
+      <label>
+        <input type="checkbox" data-field="diagnostics.autoReportFormatDrift" />
+        Segnala automaticamente se il formato di una risposta Claude/Copilot cambia
+      </label>
+      <p class="hint">
+        Se un endpoint smette di essere riconosciuto, si apre nel browser una bozza di issue GitHub
+        precompilata (solo struttura dei campi, mai valori reali come percentuali o importi): va
+        sempre rivista e confermata manualmente, non viene pubblicata nulla in automatico.
+      </p>
+    </section>
+
     <div class="save-bar">
       <button type="button" id="btn-save" class="btn-primary">Salva impostazioni</button>
       <span class="save-status" id="save-status"></span>

@@ -17,6 +17,21 @@ export interface CapturedClaudeSession {
 }
 
 /**
+ * Ricostruisce l'header Cookie completo che un vero browser manderebbe a
+ * claude.ai in questo momento — non solo `sessionKey`, ma anche `cf_clearance`
+ * e gli altri cookie Cloudflare/di sessione depositati durante il login reale
+ * in main/claude-auth.ts. Senza questi, claude.ai risponde con la pagina di
+ * verifica "Just a moment..." invece dei dati (403, HTML non-JSON) — scoperto
+ * testando con un account reale, vedi CLAUDE.md "Stato avanzamento".
+ * Letto fresco ad ogni chiamata (non persistito): cf_clearance ha una durata
+ * limitata e viene rinnovato da Cloudflare mentre l'utente resta loggato.
+ */
+export async function buildClaudeCookieHeader(): Promise<string> {
+  const cookies = await session.defaultSession.cookies.get({ url: 'https://claude.ai' });
+  return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+}
+
+/**
  * Apre una finestra di login verso claude.ai e risolve con il cookie di sessione
  * non appena l'utente completa l'accesso (con qualunque metodo).
  */
