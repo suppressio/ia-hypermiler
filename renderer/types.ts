@@ -58,6 +58,7 @@ export interface AppSettings {
     windowStyle: 'filled' | 'transparent-digital';
     alwaysOnTop: boolean;
     chartRange: 'week' | 'month';
+    accentColor: string;
   };
   [key: string]: unknown;
 }
@@ -66,6 +67,8 @@ export interface HypermilerBridge {
   getSettings(): Promise<AppSettings>;
   setSettings(patch: Record<string, unknown>): Promise<AppSettings>;
   onUsageUpdate(callback: (snapshot: UsageSnapshot) => void): () => void;
+  onSettingsUpdate(callback: (settings: AppSettings) => void): () => void;
+  onWindowHoverChanged(callback: (isHovering: boolean) => void): () => void;
   requestUsageRefresh(): void;
   openSettingsWindow(): void;
   setAlwaysOnTop(value: boolean): Promise<boolean>;

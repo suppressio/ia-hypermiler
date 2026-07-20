@@ -3,7 +3,7 @@
 // del mock del Giorno 1. Se una fetch fallisce, si mostra l'ultimo dato noto con
 // timestamp (mai schermata bianca, vedi CLAUDE.md).
 
-import { app, ipcMain, BrowserWindow, Notification, shell } from 'electron';
+import { app, ipcMain, BrowserWindow, Notification, shell, Menu, screen } from 'electron';
 import store from './store/index';
 import { createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
@@ -32,6 +32,36 @@ const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minuti, come da CLAUDE.md
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let refreshTimer: NodeJS.Timeout | null = null;
+let hoverPollTimer: NodeJS.Timeout | null = null;
+let lastHoverState = false;
+
+// ---------------------------------------------------------------------------
+// Rivelamento hover finestra per titlebar/pulsanti "a scomparsa" (feedback
+// utente): un :hover CSS puro, e anche mouseover/mouseout sul documento, non
+// si attivano in modo affidabile sopra alla striscia -webkit-app-region:drag,
+// perché il sistema operativo la tratta come area non-client (come la titlebar
+// nativa) e intercetta il mouse per il trascinamento invece di dispatchare i
+// normali eventi DOM — con quella tecnica la barra spariva proprio passandoci
+// sopra. Il fix affidabile è interrogare la posizione del cursore lato main
+// process (sempre disponibile via screen.getCursorScreenPoint(), indipendente
+// dal dispatch di eventi del renderer) e confrontarla con i bounds della
+// finestra, inviando al renderer solo i cambi di stato via IPC.
+// ---------------------------------------------------------------------------
+function startWindowHoverPolling(): void {
+  if (hoverPollTimer) clearInterval(hoverPollTimer);
+  hoverPollTimer = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = mainWindow.getBounds();
+    const isOver =
+      cursor.x >= bounds.x && cursor.x < bounds.x + bounds.width &&
+      cursor.y >= bounds.y && cursor.y < bounds.y + bounds.height;
+    if (isOver !== lastHoverState) {
+      lastHoverState = isOver;
+      mainWindow.webContents.send('window:hoverChanged', isOver);
+    }
+  }, 120);
+}
 
 // ---------------------------------------------------------------------------
 // Storico locale: Claude e Copilot non forniscono uno storico giornaliero via
@@ -313,14 +343,73 @@ async function refreshAndBroadcast(): Promise<void> {
 // ---------------------------------------------------------------------------
 // IPC
 // ---------------------------------------------------------------------------
+// Il renderer non deve mai ricevere segreti reali (sessionKey, PAT) — vedi CLAUDE.md
+// "Sicurezza Electron". `store.store` li contiene in chiaro (servono al main process
+// per autenticare le chiamate), quindi ogni volta che passa il confine IPC verso il
+// renderer li sostituiamo con un segnaposto: preserva il valore booleano "è collegato?"
+// (usato da renderer/settings.ts per lo stato "Connesso"/"Non connesso") senza mai
+// esporre il valore reale.
+function redactSecretsForRenderer(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    accounts: {
+      ...settings.accounts,
+      claude: {
+        ...settings.accounts.claude,
+        session: {
+          ...settings.accounts.claude.session,
+          sessionKey: settings.accounts.claude.session.sessionKey ? '••••••••' : null,
+        },
+      },
+      copilot: {
+        ...settings.accounts.copilot,
+        credentials: {
+          ...settings.accounts.copilot.credentials,
+          token: settings.accounts.copilot.credentials.token ? '••••••••' : null,
+        },
+      },
+    },
+  };
+}
+
+// Il renderer riceve sempre la versione con segnaposto (mai il valore reale): se
+// salva le impostazioni dopo aver modificato un ALTRO campo (es. planTier), rimanda
+// indietro l'intero oggetto `accounts` così com'è, segnaposto incluso. Senza questa
+// difesa, quel segnaposto sovrascriverebbe silenziosamente sessionKey/token reali
+// nello store. sessionKey e token cambiano SOLO tramite i flussi dedicati
+// (auth:connectClaude/auth:connectCopilot), mai tramite il salvataggio generico.
+function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
+  if (key !== 'accounts' || typeof value !== 'object' || value === null) return value;
+  const incoming = value as AppSettings['accounts'];
+  const current = store.get('accounts') as AppSettings['accounts'];
+  return {
+    ...incoming,
+    claude: {
+      ...incoming.claude,
+      session: { ...incoming.claude.session, sessionKey: current.claude.session.sessionKey },
+    },
+    copilot: {
+      ...incoming.copilot,
+      credentials: { ...incoming.copilot.credentials, token: current.copilot.credentials.token },
+    },
+  };
+}
+
 function registerIpcHandlers(): void {
-  ipcMain.handle('settings:get', () => store.store);
+  ipcMain.handle('settings:get', () => redactSecretsForRenderer(store.store));
 
   ipcMain.handle('settings:set', (_event: IpcMainInvokeEvent, patch: Partial<AppSettings>) => {
     for (const [key, value] of Object.entries(patch)) {
-      store.set(key, value);
+      store.set(key, preserveRealSecretsOnWrite(key, value));
     }
-    return store.store;
+    const redacted = redactSecretsForRenderer(store.store);
+    // Propaga il cambio al widget se già aperto: alcuni campi (es. colore accento)
+    // non hanno un IPC dedicato come ui.windowStyle/ui.alwaysOnTop e altrimenti
+    // resterebbero applicati solo al prossimo riavvio della finestra (feedback utente).
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('settings:update', redacted);
+    }
+    return redacted;
   });
 
   ipcMain.on('usage:refreshRequest', () => refreshAndBroadcast());
@@ -332,6 +421,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle('window:setAlwaysOnTop', (_event: IpcMainInvokeEvent, value: boolean) => {
     store.set('ui.alwaysOnTop', value);
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(value, 'floating');
+    // Propaga anche alla finestra Impostazioni se aperta (es. attivato dal pin
+    // nella titlebar del widget): stessa logica di settings:set sopra, per non
+    // lasciare la checkbox "Sempre in primo piano" disallineata.
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.webContents.send('settings:update', redactSecretsForRenderer(store.store));
+    }
     return value;
   });
 
@@ -382,6 +477,12 @@ function registerIpcHandlers(): void {
 // Ciclo di vita app
 // ---------------------------------------------------------------------------
 app.whenReady().then(() => {
+  // È un widget, non un'app documentale: la barra menu di default di Electron
+  // (File/Modifica/Vista/Finestra/Aiuto) non serve e appesantiva la skin "pieno"
+  // (feedback utente — vedi anche setMenuBarVisibility(false) su ogni finestra
+  // in main/windows.ts come difesa aggiuntiva per-finestra).
+  Menu.setApplicationMenu(null);
+
   registerIpcHandlers();
 
   const win = createMainWindow(store);
@@ -395,9 +496,13 @@ app.whenReady().then(() => {
     store,
   });
 
-  win.webContents.once('did-finish-load', () => refreshAndBroadcast());
+  // Il refresh al primo caricamento è già innescato dal renderer stesso
+  // (renderer/app.ts chiama requestUsageRefresh() in DOMContentLoaded, sia al primo
+  // avvio sia dopo un cambio skin che ricrea la finestra) — un secondo trigger qui
+  // duplicherebbe la chiamata alle API Claude/Copilot ad ogni apertura del widget.
 
   refreshTimer = setInterval(refreshAndBroadcast, REFRESH_INTERVAL_MS);
+  startWindowHoverPolling();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -413,4 +518,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (refreshTimer) clearInterval(refreshTimer);
+  if (hoverPollTimer) clearInterval(hoverPollTimer);
 });

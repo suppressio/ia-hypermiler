@@ -171,6 +171,8 @@ export interface HypermilerBridge {
   getSettings(): Promise<AppSettings>;
   setSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   onUsageUpdate(callback: (snapshot: UsageSnapshot) => void): () => void;
+  onSettingsUpdate(callback: (settings: AppSettings) => void): () => void;
+  onWindowHoverChanged(callback: (isHovering: boolean) => void): () => void;
   requestUsageRefresh(): void;
   openSettingsWindow(): void;
   setAlwaysOnTop(value: boolean): Promise<boolean>;
