@@ -20,7 +20,12 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
     y: ui.bounds?.y,
     minWidth: 260,
     minHeight: 320,
-    frame: !isTransparent,
+    // Sempre senza cornice nativa, in entrambe le skin (feedback utente — con
+    // frame:true la skin "pieno" mostrava la titlebar nativa del sistema operativo
+    // sopra alla titlebar custom dell'app, duplicata e con la barra menu). I
+    // controlli finestra sono sempre quelli custom in renderer/index.html, con
+    // trascinamento gestito via CSS -webkit-app-region (vedi renderer/style.css).
+    frame: false,
     transparent: isTransparent,
     backgroundColor: isTransparent ? '#00000000' : '#fafafa',
     alwaysOnTop: !!ui.alwaysOnTop,
@@ -32,6 +37,10 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
     },
   });
 
+  // Difesa per-finestra oltre a Menu.setApplicationMenu(null) globale in main.ts:
+  // senza questo, la skin "pieno" (frame: true) mostrava la barra menu di default
+  // di Electron (File/Modifica/Vista/Finestra/Aiuto) sopra al widget (feedback utente).
+  win.setMenuBarVisibility(false);
   win.loadFile(path.join(ROOT, 'renderer', 'index.html'));
 
   // Persistenza posizione/dimensione (debounce semplice per non scrivere ad ogni pixel)

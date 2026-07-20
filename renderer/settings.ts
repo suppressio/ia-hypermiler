@@ -13,6 +13,11 @@ const DAY_LABELS: Record<string, string> = {
 };
 
 let settings: AppSettings | null = null;
+// Ultimo stato realmente persistito (confermato con "Salva" o appena ricevuto da
+// getSettings()): usato da "Annulla" per ripristinare il form, e per capire quali
+// campi sono davvero cambiati rispetto all'ultimo salvataggio (es. per non
+// ricreare la finestra ad ogni Salva se lo stile non è stato toccato).
+let savedSettings: AppSettings | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 type PlainRecord = Record<string, unknown>;
@@ -112,21 +117,15 @@ async function persist(key: string): Promise<void> {
 
 function bindEvents(): void {
   fieldElements().forEach((el) => {
-    el.addEventListener('change', async () => {
+    el.addEventListener('change', () => {
       const field = el.dataset.field as string;
       const value = readFieldValue(el);
       setPath(settings as PlainRecord, field, value);
       if (field === 'accounts.copilot.accountScope') updateCopilotWarningVisibility();
-      await persist(topLevelKey(field));
-      showSaveStatus('Salvato');
-
-      // Cambiare stile finestra richiede di ricreare la BrowserWindow principale.
-      if (field === 'ui.windowStyle') {
-        window.hypermiler.setWindowStyle(value as AppSettings['ui']['windowStyle']);
-      }
-      if (field === 'ui.alwaysOnTop') {
-        window.hypermiler.setAlwaysOnTop(value as boolean);
-      }
+      // Nessun salvataggio né effetto collaterale qui: la modifica resta "in
+      // bozza" nel form finché l'utente non preme "Salva" (o "Annulla" per
+      // scartarla) — prima si salvava ad ogni campo, un comportamento discordante
+      // col pulsante "Salva impostazioni" già presente (feedback utente).
     });
   });
 
@@ -142,7 +141,38 @@ function bindEvents(): void {
     for (const key of touchedKeys) {
       await persist(key);
     }
+
+    // Effetti collaterali che richiedono un'azione dedicata lato main: applicati
+    // solo ora che l'utente ha confermato col Salva, e solo se il valore è
+    // davvero cambiato rispetto all'ultimo salvataggio (altrimenti ogni Salva
+    // ricreerebbe la finestra anche per una modifica non correlata, es. il piano).
+    const newStyle = getPath(settings, 'ui.windowStyle') as AppSettings['ui']['windowStyle'];
+    const newAlwaysOnTop = getPath(settings, 'ui.alwaysOnTop') as boolean;
+    if (newStyle !== savedSettings?.ui.windowStyle) {
+      await window.hypermiler.setWindowStyle(newStyle);
+    }
+    if (newAlwaysOnTop !== savedSettings?.ui.alwaysOnTop) {
+      await window.hypermiler.setAlwaysOnTop(newAlwaysOnTop);
+    }
+
+    // Un campo che cambia il calcolo del budget (piano, giorno di rinnovo, quota
+    // manuale, calendario di lavoro...) non deve restare visibile solo al widget
+    // dopo il prossimo refresh automatico (fino a 30 min dopo, vedi CLAUDE.md).
+    if (touchedKeys.has('accounts') || touchedKeys.has('workSchedule')) {
+      window.hypermiler.requestUsageRefresh();
+    }
+
+    savedSettings = structuredClone(settings);
     showSaveStatus('Impostazioni salvate ✓');
+  });
+
+  document.getElementById('btn-cancel')!.addEventListener('click', async () => {
+    // Scarta le modifiche non salvate: ricarica lo stato realmente persistito e
+    // ripopola il form da lì.
+    settings = await window.hypermiler.getSettings();
+    savedSettings = structuredClone(settings);
+    populateForm();
+    showSaveStatus('Modifiche annullate');
   });
 
   document.getElementById('btn-connect-claude')!.addEventListener('click', async () => {
@@ -153,7 +183,12 @@ function bindEvents(): void {
     try {
       const result = await window.hypermiler.connectClaude();
       settings = await window.hypermiler.getSettings();
-      updateConnectionStatuses();
+      savedSettings = structuredClone(settings);
+      // connectClaude() abilita anche accounts.claude.enabled lato main (main.ts,
+      // handler auth:connectClaude): senza rileggere l'intero form, la checkbox
+      // "Account collegato/abilitato" restava visibilmente disallineata (spuntata
+      // no) rispetto allo stato "Connesso" appena mostrato.
+      populateForm();
       showSaveStatus(result?.organizationId ? 'Claude connesso' : 'Claude connesso (organizzazione non rilevata)');
     } catch (err) {
       status.textContent = `Connessione non riuscita: ${(err as Error)?.message || err}`;
@@ -177,7 +212,8 @@ function bindEvents(): void {
       const result = await window.hypermiler.connectCopilot(token);
       input.value = '';
       settings = await window.hypermiler.getSettings();
-      updateConnectionStatuses();
+      savedSettings = structuredClone(settings);
+      populateForm();
       showSaveStatus(`Copilot connesso come ${result.username}`);
     } catch (err) {
       status.textContent = `Token non valido: ${(err as Error)?.message || err}`;
@@ -190,6 +226,7 @@ function bindEvents(): void {
 async function init(): Promise<void> {
   buildWeekGrid();
   settings = await window.hypermiler.getSettings();
+  savedSettings = structuredClone(settings);
   populateForm();
   bindEvents();
 }

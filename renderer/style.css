@@ -30,8 +30,10 @@ body {
   -webkit-app-region: drag;
 }
 .titlebar-drag { flex: 1; height: 100%; -webkit-app-region: drag; }
-.titlebar-controls { display: flex; gap: 4px; padding: 0 6px; -webkit-app-region: no-drag; }
-.titlebar-controls button {
+.titlebar-controls,
+.titlebar-controls-left { display: flex; gap: 4px; padding: 0 6px; -webkit-app-region: no-drag; }
+.titlebar-controls button,
+.titlebar-controls-left button {
   border: none;
   background: transparent;
   cursor: pointer;
@@ -41,15 +43,59 @@ body {
   font-size: 14px;
   line-height: 1;
 }
+/* Pin "sempre in primo piano": stesso trattamento hover degli altri pulsanti
+   della titlebar (vedi regole per-skin sotto), più uno stato "attivo" quando
+   ui.alwaysOnTop è true, con lo stesso colore accento già usato per la tab
+   account attiva. */
+.titlebar-controls-left button.active {
+  background: var(--accent);
+  color: #fff;
+}
 
 /* ---------- Skin "pieno" (classico) ---------- */
 body.style-filled {
   background: var(--bg-filled);
   color: var(--text-filled);
 }
-body.style-filled .titlebar { background: var(--bg-filled); border-bottom: 1px solid var(--border-filled); }
-body.style-filled .titlebar-controls button { color: var(--text-filled); }
-body.style-filled .titlebar-controls button:hover { background: var(--border-filled); }
+/* Stesso trattamento "invisibile finché non passi il mouse sulla finestra" della
+   skin digitale (feedback utente): niente più barra/bordo sempre visibile in
+   alto, pulsanti e maniglia di trascinamento compaiono solo in hover. */
+body.style-filled .titlebar { background: var(--bg-filled); }
+body.style-filled .titlebar-controls,
+body.style-filled .titlebar-controls-left {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+body.style-filled.window-hover .titlebar-controls,
+body.style-filled .titlebar-controls:hover,
+body.style-filled .titlebar-controls:focus-within,
+body.style-filled.window-hover .titlebar-controls-left,
+body.style-filled .titlebar-controls-left:hover,
+body.style-filled .titlebar-controls-left:focus-within {
+  opacity: 1;
+}
+body.style-filled .titlebar-controls button,
+body.style-filled .titlebar-controls-left button { color: var(--text-filled); }
+body.style-filled .titlebar-controls button:hover,
+body.style-filled .titlebar-controls-left button:hover { background: var(--border-filled); }
+
+body.style-filled .titlebar-drag { position: relative; }
+body.style-filled .titlebar-drag::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  right: 8px;
+  transform: translateY(-50%);
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-filled);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+body.style-filled.window-hover .titlebar-drag::after {
+  opacity: 1;
+}
 
 /* ---------- Skin "trasparente/digitale" ---------- */
 body.style-transparent-digital {
@@ -63,16 +109,52 @@ body.style-transparent-digital #app {
   border-radius: 8px;
   margin: 4px;
 }
-body.style-transparent-digital .titlebar-controls {
+/* Invisibili di default, rivelati in hover su tutta la finestra (classe
+   .window-hover, vedi renderer/app.ts) o direttamente sui pulsanti stessi
+   (questi, essendo no-drag, hanno sempre un hover CSS affidabile). Nota: sopra
+   alla striscia -webkit-app-region: drag il sistema operativo intercetta il
+   mouse come se fosse la titlebar nativa, quindi in quel punto specifico il
+   tracking hover può risultare meno affidabile (limite noto di Electron) — resta
+   comunque la richiesta esplicita dell'utente di un comportamento "solo hover",
+   preferita alla visibilità sempre presente a bassa opacità provata in precedenza. */
+body.style-transparent-digital .titlebar-controls,
+body.style-transparent-digital .titlebar-controls-left {
   opacity: 0;
   transition: opacity 120ms ease;
 }
-body.style-transparent-digital .titlebar:hover .titlebar-controls,
-body.style-transparent-digital .titlebar-controls:focus-within {
+body.style-transparent-digital.window-hover .titlebar-controls,
+body.style-transparent-digital .titlebar-controls:hover,
+body.style-transparent-digital .titlebar-controls:focus-within,
+body.style-transparent-digital.window-hover .titlebar-controls-left,
+body.style-transparent-digital .titlebar-controls-left:hover,
+body.style-transparent-digital .titlebar-controls-left:focus-within {
   opacity: 1;
 }
-body.style-transparent-digital .titlebar-controls button { color: var(--text-digital); }
-body.style-transparent-digital .titlebar-controls button:hover { background: rgba(127, 168, 154, 0.25); }
+/* Maniglia di trascinamento larga come la striscia (non un pallino piccolo) ma
+   sottile (non l'intera altezza): l'area trascinabile resta comunque tutta la
+   striscia in alto, cambia solo lo spessore dell'indicatore visivo (feedback
+   utente: la primissima versione andava bene in larghezza, solo troppo "spessa"). */
+body.style-transparent-digital .titlebar-drag { position: relative; }
+body.style-transparent-digital .titlebar-drag::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  right: 8px;
+  transform: translateY(-50%);
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(127, 168, 154, 0.5);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+body.style-transparent-digital.window-hover .titlebar-drag::after {
+  opacity: 1;
+}
+body.style-transparent-digital .titlebar-controls button,
+body.style-transparent-digital .titlebar-controls-left button { color: var(--text-digital); }
+body.style-transparent-digital .titlebar-controls button:hover,
+body.style-transparent-digital .titlebar-controls-left button:hover { background: rgba(127, 168, 154, 0.25); }
 body.style-transparent-digital .current-value,
 body.style-transparent-digital .metric-value {
   text-shadow: 0 0 6px rgba(215, 247, 233, 0.35);
