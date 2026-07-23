@@ -83,6 +83,7 @@ function populateForm(): void {
     else el.value = String(value);
   });
   updateCopilotWarningVisibility();
+  updateCopilotAuthMethodVisibility();
   updateConnectionStatuses();
 }
 
@@ -92,16 +93,30 @@ function updateCopilotWarningVisibility(): void {
   warning.hidden = scope !== 'organization';
 }
 
+// I due pannelli (PAT/OAuth) condividono lo stesso slot di credenziali
+// (accounts.copilot.credentials): mostrarli entrambi contemporaneamente dava
+// l'impressione di due connessioni indipendenti (feedback utente). Solo uno alla
+// volta, in base al metodo selezionato — stesso pattern di updateCopilotWarningVisibility.
+function updateCopilotAuthMethodVisibility(): void {
+  const method = getPath(settings, 'accounts.copilot.authMethod');
+  const patPanel = document.getElementById('copilot-pat-panel') as HTMLElement;
+  const oauthPanel = document.getElementById('copilot-oauth-panel') as HTMLElement;
+  patPanel.hidden = method === 'oauth';
+  oauthPanel.hidden = method !== 'oauth';
+}
+
 function updateConnectionStatuses(): void {
   const claudeStatus = document.getElementById('claude-connection-status') as HTMLElement;
   const hasClaudeSession = !!getPath(settings, 'accounts.claude.session.sessionKey');
   claudeStatus.textContent = hasClaudeSession ? 'Connesso' : 'Non connesso';
   claudeStatus.classList.toggle('connected', hasClaudeSession);
+  (document.getElementById('btn-disconnect-claude') as HTMLButtonElement).disabled = !hasClaudeSession;
 
   const copilotStatus = document.getElementById('copilot-connection-status') as HTMLElement;
   const copilotUsername = getPath(settings, 'accounts.copilot.credentials.username') as string | null;
   copilotStatus.textContent = copilotUsername ? `Connesso come ${copilotUsername}` : 'Non connesso';
   copilotStatus.classList.toggle('connected', !!copilotUsername);
+  (document.getElementById('btn-disconnect-copilot') as HTMLButtonElement).disabled = !copilotUsername;
 }
 
 function showSaveStatus(text: string): void {
@@ -122,6 +137,7 @@ function bindEvents(): void {
       const value = readFieldValue(el);
       setPath(settings as PlainRecord, field, value);
       if (field === 'accounts.copilot.accountScope') updateCopilotWarningVisibility();
+      if (field === 'accounts.copilot.authMethod') updateCopilotAuthMethodVisibility();
       // Nessun salvataggio né effetto collaterale qui: la modifica resta "in
       // bozza" nel form finché l'utente non preme "Salva" (o "Annulla" per
       // scartarla) — prima si salvava ad ogni campo, un comportamento discordante
@@ -218,6 +234,69 @@ function bindEvents(): void {
     } catch (err) {
       status.textContent = `Token non valido: ${(err as Error)?.message || err}`;
     } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-connect-copilot-oauth')!.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-connect-copilot-oauth') as HTMLButtonElement;
+    // Riusa lo stesso indicatore di stato del flusso PAT: rappresentano la stessa
+    // connessione (accounts.copilot.credentials), solo ottenuta in due modi diversi.
+    const status = document.getElementById('copilot-connection-status') as HTMLElement;
+    const clientIdInput = document.querySelector<HTMLInputElement>('[data-field="accounts.copilot.oauthApp.clientId"]');
+    const secretInput = document.getElementById('copilot-oauth-secret-input') as HTMLInputElement;
+    const clientId = clientIdInput?.value.trim() ?? '';
+    const clientSecret = secretInput.value.trim();
+    if (!clientId || !clientSecret) {
+      status.textContent = 'Inserisci Client ID e Client Secret prima di connetterti';
+      return;
+    }
+    btn.disabled = true;
+    status.textContent = "Apri il browser e autorizza l'accesso…";
+    try {
+      const result = await window.hypermiler.connectCopilotOAuth(clientId, clientSecret);
+      secretInput.value = '';
+      settings = await window.hypermiler.getSettings();
+      savedSettings = structuredClone(settings);
+      populateForm();
+      showSaveStatus(`Copilot connesso (OAuth) come ${result.username}`);
+    } catch (err) {
+      status.textContent = `Accesso OAuth non riuscito: ${(err as Error)?.message || err}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-disconnect-claude')!.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-disconnect-claude') as HTMLButtonElement;
+    const status = document.getElementById('claude-connection-status') as HTMLElement;
+    btn.disabled = true;
+    try {
+      await window.hypermiler.disconnectClaude();
+      settings = await window.hypermiler.getSettings();
+      savedSettings = structuredClone(settings);
+      // populateForm() ricalcola anche lo stato disabled del pulsante (ora "non
+      // connesso" → disabilitato): nessun riabilitazione qui nel percorso di successo.
+      populateForm();
+      showSaveStatus('Claude disconnesso');
+    } catch (err) {
+      status.textContent = `Disconnessione non riuscita: ${(err as Error)?.message || err}`;
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-disconnect-copilot')!.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-disconnect-copilot') as HTMLButtonElement;
+    const status = document.getElementById('copilot-connection-status') as HTMLElement;
+    btn.disabled = true;
+    try {
+      await window.hypermiler.disconnectCopilot();
+      settings = await window.hypermiler.getSettings();
+      savedSettings = structuredClone(settings);
+      populateForm();
+      showSaveStatus('Copilot disconnesso');
+    } catch (err) {
+      status.textContent = `Disconnessione non riuscita: ${(err as Error)?.message || err}`;
       btn.disabled = false;
     }
   });

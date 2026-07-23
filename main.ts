@@ -8,6 +8,7 @@ import store from './store/index';
 import { createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
 import { captureClaudeSession, buildClaudeCookieHeader } from './main/claude-auth';
+import { captureGithubOAuthToken } from './main/copilot-oauth';
 import * as budget from './budget';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
@@ -467,9 +468,37 @@ function registerIpcHandlers(): void {
   ipcMain.handle('auth:connectCopilot', async (_event: IpcMainInvokeEvent, token: string) => {
     const username = await copilotService.resolveUsername(token);
     store.set('accounts.copilot.credentials', { token, username });
+    store.set('accounts.copilot.authMethod', 'pat');
     store.set('accounts.copilot.enabled', true);
     refreshAndBroadcast();
     return { username };
+  });
+
+  // Via sperimentale alternativa al PAT incollato a mano — vedi CLAUDE.md/RESEARCH.md
+  // §2.2: ipotesi da verificare, non confermata, che un token OAuth App riceva da
+  // copilot_internal/user una risposta con quota_snapshots dove un PAT non la riceve più.
+  ipcMain.handle('auth:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, payload: { clientId: string; clientSecret: string }) => {
+    const { accessToken } = await captureGithubOAuthToken(payload);
+    const username = await copilotService.resolveUsername(accessToken);
+    store.set('accounts.copilot.credentials', { token: accessToken, username });
+    store.set('accounts.copilot.oauthApp.clientId', payload.clientId);
+    store.set('accounts.copilot.authMethod', 'oauth');
+    store.set('accounts.copilot.enabled', true);
+    refreshAndBroadcast();
+    return { username };
+  });
+
+  ipcMain.handle('auth:disconnectClaude', async () => {
+    store.set('accounts.claude.session', { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null });
+    store.set('accounts.claude.enabled', false);
+    refreshAndBroadcast();
+  });
+
+  ipcMain.handle('auth:disconnectCopilot', async () => {
+    // oauthApp.clientId non viene cancellato: non è un segreto, resta comodo per riconnettersi.
+    store.set('accounts.copilot.credentials', { token: null, username: null });
+    store.set('accounts.copilot.enabled', false);
+    refreshAndBroadcast();
   });
 }
 

@@ -29,9 +29,13 @@ export const DEFAULTS: AppSettings = {
     copilot: {
       enabled: false,
       accountScope: 'personal',
+      authMethod: 'pat',
       credentials: {
         token: null,
         username: null,
+      },
+      oauthApp: {
+        clientId: null,
       },
       // L'API di billing Copilot non espone la quota totale del piano: valore
       // configurato manualmente (vedi ARCHITECTURE.md §0 e RESEARCH.md v3 §3).

@@ -47,6 +47,7 @@
 
       <div class="field-row connect-row">
         <button type="button" class="btn-secondary" id="btn-connect-claude">Connetti…</button>
+        <button type="button" class="btn-secondary" id="btn-disconnect-claude">Disconnetti</button>
         <span class="connection-status" id="claude-connection-status">Non connesso</span>
       </div>
       <p class="hint">Si apre una finestra di login claude.ai (funziona anche con SSO aziendale): nessun cookie da incollare a mano.</p>
@@ -61,6 +62,12 @@
           <select data-field="accounts.copilot.accountScope">
             <option value="personal">Personale</option>
             <option value="organization">Aziendale (seat organizzazione)</option>
+          </select>
+        </label>
+        <label>Metodo di autenticazione
+          <select data-field="accounts.copilot.authMethod">
+            <option value="pat">Personal Access Token</option>
+            <option value="oauth">GitHub OAuth (sperimentale)</option>
           </select>
         </label>
       </div>
@@ -93,28 +100,66 @@
         Ho capito che il monitoraggio Copilot aziendale è sperimentale
       </label>
 
-      <label>
-        <span class="label-row">
-          Personal Access Token
-          <button type="button" class="info-icon" aria-label="Come ottenere un token">
-            ⓘ
-            <span class="tooltip" role="tooltip">
-              <strong>Fine-grained:</strong> github.com → Settings → Developer settings →
-              Personal access tokens → Fine-grained tokens → Generate new token → in
-              "Account permissions" assegna "Plan: Read-only".<br />
-              <strong>Classic:</strong> Developer settings → Personal access tokens
-              (classic) → Generate new token — nessuno scope aggiuntivo richiesto per
-              leggere il proprio consumo personale.
-            </span>
-          </button>
-        </span>
-        <input type="password" id="copilot-token-input" placeholder="github_pat_… oppure ghp_…" />
-      </label>
-      <div class="field-row connect-row">
-        <button type="button" class="btn-secondary" id="btn-connect-copilot">Salva token</button>
-        <span class="connection-status" id="copilot-connection-status">Non connesso</span>
+      <div id="copilot-pat-panel">
+        <label>
+          <span class="label-row">
+            Personal Access Token
+            <button type="button" class="info-icon" aria-label="Come ottenere un token">
+              ⓘ
+              <span class="tooltip" role="tooltip">
+                <strong>Fine-grained:</strong> github.com → Settings → Developer settings →
+                Personal access tokens → Fine-grained tokens → Generate new token → in
+                "Account permissions" assegna "Plan: Read-only".<br />
+                <strong>Classic:</strong> Developer settings → Personal access tokens
+                (classic) → Generate new token — nessuno scope aggiuntivo richiesto per
+                leggere il proprio consumo personale.
+              </span>
+            </button>
+          </span>
+          <input type="password" id="copilot-token-input" placeholder="github_pat_… oppure ghp_…" />
+        </label>
+        <div class="field-row connect-row">
+          <button type="button" class="btn-secondary" id="btn-connect-copilot">Salva token</button>
+        </div>
+        <p class="hint">Il token viene salvato cifrato e non passa mai in chiaro nel renderer dopo il salvataggio.</p>
       </div>
-      <p class="hint">Il token viene salvato cifrato e non passa mai in chiaro nel renderer dopo il salvataggio.</p>
+
+      <div id="copilot-oauth-panel">
+        <label>
+          <span class="label-row">
+            Accesso via GitHub OAuth
+            <button type="button" class="info-icon" aria-label="Come configurare l'accesso OAuth">
+              ⓘ
+              <span class="tooltip" role="tooltip">
+                Crea una GitHub OAuth App su github.com → Settings → Developer settings →
+                OAuth Apps → New OAuth App. Homepage URL: qualsiasi. Authorization callback
+                URL: <strong>http://127.0.0.1:8123/callback</strong>. Incolla qui il Client
+                ID (si salva) e il Client Secret (mai salvato, solo per questo accesso).
+              </span>
+            </button>
+          </span>
+        </label>
+        <p class="warning">
+          Sperimentale — non è confermato che restituisca più dati di un Personal Access
+          Token per un seat aziendale. Vedi RESEARCH.md §2.2.
+        </p>
+        <div class="field-row">
+          <label>Client ID
+            <input type="text" data-field="accounts.copilot.oauthApp.clientId" placeholder="Iv1.xxxxxxxxxxxxxxxx" />
+          </label>
+          <label>Client Secret
+            <input type="password" id="copilot-oauth-secret-input" placeholder="mai salvato su disco" />
+          </label>
+        </div>
+        <div class="field-row connect-row">
+          <button type="button" class="btn-secondary" id="btn-connect-copilot-oauth">Connetti con GitHub (OAuth)</button>
+        </div>
+      </div>
+
+      <div class="field-row connect-row">
+        <span class="connection-status" id="copilot-connection-status">Non connesso</span>
+        <button type="button" class="btn-secondary" id="btn-disconnect-copilot">Disconnetti</button>
+      </div>
     </section>
 
     <section class="card">

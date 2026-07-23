@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Daniele Del Brocco/Downloads/copilot_hypermiler-main/copilot_hypermiler-main/src/main/**)",
+      "Read(//c/Users/Daniele Del Brocco/Downloads/copilot_hypermiler-main/copilot_hypermiler-main/docs/**)",
+      "Read(//c/Users/Daniele Del Brocco/Downloads/copilot_hypermiler-main/copilot_hypermiler-main/storage/**)",
+      "Bash(npm test *)",
+      "WebSearch"
+    ]
+  }
+}
