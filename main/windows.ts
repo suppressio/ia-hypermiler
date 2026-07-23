@@ -7,6 +7,9 @@ import type Store from 'electron-store';
 import type { AppSettings } from '../types/index';
 
 const ROOT = path.join(__dirname, '..');
+// renderer/assets/ (non build/, che non viene copiata in dist/ — vedi scripts/generate-icons.js)
+// così la stessa icona applicativa arriva anche a `npm start` non pacchettizzato.
+const ICON_PATH = path.join(ROOT, 'renderer', 'assets', 'app-icon.png');
 
 /** Crea la finestra principale (widget), nello stile scelto dall'utente. */
 export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
@@ -30,6 +33,7 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
     backgroundColor: isTransparent ? '#00000000' : '#fafafa',
     alwaysOnTop: !!ui.alwaysOnTop,
     show: true,
+    icon: ICON_PATH,
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
       nodeIntegration: false,
@@ -72,6 +76,7 @@ export function createSettingsWindow(store: Store<AppSettings>, existing?: Brows
     resizable: true,
     frame: true,
     transparent: false,
+    icon: ICON_PATH,
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
       nodeIntegration: false,

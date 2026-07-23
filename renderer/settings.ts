@@ -84,6 +84,7 @@ function populateForm(): void {
   });
   updateCopilotWarningVisibility();
   updateCopilotAuthMethodVisibility();
+  updateCopilotEnabledLock();
   updateConnectionStatuses();
 }
 
@@ -91,6 +92,21 @@ function updateCopilotWarningVisibility(): void {
   const warning = document.getElementById('copilot-org-warning') as HTMLElement;
   const scope = getPath(settings, 'accounts.copilot.accountScope');
   warning.hidden = scope !== 'organization';
+}
+
+// Con un seat aziendale non c'è nessuna via self-service affidabile per il consumo
+// Copilot (ricerca confermata, vedi RESEARCH.md §2.2/§2.3): blocchiamo la possibilità
+// di abilitare l'account solo in quel caso, lasciando il piano personale (PAT) intatto.
+function updateCopilotEnabledLock(): void {
+  const isOrg = getPath(settings, 'accounts.copilot.accountScope') === 'organization';
+  const checkbox = document.querySelector<HTMLInputElement>('[data-field="accounts.copilot.enabled"]')!;
+  const infoIcon = document.getElementById('copilot-enabled-info') as HTMLElement;
+  checkbox.disabled = isOrg;
+  infoIcon.hidden = !isOrg;
+  if (isOrg && checkbox.checked) {
+    checkbox.checked = false;
+    setPath(settings as PlainRecord, 'accounts.copilot.enabled', false);
+  }
 }
 
 // I due pannelli (PAT/OAuth) condividono lo stesso slot di credenziali
@@ -136,7 +152,10 @@ function bindEvents(): void {
       const field = el.dataset.field as string;
       const value = readFieldValue(el);
       setPath(settings as PlainRecord, field, value);
-      if (field === 'accounts.copilot.accountScope') updateCopilotWarningVisibility();
+      if (field === 'accounts.copilot.accountScope') {
+        updateCopilotWarningVisibility();
+        updateCopilotEnabledLock();
+      }
       if (field === 'accounts.copilot.authMethod') updateCopilotAuthMethodVisibility();
       // Nessun salvataggio né effetto collaterale qui: la modifica resta "in
       // bozza" nel form finché l'utente non preme "Salva" (o "Annulla" per

@@ -55,7 +55,18 @@
 
     <section class="card" data-account="copilot">
       <h2>GitHub Copilot</h2>
-      <label><input type="checkbox" data-field="accounts.copilot.enabled" /> Account collegato/abilitato</label>
+      <label>
+        <input type="checkbox" data-field="accounts.copilot.enabled" /> Account collegato/abilitato
+        <button type="button" class="info-icon" id="copilot-enabled-info" aria-label="Perché è disabilitato" hidden>
+          ⓘ
+          <span class="tooltip" role="tooltip">
+            Con un seat aziendale non esiste una via self-service affidabile per il consumo
+            Copilot: l'endpoint interno usato da VS Code non espone più dati di quota, e l'API
+            ufficiale (AI Credits) richiede permessi da amministratore. Vedi RESEARCH.md §2.2/§2.3.
+            Il monitoraggio resta disponibile con un piano personale.
+          </span>
+        </button>
+      </label>
 
       <div class="field-row">
         <label>Ambito account

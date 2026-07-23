@@ -34,6 +34,9 @@ body {
 .titlebar-controls-left { display: flex; gap: 4px; padding: 0 6px; -webkit-app-region: no-drag; }
 .titlebar-controls button,
 .titlebar-controls-left button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -43,13 +46,20 @@ body {
   font-size: 14px;
   line-height: 1;
 }
-/* Pin "sempre in primo piano": stesso trattamento hover degli altri pulsanti
-   della titlebar (vedi regole per-skin sotto), più uno stato "attivo" quando
-   ui.alwaysOnTop è true, con lo stesso colore accento già usato per la tab
-   account attiva. */
+.titlebar-controls button svg,
+.titlebar-controls-left button svg {
+  width: 14px;
+  height: 14px;
+}
+/* Pin "sempre in primo piano": stesso trattamento hover neutro degli altri
+   pulsanti della titlebar (vedi regole per-skin sotto) sia acceso che spento —
+   niente più riempimento pieno con --accent (un colore "acceso" a piena
+   saturazione era troppo invadente, feedback utente). Da spento, nessun
+   effetto. Da acceso, solo un glow statico (nessuna animazione/pulsazione,
+   coerente con CLAUDE.md) a indicare lo stato senza "colpire l'occhio". */
 .titlebar-controls-left button.active {
-  background: var(--accent);
-  color: #fff;
+  color: var(--accent);
+  filter: drop-shadow(0 0 3px var(--accent));
 }
 
 /* ---------- Skin "pieno" (classico) ---------- */
