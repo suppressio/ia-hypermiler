@@ -10,7 +10,7 @@
     "copy-assets": "node scripts/copy-assets.js",
     "build": "npm run build:main && npm run build:renderer && npm run copy-assets",
     "start": "npm run build && electron .",
-    "test": "npm run build && node --env-file-if-exists=.env.test --test dist",
+    "test": "npm run build && cd dist && node --env-file-if-exists=../.env.test --test",
     "package": "npm run build && electron-builder"
   },
   "author": "",
