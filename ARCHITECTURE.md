@@ -64,7 +64,6 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
     copilot: {
       enabled: boolean,
       accountScope: 'personal' | 'organization',   // qui SÌ cambia il meccanismo: personale = API ufficiale, org-managed = endpoint interno best-effort
-      authMethod: 'fine_grained_pat' | 'classic_pat' | 'oauth_device',
       credentials: { token: string, username: string | null },  // token cifrato
       manualQuota: number, // l'API di billing non espone il totale del piano: valore inserito dall'utente
       planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise',

@@ -96,7 +96,6 @@ export interface ClaudeAccountSettings {
 export interface CopilotAccountSettings {
   enabled: boolean;
   accountScope: AccountScope;
-  authMethod: 'fine_grained_pat' | 'classic_pat' | 'oauth_device';
   credentials: { token: string | null; username: string | null };
   manualQuota: number;
   planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise';
