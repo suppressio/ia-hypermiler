@@ -281,8 +281,19 @@ async function init(): Promise<void> {
     if (state.settings) state.settings.ui.alwaysOnTop = next;
     updatePinButton(next);
   });
+  document.getElementById('btn-refresh')!.addEventListener('click', () => {
+    // requestUsageRefresh() è "fire and forget" (ipcRenderer.send): il risultato
+    // arriva comunque via onUsageUpdate qui sotto, che riabilita il pulsante —
+    // disabilitarlo nel frattempo evita solo lo spam-click, non serve altro stato.
+    const btn = document.getElementById('btn-refresh') as HTMLButtonElement;
+    btn.disabled = true;
+    window.hypermiler.requestUsageRefresh();
+  });
 
-  window.hypermiler.onUsageUpdate(renderSnapshot);
+  window.hypermiler.onUsageUpdate((snapshot) => {
+    renderSnapshot(snapshot);
+    (document.getElementById('btn-refresh') as HTMLButtonElement).disabled = false;
+  });
   // Applica dal vivo i cambi di Impostazioni (es. colore accento, always-on-top
   // cambiato da Impostazioni o dal tray) mentre il widget è già aperto — vedi
   // preload.ts/main.ts (canale settings:update).

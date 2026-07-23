@@ -29,6 +29,7 @@
   },
   "build": {
     "appId": "com.delbrocco.ia-hypermiler",
+    "icon": "build/icon.png",
     "files": [
       "dist/**/*"
     ],
