@@ -200,6 +200,16 @@ const appIcon = generate(1024, { foreground: WHITE, background: ACCENT, roundedS
 writeFile('build/icon.png', appIcon);
 writeFile('renderer/assets/app-icon.png', appIcon);
 
+// electron-builder genera l'icona Linux derivandola dal .icns di macOS — ma sulla CI ogni
+// piattaforma builda a sé (il job Linux non esegue mai --mac), quindi su un runner Linux
+// non c'è mai un .icns da cui derivare, e l'AppImage/deb finisce con l'icona di Electron di
+// default. Fix: build/icons/ con le dimensioni esplicite (convenzione electron-builder,
+// nessuna voce aggiuntiva richiesta in package.json — stesso build.buildResources di default).
+const LINUX_ICON_SIZES = [16, 24, 32, 48, 64, 96, 128, 256, 512, 1024];
+for (const size of LINUX_ICON_SIZES) {
+  writeFile(`build/icons/${size}x${size}.png`, generate(size, { foreground: WHITE, background: ACCENT, roundedSquare: true }));
+}
+
 // Icona tray: sfondo trasparente, glifo monocromatico colore accento — nativeImage la
 // carica direttamente, nessuna conversione richiesta (main/tray.ts già pronto).
 writeFile('renderer/assets/tray-icon.png', generate(64, { foreground: ACCENT }));
