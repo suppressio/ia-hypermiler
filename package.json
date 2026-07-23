@@ -13,7 +13,7 @@
     "test": "npm run build && cd dist && node --env-file-if-exists=../.env.test --test",
     "package": "npm run build && electron-builder"
   },
-  "author": "",
+  "author": "Daniele 'suppressio' <82306300+suppressio@users.noreply.github.com>",
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
