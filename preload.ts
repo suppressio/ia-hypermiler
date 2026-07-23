@@ -40,6 +40,9 @@ const bridge: HypermilerBridge = {
 
   connectClaude: () => ipcRenderer.invoke('auth:connectClaude'),
   connectCopilot: (token) => ipcRenderer.invoke('auth:connectCopilot', token),
+  connectCopilotOAuth: (clientId, clientSecret) => ipcRenderer.invoke('auth:connectCopilotOAuth', { clientId, clientSecret }),
+  disconnectClaude: () => ipcRenderer.invoke('auth:disconnectClaude'),
+  disconnectCopilot: () => ipcRenderer.invoke('auth:disconnectCopilot'),
 };
 
 contextBridge.exposeInMainWorld('hypermiler', bridge);

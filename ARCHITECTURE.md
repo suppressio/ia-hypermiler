@@ -64,7 +64,9 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
     copilot: {
       enabled: boolean,
       accountScope: 'personal' | 'organization',   // qui SÌ cambia il meccanismo: personale = API ufficiale, org-managed = endpoint interno best-effort
-      credentials: { token: string, username: string | null },  // token cifrato
+      authMethod: 'pat' | 'oauth',  // sceglie quale pannello di connessione mostrare in Impostazioni; funzionale (a differenza dell'omonimo campo Claude sopra), aggiornato automaticamente dall'ultima connessione riuscita
+      credentials: { token: string, username: string | null },  // token cifrato (PAT o, in via sperimentale, un access token OAuth App — vedi main/copilot-oauth.ts)
+      oauthApp: { clientId: string | null },  // client ID di una GitHub OAuth App registrata dall'utente; non è un segreto, il client secret non viene mai persistito
       manualQuota: number, // l'API di billing non espone il totale del piano: valore inserito dall'utente
       planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise',
       subscription: {

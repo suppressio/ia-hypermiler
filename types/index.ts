@@ -96,7 +96,14 @@ export interface ClaudeAccountSettings {
 export interface CopilotAccountSettings {
   enabled: boolean;
   accountScope: AccountScope;
+  // Sceglie quale pannello di connessione mostrare in Impostazioni (PAT vs OAuth) e viene
+  // aggiornato automaticamente dal metodo usato per l'ultima connessione riuscita — vedi
+  // renderer/settings.ts (updateCopilotAuthMethodVisibility) e main.ts (auth:connectCopilot*).
+  authMethod: 'pat' | 'oauth';
   credentials: { token: string | null; username: string | null };
+  // Client ID di una GitHub OAuth App registrata dall'utente (non è un segreto — vedi
+  // renderer/settings.ts): via sperimentale alternativa al PAT, vedi CLAUDE.md.
+  oauthApp: { clientId: string | null };
   manualQuota: number;
   planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise';
   subscription: { renewalRule: RenewalRule };
@@ -180,4 +187,7 @@ export interface HypermilerBridge {
   closeWindow(): void;
   connectClaude(): Promise<{ organizationId: string | null }>;
   connectCopilot(token: string): Promise<{ username: string }>;
+  connectCopilotOAuth(clientId: string, clientSecret: string): Promise<{ username: string }>;
+  disconnectClaude(): Promise<void>;
+  disconnectCopilot(): Promise<void>;
 }

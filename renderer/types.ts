@@ -52,7 +52,7 @@ export interface UsageSnapshot {
 export interface AppSettings {
   accounts: {
     claude: { enabled: boolean; accountScope: 'personal' | 'organization'; session: { sessionKey: string | null } };
-    copilot: { enabled: boolean; accountScope: 'personal' | 'organization'; credentials: { username: string | null } };
+    copilot: { enabled: boolean; accountScope: 'personal' | 'organization'; authMethod: 'pat' | 'oauth'; credentials: { username: string | null }; oauthApp: { clientId: string | null } };
   };
   ui: {
     windowStyle: 'filled' | 'transparent-digital';
@@ -77,4 +77,7 @@ export interface HypermilerBridge {
   closeWindow(): void;
   connectClaude(): Promise<{ organizationId: string | null }>;
   connectCopilot(token: string): Promise<{ username: string }>;
+  connectCopilotOAuth(clientId: string, clientSecret: string): Promise<{ username: string }>;
+  disconnectClaude(): Promise<void>;
+  disconnectCopilot(): Promise<void>;
 }
