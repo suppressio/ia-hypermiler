@@ -29,7 +29,6 @@ export const DEFAULTS: AppSettings = {
     copilot: {
       enabled: false,
       accountScope: 'personal',
-      authMethod: 'fine_grained_pat',
       credentials: {
         token: null,
         username: null,

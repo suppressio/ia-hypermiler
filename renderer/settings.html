@@ -63,13 +63,6 @@
             <option value="organization">Aziendale (seat organizzazione)</option>
           </select>
         </label>
-        <label>Metodo di autenticazione
-          <select data-field="accounts.copilot.authMethod">
-            <option value="fine_grained_pat">Personal Access Token (fine-grained)</option>
-            <option value="classic_pat">Personal Access Token (classic)</option>
-            <option value="oauth_device">OAuth Device Flow</option>
-          </select>
-        </label>
       </div>
 
       <div class="field-row">
@@ -100,8 +93,22 @@
         Ho capito che il monitoraggio Copilot aziendale è sperimentale
       </label>
 
-      <label>Personal Access Token
-        <input type="password" id="copilot-token-input" placeholder="github_pat_… (permesso 'Plan' in lettura)" />
+      <label>
+        <span class="label-row">
+          Personal Access Token
+          <button type="button" class="info-icon" aria-label="Come ottenere un token">
+            ⓘ
+            <span class="tooltip" role="tooltip">
+              <strong>Fine-grained:</strong> github.com → Settings → Developer settings →
+              Personal access tokens → Fine-grained tokens → Generate new token → in
+              "Account permissions" assegna "Plan: Read-only".<br />
+              <strong>Classic:</strong> Developer settings → Personal access tokens
+              (classic) → Generate new token — nessuno scope aggiuntivo richiesto per
+              leggere il proprio consumo personale.
+            </span>
+          </button>
+        </span>
+        <input type="password" id="copilot-token-input" placeholder="github_pat_… oppure ghp_…" />
       </label>
       <div class="field-row connect-row">
         <button type="button" class="btn-secondary" id="btn-connect-copilot">Salva token</button>
