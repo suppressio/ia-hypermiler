@@ -1,8 +1,9 @@
 name: Build multipiattaforma
 
 # Parte solo sui tag di versione (es. v0.1.0) o manualmente da Actions.
-# Non pubblica release: i pacchetti restano scaricabili come artifact della run
-# (vedi CLAUDE.md, sezione "Build e test").
+# I pacchetti vengono sia caricati come artifact della run sia allegati
+# direttamente alla Release GitHub del tag corrente (electron-builder
+# --publish=always, vedi CLAUDE.md, sezione "Build e test").
 "on":
   push:
     tags:
@@ -11,6 +12,8 @@ name: Build multipiattaforma
 
 jobs:
   build:
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -43,14 +46,16 @@ jobs:
       - name: Build + test
         run: npm test
 
-      - name: Pacchettizza (electron-builder)
-        run: npx electron-builder ${{ matrix.flag }} --publish=never
+      - name: Pacchettizza (electron-builder) e pubblica sulla Release del tag
+        run: npx electron-builder ${{ matrix.flag }} --publish=always
         env:
           # Evita che electron-builder cerchi un'identità di firma su macOS
           # (nessun certificato disponibile per questo progetto): build non firmata.
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          # Richiesto da electron-builder per alcune chiamate all'API GitHub
-          # (download binari Electron, cache) anche senza pubblicare nulla.
+          # Con --publish=always electron-builder usa questo token per allegare
+          # i pacchetti alla Release GitHub del tag corrente (o per crearla come
+          # bozza se non esiste ancora). Richiede il permesso "contents: write"
+          # impostato sopra a livello di job.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Carica pacchetto come artifact
