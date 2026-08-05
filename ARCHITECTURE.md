@@ -22,7 +22,7 @@ Questo va confermato esplicitamente perché cambia l'interfaccia `fetchUsage()` 
   planTier: string,
   subscriptionRenewsAt: Date | null,        // data di fatturazione, se nota
   quotaWindows: Array<{
-    id: string,                              // 'five_hour' | 'seven_day' | 'seven_day_opus' | 'premium_requests' | ...
+    id: string,                              // 'five_hour' | 'seven_day' | 'seven_day_opus' | 'ai_credits' | ...
     label: string,
     periodType: 'rolling-hours' | 'rolling-days' | 'billing-cycle',
     periodLength: number,                    // es. 5, 7, o giorni del ciclo

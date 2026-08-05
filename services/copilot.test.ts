@@ -41,34 +41,79 @@ test('resolveUsername lancia errore se manca login nella risposta', async () => 
   await assert.rejects(() => copilotService.resolveUsername('tok-123'), /impossibile determinare lo username/);
 });
 
-test('sumCurrentMonthUsage somma solo le quantità del mese corrente', () => {
-  const now = new Date(Date.UTC(2026, 6, 16)); // 16 luglio 2026 UTC
+test('sumCreditsUsed somma il netAmount di tutti gli usage item e lo converte in credit', () => {
   const report = {
     usageItems: [
-      { date: '2026-07-01T00:00:00Z', quantity: 10 },
-      { date: '2026-07-15T00:00:00Z', quantity: 5 },
-      { date: '2026-06-30T00:00:00Z', quantity: 100 }, // mese precedente, escluso
+      { netAmount: 0.1 },
+      { netAmount: 0.05 },
     ],
   };
-  assert.equal(copilotService.sumCurrentMonthUsage(report, now), 15);
+  assert.equal(copilotService.sumCreditsUsed(report), 15); // (0.10 + 0.05) USD / $0.01 = 15 credit
 });
 
-test('sumCurrentMonthUsage lancia errore esplicito se usageItems manca', () => {
-  assert.throws(() => copilotService.sumCurrentMonthUsage({}, new Date()), /formato risposta inatteso/);
+test('sumCreditsUsed lancia errore esplicito se usageItems manca', () => {
+  assert.throws(() => copilotService.sumCreditsUsed({}), /formato risposta inatteso/);
 });
 
-test('fetchUsage (personale) somma il report e applica manualQuota come total', async () => {
+test('fetchUsage (personale) somma il report in credit e applica manualQuota come total', async () => {
   installFetchMock(async (url) => {
     if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
-    return jsonResponse({ usageItems: [{ date: new Date().toISOString(), quantity: 42 }] });
+    return jsonResponse({ usageItems: [{ netAmount: 0.42 }] });
   });
 
   const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', manualQuota: 300 });
 
   assert.equal(result.quotaWindows.length, 1);
-  assert.equal(result.quotaWindows[0].id, 'premium_requests');
+  assert.equal(result.quotaWindows[0].id, 'ai_credits');
   assert.equal(result.quotaWindows[0].used, 42);
   assert.equal(result.quotaWindows[0].total, 300);
+});
+
+test('fetchUsage (personale) ripiega su premium_request/usage se ai_credit/usage risponde 404', async () => {
+  installFetchMock(async (url) => {
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    if (url.includes('ai_credit/usage')) return jsonResponse({ message: 'Not Found' }, 404);
+    if (url.includes('premium_request/usage')) return jsonResponse({ usageItems: [{ netAmount: 0.3 }] });
+    throw new Error(`URL inatteso nel test: ${url}`);
+  });
+
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+
+  assert.equal(result.quotaWindows[0].used, 30);
+});
+
+test('fetchUsage (personale) ripiega su copilot_internal/user se anche premium_request/usage risponde 404', async () => {
+  installFetchMock(async (url) => {
+    // copilot_internal/user termina anch'esso per "/user": va controllato prima
+    // del check generico usato per risolvere lo username (api.github.com/user).
+    if (url.includes('copilot_internal/user')) {
+      return jsonResponse({
+        copilot_plan: 'individual',
+        quota_reset_date: '2026-08-01T00:00:00Z',
+        quota_snapshots: { premium_interactions: { percent_remaining: 80 } },
+      });
+    }
+    if (url.includes('/settings/billing/')) return jsonResponse({ message: 'Not Found' }, 404);
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    throw new Error(`URL inatteso nel test: ${url}`);
+  });
+
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+
+  assert.equal(result.planTier, 'individual');
+  assert.equal(result.quotaWindows[0].used, 20); // 100 - 80
+});
+
+test('fetchUsage (personale) non ripiega su premium_request/usage per errori diversi da 404', async () => {
+  installFetchMock(async (url) => {
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    return jsonResponse({ message: 'Bad credentials' }, 401);
+  });
+
+  await assert.rejects(
+    () => copilotService.fetchUsage({ token: 'tok-invalido', accountScope: 'personal' }),
+    /ha risposto 401/,
+  );
 });
 
 test('fetchUsage (seat aziendale) converte quota_snapshots in finestre percentuali', async () => {

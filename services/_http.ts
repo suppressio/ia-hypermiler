@@ -34,7 +34,9 @@ export async function fetchJson<T = unknown>(url: string, options: FetchJsonOpti
   if (!response.ok) {
     let bodyText = '';
     try { bodyText = await response.text(); } catch { /* ignora */ }
-    throw new Error(`${label} ha risposto ${response.status} ${response.statusText}${bodyText ? ` — ${bodyText.slice(0, 200)}` : ''}`);
+    const error = new Error(`${label} ha risposto ${response.status} ${response.statusText}${bodyText ? ` — ${bodyText.slice(0, 200)}` : ''}`);
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
   }
 
   try {

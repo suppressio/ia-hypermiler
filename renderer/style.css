@@ -169,6 +169,12 @@ body.style-transparent-digital .current-value,
 body.style-transparent-digital .metric-value {
   text-shadow: 0 0 6px rgba(215, 247, 233, 0.35);
 }
+/* Tab account attiva: il testo bianco di default (stile "pieno") ha contrasto
+   scarso sullo sfondo --accent chiaro qui sopra lo sfondo scuro della skin
+   digitale — invertito a un testo scuro solo per questa skin. */
+body.style-transparent-digital .account-tabs button.active {
+  color: #0a140f;
+}
 
 /* ---------- Layout condiviso ---------- */
 #app { padding: 10px 14px 14px; height: calc(100vh - 32px); overflow-y: auto; }
@@ -177,6 +183,11 @@ body.style-transparent-digital .metric-value {
 .account-tabs button {
   border: 1px solid var(--border-filled);
   background: transparent;
+  /* I <button> non erediscono `color` dal genitore per default (restano al
+     colore di sistema, tendenzialmente scuro) — invisibile per coincidenza
+     sulla skin "pieno" (testo scuro comunque), ma illeggibile su quella
+     digitale (serve il verde chiaro --text-digital). */
+  color: inherit;
   border-radius: 6px;
   padding: 4px 10px;
   cursor: pointer;
