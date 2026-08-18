@@ -205,6 +205,17 @@ function isCopilotConnected(accounts: AppSettings['accounts']): boolean {
 
 type StampedUsage = RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string; stale: boolean; lastError?: string };
 
+// 401/403 da un service (sessionKey/PAT scaduto o revocato) sono l'unico caso in cui
+// possiamo dare un consiglio pratico invece del messaggio grezzo del service — vedi
+// CLAUDE.md, "Stato avanzamento", sessione sull'errore account_session_invalid.
+function friendlyErrorMessage(err: unknown): string {
+  const error = err as Error & { status?: number };
+  if (error.status === 401 || error.status === 403) {
+    return `Sessione scaduta o non valida — riconnetti l'account da Impostazioni. (${error.message})`;
+  }
+  return error.message;
+}
+
 async function fetchAccountOrFallback(
   accountId: AccountId,
   fetchFn: () => Promise<RawAccountUsage>,
@@ -224,7 +235,7 @@ async function fetchAccountOrFallback(
     maybeReportFormatDrift(accountId, err);
     const lastGood = store.get(lastGoodKey) as StampedUsage | undefined;
     if (!lastGood) throw err; // nessun dato pregresso: propaga, il chiamante decide come mostrarlo
-    return { ...lastGood, stale: true, lastError: error.message };
+    return { ...lastGood, stale: true, lastError: friendlyErrorMessage(err) };
   }
 }
 
@@ -306,7 +317,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
       );
       snapshot.claude = computeAccountSnapshot(raw, accounts.claude.subscription, workSchedule, now);
     } catch (err) {
-      const message = (err as Error).message;
+      const message = friendlyErrorMessage(err);
       console.error('[main] Claude non disponibile e nessun dato pregresso:', message);
       snapshot.claude = emptyAccountSnapshot('claude', accounts.claude.planTier, message);
     }
@@ -326,7 +337,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
       if (!raw.planTier) raw.planTier = accounts.copilot.planTier;
       snapshot.copilot = computeAccountSnapshot(raw, accounts.copilot.subscription, workSchedule, now);
     } catch (err) {
-      const message = (err as Error).message;
+      const message = friendlyErrorMessage(err);
       console.error('[main] Copilot non disponibile e nessun dato pregresso:', message);
       snapshot.copilot = emptyAccountSnapshot('copilot', accounts.copilot.planTier, message);
     }
