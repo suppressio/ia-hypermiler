@@ -1,6 +1,6 @@
 {
   "name": "ia-hypermiler",
-  "version": "0.1.1",
+  "version": "0.1.1-beta",
   "description": "Widget desktop che monitora il consumo di token AI (Claude e GitHub Copilot) e calcola un budget giornaliero ottimale.",
   "main": "dist/main.js",
   "type": "commonjs",
