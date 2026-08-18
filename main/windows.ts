@@ -30,7 +30,10 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
     // trascinamento gestito via CSS -webkit-app-region (vedi renderer/style.css).
     frame: false,
     transparent: isTransparent,
-    backgroundColor: isTransparent ? '#00000000' : '#fafafa',
+    // Colore iniziale della finestra prima che il CSS venga applicato (evita un
+    // flash nel colore sbagliato) — per skin "filled-dark" deve essere lo stesso
+    // esadecimale di --bg-filled-dark in renderer/style.css.
+    backgroundColor: isTransparent ? '#00000000' : ui.windowStyle === 'filled-dark' ? '#1a1a1a' : '#fafafa',
     alwaysOnTop: !!ui.alwaysOnTop,
     show: true,
     icon: ICON_PATH,

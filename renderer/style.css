@@ -1,4 +1,4 @@
-/* style.css — due skin (vedi ARCHITECTURE.md §2). Sobria, nessuna animazione/pulsazione. */
+/* style.css — tre skin (vedi ARCHITECTURE.md §2). Sobria, nessuna animazione/pulsazione. */
 
 :root {
   --accent: #2563eb;
@@ -7,6 +7,15 @@
   --text-filled: #1a1a1a;
   --muted-filled: #6b7280;
   --border-filled: #e5e7eb;
+
+  /* Skin "pieno (dark)": bg/testo invertiti rispetto a quella chiara (richiesta
+     esplicita "colori invertiti"). --border-filled-dark non è l'inversione
+     letterale di --border-filled (che sarebbe quasi nera, invisibile su sfondo
+     scuro), ma un grigio scuro con lo stesso ruolo: una linea sottile e leggibile
+     contro lo sfondo. */
+  --bg-filled-dark: #1a1a1a;
+  --text-filled-dark: #fafafa;
+  --border-filled-dark: #374151;
 
   --bg-digital: transparent;
   --text-digital: #d7f7e9;
@@ -63,7 +72,7 @@ body {
   filter: drop-shadow(0 0 3px var(--accent));
 }
 
-/* ---------- Skin "pieno" (classico) ---------- */
+/* ---------- Skin "pieno" (classico - light) ---------- */
 body.style-filled {
   background: var(--bg-filled);
   color: var(--text-filled);
@@ -107,6 +116,54 @@ body.style-filled .titlebar-drag::after {
 body.style-filled.window-hover .titlebar-drag::after {
   opacity: 1;
 }
+
+/* ---------- Skin "pieno (dark)" ---------- */
+/* Stessa struttura della skin "pieno (classico)" sopra, solo con i token
+   -filled-dark al posto di -filled (colori invertiti, richiesta utente). */
+body.style-filled-dark {
+  background: var(--bg-filled-dark);
+  color: var(--text-filled-dark);
+}
+body.style-filled-dark .titlebar { background: var(--bg-filled-dark); }
+body.style-filled-dark .titlebar-controls,
+body.style-filled-dark .titlebar-controls-left {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+body.style-filled-dark.window-hover .titlebar-controls,
+body.style-filled-dark .titlebar-controls:hover,
+body.style-filled-dark .titlebar-controls:focus-within,
+body.style-filled-dark.window-hover .titlebar-controls-left,
+body.style-filled-dark .titlebar-controls-left:hover,
+body.style-filled-dark .titlebar-controls-left:focus-within {
+  opacity: 1;
+}
+body.style-filled-dark .titlebar-controls button,
+body.style-filled-dark .titlebar-controls-left button { color: var(--text-filled-dark); }
+body.style-filled-dark .titlebar-controls button:hover,
+body.style-filled-dark .titlebar-controls-left button:hover { background: var(--border-filled-dark); }
+
+body.style-filled-dark .titlebar-drag { position: relative; }
+body.style-filled-dark .titlebar-drag::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  right: 8px;
+  transform: translateY(-50%);
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-filled-dark);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+body.style-filled-dark.window-hover .titlebar-drag::after {
+  opacity: 1;
+}
+/* Le tab account condividono una regola comune con border-color fisso a
+   --border-filled (riga sotto, "Layout condiviso") — troppo chiaro su sfondo
+   scuro, sovrascritto qui con l'analogo -dark. */
+body.style-filled-dark .account-tabs button { border-color: var(--border-filled-dark); }
 
 /* ---------- Skin "trasparente/digitale" ---------- */
 body.style-transparent-digital {

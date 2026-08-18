@@ -30,8 +30,11 @@ const state: RendererState = {
 const NO_WINDOW_TIP = 'In attesa di dati per generare un consiglio.';
 
 function applyWindowStyle(style: AppSettings['ui']['windowStyle']): void {
-  document.body.classList.remove('style-filled', 'style-transparent-digital');
-  document.body.classList.add(style === 'transparent-digital' ? 'style-transparent-digital' : 'style-filled');
+  document.body.classList.remove('style-filled', 'style-filled-dark', 'style-transparent-digital');
+  const cls = style === 'transparent-digital' ? 'style-transparent-digital'
+    : style === 'filled-dark' ? 'style-filled-dark'
+    : 'style-filled';
+  document.body.classList.add(cls);
 }
 
 // Il colore accento (Impostazioni → Aspetto) era salvato ma non veniva mai

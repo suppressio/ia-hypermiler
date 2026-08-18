@@ -5,7 +5,7 @@
 export type AccountId = 'claude' | 'copilot';
 export type AccountScope = 'personal' | 'organization';
 export type DayStatus = 'full' | 'half' | 'off';
-export type WindowStyle = 'filled' | 'transparent-digital';
+export type WindowStyle = 'filled' | 'filled-dark' | 'transparent-digital';
 export type ChartRange = 'week' | 'month';
 
 export interface RenewalRule {

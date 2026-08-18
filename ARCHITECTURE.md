@@ -94,7 +94,7 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
   },
 
   ui: {
-    windowStyle: 'filled' | 'transparent-digital',
+    windowStyle: 'filled' | 'filled-dark' | 'transparent-digital',
     alwaysOnTop: boolean,
     accentColor: string,
     bounds: { x, y, width, height },       // posizione/dimensione persistita
@@ -118,18 +118,21 @@ Sezioni del pannello impostazioni (finestra separata `renderer/settings.html`, a
 1. **Account e sessioni** — per Claude e Copilot: stato connessione, metodo (password/SSO/PAT/OAuth device), pulsante "Connetti/Riconnetti" che apre una `BrowserWindow` di login per Claude o il device-flow per Copilot, data di scadenza sessione stimata, toggle "seat aziendale" con avviso automatico se attivo su Copilot ("funzionalità sperimentale, può interrompersi senza preavviso").
 2. **Piano e rinnovo** — tipo piano, giorno di rinnovo abbonamento (selettore semplice "giorno del mese"; dietro le quinte salvato come RRULE minimale `FREQ=MONTHLY;BYMONTHDAY=n` così in futuro si possono aggiungere ricorrenze diverse senza cambiare schema).
 3. **Calendario di lavoro** — 7 toggle giorno con 3 stati (pieno/mezza/riposo) + switch opzionale per ore lavorative (inizio/fine). Usato per calcolare budget e proiezioni su "giorni/ore lavorative rimanenti", non su giorni di calendario.
-4. **Aspetto** — stile finestra (le due skin descritte sotto), always-on-top, colore accento, intervallo grafico (settimana/mese) di default.
+4. **Aspetto** — stile finestra (le tre skin descritte sotto), always-on-top, colore accento, intervallo grafico (settimana/mese) di default.
 5. **Notifiche** — soglia percentuale di allarme (default 80%, come da `CLAUDE.md`, ma ora configurabile), eventualmente per-finestra (es. avviso separato per il limite 5h di Claude).
 6. **Avanzate** — placeholder per le evoluzioni future (vedi §5): abilitazione futura server locale, export dati.
 
 ---
 
-## 2. Finestra principale — le due "skin"
+## 2. Finestra principale — le tre "skin"
 
-Entrambe leggono dagli stessi dati (IPC dal main, nessuna duplicazione di logica) e cambiano solo `renderer/style.css` + flag di creazione della `BrowserWindow`.
+Tutte leggono dagli stessi dati (IPC dal main, nessuna duplicazione di logica) e cambiano solo `renderer/style.css` + flag di creazione della `BrowserWindow`.
 
-**Stile "pieno" (classico):**
+**Stile "pieno" (classico - light):**
 `frame: true`, `transparent: false`, controlli di sistema nativi sempre visibili, sfondo opaco, layout a blocchi con bordi.
+
+**Stile "pieno" (dark):** *(aggiunta, feedback utente)*
+Stessa struttura opaca/non trasparente della skin classica, con colori invertiti (sfondo scuro, testo chiaro) — vedi i token `--*-filled-dark` in `renderer/style.css`. Nessuna differenza di comportamento rispetto alla skin classica oltre ai colori (stessa titlebar custom, stesso comportamento hover, stesso layout).
 
 **Stile "trasparente/digitale":**
 `frame: false`, `transparent: true`, `titleBarStyle` nascosto. Numeri/barre in stile HUD (font monospazio, glow leggero — restando comunque sobri per rispettare "no animazioni" di `CLAUDE.md`: niente pulsazioni, solo contrasto/opacità statici). Pulsanti di sistema (chiudi/riduci) ricreati come controlli custom in overlay, `opacity: 0` di default e `opacity: 1` solo on-hover via CSS, con `-webkit-app-region: drag` sull'area libera per permettere lo spostamento finestra senza barra del titolo nativa.

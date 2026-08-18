@@ -90,7 +90,7 @@ export interface AppSettings {
     copilot: { enabled: boolean; accountScope: 'personal' | 'organization'; authMethod: 'pat' | 'oauth'; credentials: { username: string | null }; oauthApp: { clientId: string | null } };
   };
   ui: {
-    windowStyle: 'filled' | 'transparent-digital';
+    windowStyle: 'filled' | 'filled-dark' | 'transparent-digital';
     alwaysOnTop: boolean;
     chartRange: 'week' | 'month';
     accentColor: string;
@@ -107,7 +107,7 @@ export interface HypermilerBridge {
   requestUsageRefresh(): void;
   openSettingsWindow(): void;
   setAlwaysOnTop(value: boolean): Promise<boolean>;
-  setWindowStyle(style: 'filled' | 'transparent-digital'): Promise<string>;
+  setWindowStyle(style: 'filled' | 'filled-dark' | 'transparent-digital'): Promise<string>;
   minimizeWindow(): void;
   closeWindow(): void;
   connectClaude(): Promise<{ organizationId: string | null }>;

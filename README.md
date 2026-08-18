@@ -77,7 +77,7 @@ Build + `electron-builder`: produce l'installer per la piattaforma corrente (`.d
 ```
 ia-hypermiler/
 ├── main.ts, preload.ts        ← processo principale Electron + bridge sicuro verso il renderer
-├── main/                      ← finestre (skin filled/transparent-digital), tray, login Claude
+├── main/                      ← finestre (skin filled/filled-dark/transparent-digital), tray, login Claude
 ├── renderer/                  ← widget e finestra impostazioni (HTML/CSS/TS vanilla)
 ├── services/                  ← fetch usage da Claude e Copilot (+ relativi test)
 ├── diagnostics/                ← auto-segnalazione "format drift" via bozza issue GitHub (mai valori reali, sempre da confermare a mano)
