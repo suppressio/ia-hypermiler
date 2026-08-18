@@ -175,6 +175,15 @@
 
     <section class="card">
       <h2>Calendario di lavoro</h2>
+      <label>
+        <input type="checkbox" data-field="workSchedule.enabled" id="work-schedule-enabled" />
+        Limita il pacing a giorni/ore specifici della settimana
+      </label>
+      <p class="hint" id="work-schedule-disabled-hint" hidden>
+        Disattivato: ogni giorno conta come giornata lavorativa piena, senza distinzioni
+        tra giorni della settimana — utile per un account personale che non ha orari
+        fissi da rispettare.
+      </p>
       <div class="week-grid" id="week-grid">
         <!-- generato da settings.js -->
       </div>

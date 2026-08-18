@@ -77,6 +77,7 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
   },
 
   workSchedule: {
+    enabled: boolean, // se false, ogni giorno vale come giornata piena (pacing non legato a giorni/ore specifici — es. account personale)
     days: {
       mon: 'full' | 'half' | 'off',
       tue: 'full' | 'half' | 'off',

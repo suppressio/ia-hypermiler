@@ -60,6 +60,10 @@ export const DEFAULTS: AppSettings = {
   },
 
   workSchedule: {
+    // Default true: preserva il comportamento già in uso (pacing sui giorni
+    // lavorativi configurati sotto). Disattivabile in Impostazioni per un account
+    // personale, dove il pacing per giorni/ore specifici non ha senso.
+    enabled: true,
     days: {
       mon: 'full',
       tue: 'full',

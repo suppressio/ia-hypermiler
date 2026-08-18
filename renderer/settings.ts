@@ -85,7 +85,24 @@ function populateForm(): void {
   updateCopilotWarningVisibility();
   updateCopilotAuthMethodVisibility();
   updateCopilotEnabledLock();
+  updateWorkScheduleLock();
   updateConnectionStatuses();
+}
+
+// Quando il calendario di lavoro è disattivato (account personale, nessun
+// giorno/ora specifico da rispettare — feedback utente), i selettori dei giorni
+// e le ore/giorno non hanno più alcun effetto sul pacing (vedi budget.getDayUnit):
+// disabilitati visivamente invece di lasciarli modificabili senza conseguenze,
+// stesso pattern di updateCopilotEnabledLock.
+function updateWorkScheduleLock(): void {
+  const enabled = getPath(settings, 'workSchedule.enabled') !== false;
+  const hint = document.getElementById('work-schedule-disabled-hint') as HTMLElement;
+  hint.hidden = enabled;
+  document
+    .querySelectorAll<HTMLSelectElement>('#week-grid select[data-field^="workSchedule.days."]')
+    .forEach((el) => { el.disabled = !enabled; });
+  const hoursInput = document.querySelector<HTMLInputElement>('[data-field="workSchedule.hoursPerDay"]');
+  if (hoursInput) hoursInput.disabled = !enabled;
 }
 
 function updateCopilotWarningVisibility(): void {
@@ -157,6 +174,7 @@ function bindEvents(): void {
         updateCopilotEnabledLock();
       }
       if (field === 'accounts.copilot.authMethod') updateCopilotAuthMethodVisibility();
+      if (field === 'workSchedule.enabled') updateWorkScheduleLock();
       // Nessun salvataggio né effetto collaterale qui: la modifica resta "in
       // bozza" nel form finché l'utente non preme "Salva" (o "Annulla" per
       // scartarla) — prima si salvava ad ogni campo, un comportamento discordante

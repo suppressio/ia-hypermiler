@@ -8,6 +8,7 @@ import * as budget from './budget';
 import type { QuotaWindow, WorkSchedule, DailyUsagePoint } from './types/index';
 
 const FULL_WEEK_SCHEDULE: WorkSchedule = {
+  enabled: true,
   days: { mon: 'full', tue: 'full', wed: 'full', thu: 'full', fri: 'full', sat: 'off', sun: 'off' },
   hoursPerDay: 8,
 };
@@ -37,6 +38,25 @@ test('workingUnitsBetween ritorna 0 se end precede start', () => {
   const start = new Date(2026, 6, 20);
   const end = new Date(2026, 6, 13);
   assert.equal(budget.workingUnitsBetween(start, end, FULL_WEEK_SCHEDULE), 0);
+});
+
+test('getDayUnit: con workSchedule.enabled=false ogni giorno vale 1, anche uno segnato "off"', () => {
+  const disabledSchedule: WorkSchedule = { ...FULL_WEEK_SCHEDULE, enabled: false };
+  const saturday = new Date(2026, 6, 18); // sabato, 'off' in FULL_WEEK_SCHEDULE
+  assert.equal(budget.getDayUnit(saturday, disabledSchedule), 1);
+});
+
+test('getDayUnit: enabled undefined (installazioni precedenti) si comporta come true', () => {
+  const legacySchedule = { days: FULL_WEEK_SCHEDULE.days, hoursPerDay: 8 } as WorkSchedule;
+  const saturday = new Date(2026, 6, 18);
+  assert.equal(budget.getDayUnit(saturday, legacySchedule), 0);
+});
+
+test('workingUnitsBetween: con calendario disattivato conta tutti i giorni di calendario', () => {
+  const disabledSchedule: WorkSchedule = { ...FULL_WEEK_SCHEDULE, enabled: false };
+  const start = new Date(2026, 6, 13); // lunedì
+  const end = new Date(2026, 6, 20); // lunedì successivo, 7 giorni di calendario
+  assert.equal(budget.workingUnitsBetween(start, end, disabledSchedule), 7);
 });
 
 test('normalizedUtilization: percentage ritorna used direttamente', () => {

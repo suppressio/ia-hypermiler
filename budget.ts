@@ -12,8 +12,17 @@ import type { QuotaWindow, WorkSchedule, RenewalRule, DailyUsagePoint, Efficienc
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
-/** Unità lavorativa di un singolo giorno di calendario: 1 (full), 0.5 (half), 0 (off). */
+/**
+ * Unità lavorativa di un singolo giorno di calendario: 1 (full), 0.5 (half), 0 (off).
+ * Se `workSchedule.enabled` è esplicitamente `false` (calendario disattivato, es.
+ * account personale senza giorni/ore da rispettare), ogni giorno vale 1 a
+ * prescindere da `days` — il pacing torna a considerare i giorni di calendario
+ * uniformemente. `undefined` (installazioni precedenti a questo campo, vedi
+ * l'avviso sul merge shallow di electron-store in store/index.ts) è trattato come
+ * "attivo", preservando il comportamento già in uso.
+ */
 export function getDayUnit(date: Date, workSchedule: WorkSchedule): number {
+  if (workSchedule?.enabled === false) return 1;
   const key = DAY_KEYS[date.getDay()];
   const status = workSchedule?.days?.[key] ?? 'off';
   if (status === 'full') return 1;

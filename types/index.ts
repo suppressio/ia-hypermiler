@@ -25,6 +25,11 @@ export interface WorkScheduleDays {
 }
 
 export interface WorkSchedule {
+  // Se false, il pacing ignora `days` e tratta ogni giorno di calendario come
+  // giornata lavorativa piena (vedi budget.getDayUnit) — pensato per un account
+  // personale, dove non ha senso limitarsi a giorni/ore specifici della settimana
+  // come invece utile per un account aziendale (feedback utente).
+  enabled: boolean;
   days: WorkScheduleDays;
   // Riservato per un futuro pacing infra-giornaliero (vedi CLAUDE.md): non ancora
   // usato dalla logica di budget, che lavora a granularità giorno/mezza-giornata.
