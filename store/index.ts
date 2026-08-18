@@ -5,6 +5,17 @@
 // NOTA sicurezza: la encryptionKey qui sotto è un placeholder di sviluppo.
 // Prima di qualunque distribuzione va sostituita con una chiave generata in modo
 // sicuro (es. da un secret manager o da un valore legato alla macchina), MAI committata.
+//
+// NOTA electron-store/conf: i DEFAULTS si applicano con un merge SHALLOW
+// (Object.assign(defaults, fileStore) in conf/dist/source/index.js) — su
+// un'installazione con un file già persistito, un campo nuovo aggiunto dentro un
+// oggetto annidato che esiste già nel file (es. `history`, `accounts.claude`) non
+// viene fuso: l'intero oggetto persistito sovrascrive quello dei default, campo
+// nuovo escluso. Bug reale scoperto aggiungendo `history.recentSamples` (vedi
+// CLAUDE.md, gauge "consumo istantaneo"): `store.get('history.recentSamples')`
+// tornava `undefined` su installazioni preesistenti, non `[]`. Ogni lettura di un
+// campo nested aggiunto dopo il primo rilascio deve avere un fallback esplicito
+// (`?? []`/`?? {}`), non assumere che il default configurato qui basti.
 
 import Store from 'electron-store';
 import type { AppSettings } from '../types/index';
@@ -77,6 +88,7 @@ export const DEFAULTS: AppSettings = {
   history: {
     dailyUsage: [],
     retentionDays: 90,
+    recentSamples: [],
   },
 
   advisorCache: { generatedAt: null, adviceText: null },

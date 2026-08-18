@@ -36,6 +36,14 @@
       <div class="current-label" id="current-label">In attesa di dati…</div>
     </section>
 
+    <section class="instant-gauge-section">
+      <div class="gauge-header">
+        <span>Consumo istantaneo</span>
+        <span id="gauge-label">--</span>
+      </div>
+      <div id="instant-gauge" class="instant-gauge"></div>
+    </section>
+
     <section class="chart-section">
       <div class="chart-header">
         <span id="chart-title">Andamento settimanale</span>
@@ -68,6 +76,11 @@
         <span class="metric-label">Streak sotto budget</span>
         <span class="metric-value" id="metric-streak">--</span>
       </div>
+    </section>
+
+    <section class="eco-score-section">
+      <span class="eco-score-label">Punteggio eco (7gg)</span>
+      <div id="eco-stars" class="eco-stars" aria-label="Punteggio eco"></div>
     </section>
 
     <section class="tips-section">

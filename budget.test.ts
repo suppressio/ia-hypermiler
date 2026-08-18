@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as budget from './budget';
-import type { QuotaWindow, WorkSchedule } from './types/index';
+import type { QuotaWindow, WorkSchedule, DailyUsagePoint } from './types/index';
 
 const FULL_WEEK_SCHEDULE: WorkSchedule = {
   days: { mon: 'full', tue: 'full', wed: 'full', thu: 'full', fri: 'full', sat: 'off', sun: 'off' },
@@ -127,4 +127,102 @@ test('resolveRenewalDate: dayOfMonth già passato slitta al mese successivo', ()
 
 test('resolveRenewalDate: rrule non supportato lancia errore esplicito', () => {
   assert.throws(() => budget.resolveRenewalDate({ type: 'rrule', rrule: 'FREQ=WEEKLY' }), /non supportato/);
+});
+
+// ---------------------------------------------------------------------------
+// instantaneousRate — gauge "consumo istantaneo"
+// ---------------------------------------------------------------------------
+
+test('instantaneousRate calcola il ritmo %/ora tra il campione più vecchio e il più recente', () => {
+  const now = new Date(2026, 6, 20, 12, 0, 0);
+  const samples = [
+    { timestamp: new Date(2026, 6, 20, 10, 0, 0), used: 10 },
+    { timestamp: new Date(2026, 6, 20, 12, 0, 0), used: 20 },
+  ];
+  assert.equal(budget.instantaneousRate(samples, now), 5); // 10 punti in 2 ore
+});
+
+test('instantaneousRate ritorna null con meno di 2 campioni', () => {
+  const now = new Date(2026, 6, 20, 12, 0, 0);
+  assert.equal(budget.instantaneousRate([{ timestamp: now, used: 10 }], now), null);
+});
+
+test('instantaneousRate ritorna null se l\'intervallo è troppo corto (< 5 min)', () => {
+  const now = new Date(2026, 6, 20, 12, 4, 0);
+  const samples = [
+    { timestamp: new Date(2026, 6, 20, 12, 0, 0), used: 10 },
+    { timestamp: now, used: 12 },
+  ];
+  assert.equal(budget.instantaneousRate(samples, now), null);
+});
+
+test('instantaneousRate clampa a 0 un delta negativo (reset della finestra nel mezzo)', () => {
+  const now = new Date(2026, 6, 20, 12, 0, 0);
+  const samples = [
+    { timestamp: new Date(2026, 6, 20, 10, 0, 0), used: 95 },
+    { timestamp: now, used: 5 }, // la finestra si è resettata tra i due campioni
+  ];
+  assert.equal(budget.instantaneousRate(samples, now), 0);
+});
+
+// ---------------------------------------------------------------------------
+// sustainableHourlyRate — "pallino target" del gauge
+// ---------------------------------------------------------------------------
+
+test('sustainableHourlyRate calcola il ritmo orario massimo per arrivare al 100% al reset', () => {
+  const now = new Date(2026, 6, 20, 0, 0, 0);
+  const resetsAt = new Date(2026, 6, 20, 10, 0, 0); // 10 ore al reset
+  const win = pctWindow(50, { resetsAt });
+  assert.equal(budget.sustainableHourlyRate(win, now), 5); // 50% residuo / 10h
+});
+
+test('sustainableHourlyRate ritorna null se resetsAt è assente', () => {
+  const win = pctWindow(50, { resetsAt: null });
+  assert.equal(budget.sustainableHourlyRate(win, new Date(2026, 6, 20)), null);
+});
+
+test('sustainableHourlyRate ritorna 0 se già al 100% o il reset è già passato', () => {
+  const now = new Date(2026, 6, 20, 12, 0, 0);
+  const past = new Date(2026, 6, 20, 0, 0, 0);
+  assert.equal(budget.sustainableHourlyRate(pctWindow(100, { resetsAt: new Date(2026, 6, 21) }), now), 0);
+  assert.equal(budget.sustainableHourlyRate(pctWindow(50, { resetsAt: past }), now), 0);
+});
+
+// ---------------------------------------------------------------------------
+// ecoScore — punteggio a stelle
+// ---------------------------------------------------------------------------
+
+function dayPoint(date: string, used: number): DailyUsagePoint {
+  return { date, accountId: 'claude', windowId: 'test-window', used };
+}
+
+test('ecoScore media i rapporti ideale/reale sui giorni lavorativi validi', () => {
+  const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15), dayPoint('2026-07-15', 17)];
+  // Periodo con 20 unità lavorative totali => quota ideale 5%/giorno pieno.
+  const result = budget.ecoScore(history, FULL_WEEK_SCHEDULE, 20);
+  assert.ok(result !== null);
+  assert.equal(result!.avgRatio, 1.75); // rapporti 5/5=1 e 5/2=2.5, media 1.75
+  assert.equal(result!.stars, 5);
+});
+
+test('ecoScore scarta un giorno con delta negativo (reset della finestra)', () => {
+  const history = [
+    dayPoint('2026-07-13', 10),
+    dayPoint('2026-07-14', 15),
+    dayPoint('2026-07-15', 17),
+    dayPoint('2026-07-16', 3), // reset: il valore scende invece di salire
+  ];
+  const result = budget.ecoScore(history, FULL_WEEK_SCHEDULE, 20);
+  assert.equal(result!.avgRatio, 1.75); // identico al test precedente: il giorno di reset non altera la media
+});
+
+test('ecoScore esclude i giorni non lavorativi', () => {
+  // 2026-07-17 è venerdì, 2026-07-18 è sabato (off nello schedule di test).
+  const history = [dayPoint('2026-07-17', 20), dayPoint('2026-07-18', 25)];
+  assert.equal(budget.ecoScore(history, FULL_WEEK_SCHEDULE, 20), null);
+});
+
+test('ecoScore ritorna null con dati insufficienti', () => {
+  assert.equal(budget.ecoScore([dayPoint('2026-07-13', 10)], FULL_WEEK_SCHEDULE, 20), null);
+  assert.equal(budget.ecoScore([dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15)], FULL_WEEK_SCHEDULE, 0), null);
 });

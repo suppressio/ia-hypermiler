@@ -108,6 +108,11 @@ function formatDays(value: number | null | undefined): string {
   return `${Math.round(value * 10) / 10} gg`;
 }
 
+function formatRate(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '--';
+  return `${Math.round(value * 100) / 100}%/h`;
+}
+
 function computePeakAvg(dailyHistory: DailyUsagePoint[]): { peak: number | null; avg: number | null } {
   if (!dailyHistory || dailyHistory.length === 0) return { peak: null, avg: null };
   const values = dailyHistory.map((d) => d.used);
@@ -185,6 +190,104 @@ function renderChart(dailyHistory: DailyUsagePoint[], days: number): void {
   container.appendChild(svg);
 }
 
+// Gauge "consumo istantaneo" ispirato ai cruscotti hypermiling (Honda Insight/
+// Fiat 500e, vedi CLAUDE.md): barra che si riempie in base al ritmo recente
+// (winSnap.instantRate, %/ora) con un marcatore verticale sul ritmo sostenibile
+// per arrivare esattamente al 100% al reset (winSnap.sustainableRate, il
+// "pallino target"). La scala si adatta al valore più alto tra i due, non è
+// fissa: un ritmo istantaneo molto sopra il target riempie quasi tutta la barra
+// ed è colorato con --warning invece di --accent.
+function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
+  const container = document.getElementById('instant-gauge') as HTMLDivElement;
+  const label = document.getElementById('gauge-label') as HTMLSpanElement;
+  container.innerHTML = '';
+
+  const instant = winSnap?.instantRate ?? null;
+  const sustainable = winSnap?.sustainableRate ?? null;
+
+  if (instant === null) {
+    label.textContent = 'In attesa di più campioni…';
+    return;
+  }
+  label.textContent = sustainable !== null
+    ? `${formatRate(instant)} · target ${formatRate(sustainable)}`
+    : formatRate(instant);
+
+  const width = container.clientWidth || 300;
+  const height = 20;
+  const scaleMax = Math.max(instant, sustainable ?? 0, 0.01) * 1.5;
+  const fillWidth = Math.max(0, Math.min(1, instant / scaleMax)) * width;
+  const overBudget = sustainable !== null && instant > sustainable;
+
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNs, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', String(height));
+
+  const track = document.createElementNS(svgNs, 'rect');
+  track.setAttribute('x', '0');
+  track.setAttribute('y', '0');
+  track.setAttribute('width', String(width));
+  track.setAttribute('height', String(height));
+  track.setAttribute('rx', '4');
+  track.setAttribute('fill', 'currentColor');
+  track.setAttribute('opacity', '0.1');
+  svg.appendChild(track);
+
+  const fill = document.createElementNS(svgNs, 'rect');
+  fill.setAttribute('x', '0');
+  fill.setAttribute('y', '0');
+  fill.setAttribute('width', String(fillWidth));
+  fill.setAttribute('height', String(height));
+  fill.setAttribute('rx', '4');
+  fill.setAttribute('fill', overBudget ? 'var(--warning)' : 'var(--accent)');
+  svg.appendChild(fill);
+
+  if (sustainable !== null) {
+    const markerX = Math.max(0, Math.min(width - 2, (sustainable / scaleMax) * width));
+    const marker = document.createElementNS(svgNs, 'rect');
+    marker.setAttribute('x', String(markerX));
+    marker.setAttribute('y', '0');
+    marker.setAttribute('width', '2');
+    marker.setAttribute('height', String(height));
+    marker.setAttribute('fill', 'currentColor');
+    const title = document.createElementNS(svgNs, 'title');
+    title.textContent = `Ritmo sostenibile: ${formatRate(sustainable)}`;
+    marker.appendChild(title);
+    svg.appendChild(marker);
+  }
+
+  container.appendChild(svg);
+}
+
+function starIcon(filled: boolean): SVGSVGElement {
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNs, 'svg') as SVGSVGElement;
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', filled ? 'var(--accent)' : 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.5');
+  svg.classList.add('eco-star');
+  const path = document.createElementNS(svgNs, 'path');
+  path.setAttribute('d', 'M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z');
+  svg.appendChild(path);
+  return svg;
+}
+
+// Punteggio eco a stelle (winSnap.ecoScore), ispirato alle foglioline della
+// Honda Insight — vedi budget.ecoScore per il calcolo.
+function renderEcoStars(winSnap: QuotaWindowSnapshot | undefined): void {
+  const container = document.getElementById('eco-stars') as HTMLDivElement;
+  container.innerHTML = '';
+  const score = winSnap?.ecoScore ?? null;
+  container.title = score ? `Rapporto medio ideale/reale: ${score.avgRatio}` : 'Dati insufficienti per uno score';
+  const stars = score?.stars ?? 0;
+  for (let i = 1; i <= 5; i++) {
+    container.appendChild(starIcon(i <= stars));
+  }
+}
+
 function renderAccountTabs(snapshot: UsageSnapshot): void {
   const nav = document.getElementById('account-tabs') as HTMLElement;
   const available = (['claude', 'copilot'] as AccountId[]).filter((id) => snapshot[id]);
@@ -257,6 +360,8 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     document.getElementById('window-tabs')!.hidden = true;
     document.getElementById('current-value')!.textContent = '--';
     document.getElementById('current-label')!.textContent = 'Nessun account collegato — apri le impostazioni';
+    renderInstantGauge(undefined);
+    renderEcoStars(undefined);
     return;
   }
 
@@ -282,6 +387,9 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     if (account.lastError) label += ` (${account.lastError})`;
   }
   document.getElementById('current-label')!.textContent = label;
+
+  renderInstantGauge(winSnap);
+  renderEcoStars(winSnap);
 
   document.getElementById('metric-efficiency')!.textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
   document.getElementById('metric-projected')!.textContent = formatPercent(winSnap?.projectedUsage ?? null);

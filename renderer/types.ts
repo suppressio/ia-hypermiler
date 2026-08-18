@@ -26,6 +26,11 @@ export interface DailyUsagePoint {
   used: number;
 }
 
+export interface EcoScore {
+  stars: number;
+  avgRatio: number;
+}
+
 export interface QuotaWindowSnapshot {
   window: QuotaWindow;
   dailyHistory: DailyUsagePoint[];
@@ -34,6 +39,9 @@ export interface QuotaWindowSnapshot {
   daysUntilReset: number | null;
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
+  instantRate: number | null;
+  sustainableRate: number | null;
+  ecoScore: EcoScore | null;
 }
 
 export interface AccountSnapshot {

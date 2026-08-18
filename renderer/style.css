@@ -2,6 +2,7 @@
 
 :root {
   --accent: #2563eb;
+  --warning: #dc2626;
   --bg-filled: #fafafa;
   --text-filled: #1a1a1a;
   --muted-filled: #6b7280;
@@ -213,6 +214,16 @@ body.style-transparent-digital .account-tabs button.active {
 .current-value { font-size: 42px; font-weight: 700; line-height: 1; }
 .current-label { font-size: 12px; opacity: 0.75; margin-top: 4px; }
 
+.instant-gauge-section { margin-bottom: 14px; }
+.gauge-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+.instant-gauge { width: 100%; height: 20px; }
+
 .chart-section { margin-bottom: 16px; }
 .chart-header { font-size: 12px; opacity: 0.75; margin-bottom: 6px; }
 .chart { width: 100%; height: 90px; }
@@ -226,6 +237,16 @@ body.style-transparent-digital .account-tabs button.active {
 .metric { display: flex; flex-direction: column; gap: 2px; }
 .metric-label { font-size: 11px; opacity: 0.65; }
 .metric-value { font-size: 16px; font-weight: 600; }
+
+.eco-score-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.eco-score-label { font-size: 11px; opacity: 0.65; }
+.eco-stars { display: flex; gap: 2px; }
+.eco-star { width: 15px; height: 15px; }
 
 .tips-section {
   border-top: 1px solid rgba(127, 127, 127, 0.2);

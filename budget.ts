@@ -8,7 +8,7 @@
 // Tutte le funzioni sono pure (nessun I/O), testabili da terminale/test runner.
 
 import { addDays, differenceInCalendarDays, isBefore, startOfDay, setDate, addMonths } from 'date-fns';
-import type { QuotaWindow, WorkSchedule, RenewalRule } from './types/index';
+import type { QuotaWindow, WorkSchedule, RenewalRule, DailyUsagePoint, EcoScore } from './types/index';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
@@ -145,6 +145,105 @@ export function remainingBudgetPerWorkingDay({ window, workSchedule, periodEnd, 
   const remainingUnits = workingUnitsBetween(now, periodEnd, workSchedule);
   if (remainingUnits <= 0) return remaining;
   return Math.floor(remaining / remainingUnits);
+}
+
+/**
+ * Ritmo di consumo recente (%/ora), calcolato tra il campione più vecchio e quello
+ * più recente disponibili entro `lookbackMinutes` (default 3h). È l'analogo del
+ * "consumo istantaneo" dei cruscotti hypermiling (Honda Insight/Fiat 500e): non
+ * un valore realmente istantaneo (il refresh è ogni 30 min, vedi CLAUDE.md), ma
+ * il ritmo osservato nella finestra recente. Ritorna null se i campioni sono
+ * insufficienti o l'intervallo è troppo corto (< 5 min) per essere significativo.
+ * Un delta negativo (reset della finestra di quota nel mezzo) viene clampato a 0
+ * invece di mostrare un ritmo negativo privo di senso per l'utente.
+ */
+export function instantaneousRate(
+  samples: { timestamp: Date | string; used: number }[],
+  now: Date = new Date(),
+  lookbackMinutes = 180,
+): number | null {
+  if (!Array.isArray(samples) || samples.length < 2) return null;
+
+  const cutoff = now.getTime() - lookbackMinutes * 60 * 1000;
+  const points = samples
+    .map((s) => ({ time: new Date(s.timestamp).getTime(), used: s.used }))
+    .filter((s) => s.time <= now.getTime())
+    .sort((a, b) => a.time - b.time);
+
+  const withinLookback = points.filter((s) => s.time >= cutoff);
+  const relevant = withinLookback.length >= 2 ? withinLookback : points;
+  if (relevant.length < 2) return null;
+
+  const oldest = relevant[0];
+  const latest = relevant[relevant.length - 1];
+  const elapsedHours = (latest.time - oldest.time) / (3600 * 1000);
+  if (elapsedHours < 5 / 60) return null;
+
+  const delta = Math.max(0, latest.used - oldest.used);
+  return Math.round((delta / elapsedHours) * 100) / 100;
+}
+
+/**
+ * Ritmo orario massimo (%/ora) sostenibile per arrivare esattamente al 100% al
+ * reset della finestra — il "pallino target" del gauge di consumo istantaneo.
+ * Usa solo `window.resetsAt`, non `periodStart`/`workSchedule`: a differenza di
+ * `efficiencyIndex`/`projectedUsage` funziona anche per finestre con periodo di
+ * riferimento sconosciuto (es. crediti una tantum, vedi main.ts canEstimatePacing),
+ * perché non serve sapere quando il periodo è iniziato per sapere quanto manca alla
+ * scadenza. Ritorna null se `resetsAt` è assente o l'utilizzo non è calcolabile.
+ */
+export function sustainableHourlyRate(window: QuotaWindow, now: Date = new Date()): number | null {
+  const utilization = normalizedUtilization(window);
+  if (utilization === null || !window.resetsAt) return null;
+
+  const hoursUntilReset = (new Date(window.resetsAt).getTime() - now.getTime()) / (3600 * 1000);
+  if (hoursUntilReset <= 0) return 0;
+
+  const remainingPercent = Math.max(0, 100 - utilization);
+  return Math.round((remainingPercent / hoursUntilReset) * 100) / 100;
+}
+
+const ECO_SCORE_MAX_RATIO = 3;
+
+/**
+ * Punteggio eco a stelle (1-5), ispirato alle foglioline della Honda Insight:
+ * media, sugli ultimi `days` giorni di storico, del rapporto tra quota ideale del
+ * giorno e consumo osservato quel giorno (>1 = si è consumato meno dell'ideale).
+ * Un giorno non lavorativo è escluso (nessuna quota ideale da rispettare); un
+ * delta negativo (reset della finestra nel mezzo) è escluso allo stesso modo di
+ * instantaneousRate, non attribuibile alla "guida" di quel giorno. Ogni rapporto
+ * è limitato a ECO_SCORE_MAX_RATIO per evitare che un singolo giorno a consumo
+ * zero domini la media. Ritorna null se non ci sono abbastanza dati validi.
+ */
+export function ecoScore(
+  dailyHistory: DailyUsagePoint[],
+  workSchedule: WorkSchedule,
+  totalPeriodWorkingUnits: number,
+  days = 7,
+): EcoScore | null {
+  if (!Array.isArray(dailyHistory) || dailyHistory.length < 2 || totalPeriodWorkingUnits <= 0) return null;
+
+  const sorted = [...dailyHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-(days + 1));
+  const ratios: number[] = [];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    const dayUnit = getDayUnit(new Date(curr.date), workSchedule);
+    if (dayUnit <= 0) continue;
+
+    const delta = curr.used - prev.used;
+    if (delta < 0) continue;
+
+    const idealShare = dayUnit * (100 / totalPeriodWorkingUnits);
+    const ratio = delta === 0 ? ECO_SCORE_MAX_RATIO : Math.min(ECO_SCORE_MAX_RATIO, idealShare / delta);
+    ratios.push(ratio);
+  }
+
+  if (ratios.length === 0) return null;
+  const avgRatio = ratios.reduce((s, r) => s + r, 0) / ratios.length;
+  const stars = avgRatio >= 1.5 ? 5 : avgRatio >= 1.1 ? 4 : avgRatio >= 0.9 ? 3 : avgRatio >= 0.6 ? 2 : 1;
+  return { stars, avgRatio: Math.round(avgRatio * 100) / 100 };
 }
 
 /**

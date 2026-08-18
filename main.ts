@@ -23,6 +23,7 @@ import type {
   QuotaWindow,
   QuotaWindowSnapshot,
   RawAccountUsage,
+  RecentUsageSample,
   RenewalRule,
   UsageSnapshot,
   WorkSchedule,
@@ -95,6 +96,37 @@ function getDailyHistory(accountId: AccountId, windowId: string, days: number): 
     .slice(-days);
 }
 
+// Ampio margine sopra il lookback di 3h usato da budget.instantaneousRate: il
+// buffer resta comunque minuscolo (append ogni 30 min, mai più di ~8 campioni
+// per finestra), a differenza di history.dailyUsage non serve una vera retention
+// configurabile.
+const RECENT_SAMPLES_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+
+// store.get(...) as RecentUsageSample[] può risultare undefined anche con un
+// default configurato in store/index.ts: electron-store (conf) applica i default
+// con un merge shallow (Object.assign(defaults, fileStore)) — su un'installazione
+// che aveva già un oggetto `history` persistito PRIMA che questo campo esistesse,
+// l'intero `history` del file sovrascrive quello dei default, `recentSamples`
+// incluso, invece di fondersi campo per campo. Fallback esplicito a [] finché
+// il primo store.set qui sotto non "ripara" il file scrivendoci il campo.
+function recordRecentSample(accountId: AccountId, window: QuotaWindow): void {
+  const utilization = budget.normalizedUtilization(window);
+  if (utilization === null) return;
+
+  const samples = (store.get('history.recentSamples') as RecentUsageSample[] | undefined) ?? [];
+  samples.push({ timestamp: new Date().toISOString(), accountId, windowId: window.id, used: Math.round(utilization * 100) / 100 });
+
+  const cutoff = Date.now() - RECENT_SAMPLES_MAX_AGE_MS;
+  const pruned = samples.filter((s) => new Date(s.timestamp).getTime() >= cutoff);
+  store.set('history.recentSamples', pruned);
+}
+
+function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSample[] {
+  return ((store.get('history.recentSamples') as RecentUsageSample[] | undefined) ?? [])
+    .filter((s) => s.accountId === accountId && s.windowId === windowId)
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
 // ---------------------------------------------------------------------------
 // Confini del periodo per efficienza/previsionale/scadenza:
 // - se la finestra critica ha un proprio resetsAt (caso Claude, finestre rolling),
@@ -141,12 +173,15 @@ function computeWindowSnapshot(
   now: Date,
 ): QuotaWindowSnapshot {
   recordDailyUsage(accountId, window);
+  recordRecentSample(accountId, window);
   const chartDays = store.get('ui.chartRange') === 'month' ? 30 : 7;
   const dailyHistory = getDailyHistory(accountId, window.id, chartDays);
+  const recentSamples = getRecentSamples(accountId, window.id);
 
   const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, now);
   const ctx = { window, workSchedule, periodStart, periodEnd, now };
   const pacingAvailable = canEstimatePacing(window);
+  const totalPeriodWorkingUnits = budget.workingUnitsBetween(periodStart, periodEnd, workSchedule);
 
   return {
     window,
@@ -156,6 +191,12 @@ function computeWindowSnapshot(
     daysUntilReset: budget.daysUntilReset(periodEnd, now),
     workingDaysUntilReset: budget.workingDaysUntilReset(periodEnd, workSchedule, now),
     estimatedAutonomyWorkingDays: pacingAvailable ? budget.estimatedAutonomyWorkingDays(ctx) : null,
+    // Non gated da pacingAvailable: usa solo window.resetsAt, quindi resta
+    // significativo anche per finestre con periodStart sconosciuto (es. crediti
+    // una tantum) — vedi budget.sustainableHourlyRate.
+    instantRate: budget.instantaneousRate(recentSamples, now),
+    sustainableRate: budget.sustainableHourlyRate(window, now),
+    ecoScore: pacingAvailable ? budget.ecoScore(dailyHistory, workSchedule, totalPeriodWorkingUnits) : null,
   };
 }
 

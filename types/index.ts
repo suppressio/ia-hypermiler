@@ -59,6 +59,25 @@ export interface DailyUsagePoint {
 }
 
 /**
+ * Campione grezzo con timestamp preciso (non una data di calendario), usato solo
+ * per il gauge di consumo istantaneo (vedi budget.instantaneousRate). Distinto da
+ * DailyUsagePoint: qui ogni refresh riuscito aggiunge un punto (append), mentre
+ * DailyUsagePoint tiene un solo valore per giorno (sovrascritto ad ogni refresh).
+ */
+export interface RecentUsageSample {
+  timestamp: string;
+  accountId: AccountId;
+  windowId: string;
+  used: number;
+}
+
+/** Punteggio eco a stelle (vedi budget.ecoScore), su una finestra mobile di giorni. */
+export interface EcoScore {
+  stars: number;
+  avgRatio: number;
+}
+
+/**
  * Metriche calcolate per UNA finestra di quota (vedi main.ts, computeWindowSnapshot).
  * Un account può avere più finestre attive contemporaneamente (es. Claude: limite
  * standard + credito extra una tantum) — il widget le mostra come tab separate invece
@@ -72,6 +91,14 @@ export interface QuotaWindowSnapshot {
   daysUntilReset: number | null;
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
+  // Consumo istantaneo (%/ora, dai campioni recenti) e ritmo orario sostenibile
+  // per arrivare esattamente al 100% al reset — vedi budget.instantaneousRate /
+  // budget.sustainableHourlyRate. Ispirato ai gauge "consumo istantaneo" delle
+  // auto ibride (Honda Insight/Fiat 500e), vedi CLAUDE.md.
+  instantRate: number | null;
+  sustainableRate: number | null;
+  // Punteggio eco a stelle sugli ultimi giorni (vedi budget.ecoScore).
+  ecoScore: EcoScore | null;
 }
 
 /** Snapshot arricchito inviato al renderer via IPC (vedi main.ts). */
@@ -142,6 +169,9 @@ export interface UiSettings {
 export interface HistorySettings {
   dailyUsage: DailyUsagePoint[];
   retentionDays: number;
+  // Buffer di campioni ravvicinati (append-only, pruning per età non per giorni)
+  // usato solo dal gauge di consumo istantaneo — vedi RecentUsageSample sopra.
+  recentSamples: RecentUsageSample[];
   lastGood?: {
     claude?: RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string };
     copilot?: RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string };
