@@ -8,7 +8,7 @@
 // Tutte le funzioni sono pure (nessun I/O), testabili da terminale/test runner.
 
 import { addDays, differenceInCalendarDays, isBefore, startOfDay, setDate, addMonths } from 'date-fns';
-import type { QuotaWindow, WorkSchedule, RenewalRule, DailyUsagePoint, EcoScore } from './types/index';
+import type { QuotaWindow, WorkSchedule, RenewalRule, DailyUsagePoint, EfficiencyRating } from './types/index';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
@@ -149,10 +149,9 @@ export function remainingBudgetPerWorkingDay({ window, workSchedule, periodEnd, 
 
 /**
  * Ritmo di consumo recente (%/ora), calcolato tra il campione più vecchio e quello
- * più recente disponibili entro `lookbackMinutes` (default 3h). È l'analogo del
- * "consumo istantaneo" dei cruscotti hypermiling (Honda Insight/Fiat 500e): non
- * un valore realmente istantaneo (il refresh è ogni 30 min, vedi CLAUDE.md), ma
- * il ritmo osservato nella finestra recente. Ritorna null se i campioni sono
+ * più recente disponibili entro `lookbackMinutes` (default 3h). Non è un valore
+ * realmente istantaneo (il refresh è ogni 30 min, vedi CLAUDE.md), ma il ritmo
+ * osservato nella finestra recente. Ritorna null se i campioni sono
  * insufficienti o l'intervallo è troppo corto (< 5 min) per essere significativo.
  * Un delta negativo (reset della finestra di quota nel mezzo) viene clampato a 0
  * invece di mostrare un ritmo negativo privo di senso per l'utente.
@@ -203,24 +202,27 @@ export function sustainableHourlyRate(window: QuotaWindow, now: Date = new Date(
   return Math.round((remainingPercent / hoursUntilReset) * 100) / 100;
 }
 
-const ECO_SCORE_MAX_RATIO = 3;
+const EFFICIENCY_RATING_MAX_RATIO = 3;
 
 /**
- * Punteggio eco a stelle (1-5), ispirato alle foglioline della Honda Insight:
- * media, sugli ultimi `days` giorni di storico, del rapporto tra quota ideale del
- * giorno e consumo osservato quel giorno (>1 = si è consumato meno dell'ideale).
- * Un giorno non lavorativo è escluso (nessuna quota ideale da rispettare); un
- * delta negativo (reset della finestra nel mezzo) è escluso allo stesso modo di
- * instantaneousRate, non attribuibile alla "guida" di quel giorno. Ogni rapporto
- * è limitato a ECO_SCORE_MAX_RATIO per evitare che un singolo giorno a consumo
- * zero domini la media. Ritorna null se non ci sono abbastanza dati validi.
+ * Rating efficienza a stelle (1-5) sugli ultimi `days` giorni: media del rapporto
+ * tra quota ideale del giorno e consumo osservato quel giorno (>1 = si è
+ * consumato meno dell'ideale). A differenza di `efficiencyIndex` (istantanea
+ * cumulativa dall'inizio del periodo), qui si guarda giorno per giorno su una
+ * finestra mobile — quanto costantemente si è rimasti vicini al ritmo ideale
+ * nell'ultima settimana, non solo il totale ad oggi. Un giorno non lavorativo è
+ * escluso (nessuna quota ideale da rispettare); un delta negativo (reset della
+ * finestra nel mezzo) è escluso allo stesso modo di instantaneousRate, non
+ * attribuibile all'uso di quel giorno. Ogni rapporto è limitato a
+ * EFFICIENCY_RATING_MAX_RATIO per evitare che un singolo giorno a consumo zero
+ * domini la media. Ritorna null se non ci sono abbastanza dati validi.
  */
-export function ecoScore(
+export function efficiencyRating(
   dailyHistory: DailyUsagePoint[],
   workSchedule: WorkSchedule,
   totalPeriodWorkingUnits: number,
   days = 7,
-): EcoScore | null {
+): EfficiencyRating | null {
   if (!Array.isArray(dailyHistory) || dailyHistory.length < 2 || totalPeriodWorkingUnits <= 0) return null;
 
   const sorted = [...dailyHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-(days + 1));
@@ -236,7 +238,7 @@ export function ecoScore(
     if (delta < 0) continue;
 
     const idealShare = dayUnit * (100 / totalPeriodWorkingUnits);
-    const ratio = delta === 0 ? ECO_SCORE_MAX_RATIO : Math.min(ECO_SCORE_MAX_RATIO, idealShare / delta);
+    const ratio = delta === 0 ? EFFICIENCY_RATING_MAX_RATIO : Math.min(EFFICIENCY_RATING_MAX_RATIO, idealShare / delta);
     ratios.push(ratio);
   }
 
@@ -244,6 +246,102 @@ export function ecoScore(
   const avgRatio = ratios.reduce((s, r) => s + r, 0) / ratios.length;
   const stars = avgRatio >= 1.5 ? 5 : avgRatio >= 1.1 ? 4 : avgRatio >= 0.9 ? 3 : avgRatio >= 0.6 ? 2 : 1;
   return { stars, avgRatio: Math.round(avgRatio * 100) / 100 };
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+export interface DailyTipContext {
+  window: QuotaWindow;
+  efficiencyIndex: number | null;
+  projectedUsage: number | null;
+  daysUntilReset: number | null;
+  workingDaysUntilReset: number | null;
+  estimatedAutonomyWorkingDays: number | null;
+  instantRate: number | null;
+  sustainableRate: number | null;
+  efficiencyRating: EfficiencyRating | null;
+}
+
+export const NO_TIP_MESSAGE = 'Non ci sono ancora abbastanza dati per un consiglio specifico su questa finestra.';
+
+/**
+ * Genera il "consiglio del giorno" come affermazione derivata dai dati reali
+ * della finestra, mai una frase generica scelta a caso: ogni candidato qui sotto
+ * ha una condizione esplicita sui numeri già calcolati da questo file (nessun
+ * dato nuovo, nessuna euristica inventata). Se più condizioni sono vere
+ * contemporaneamente si sceglie a caso tra quelle applicabili (varietà senza
+ * mai mostrare un'affermazione falsa); se nessuna è vera si dichiara onestamente
+ * che non c'è nulla di specifico da segnalare (NO_TIP_MESSAGE), invece di
+ * riempire lo spazio con un consiglio generico non ancorato ai dati.
+ */
+export function generateDailyTip(ctx: DailyTipContext, random: () => number = Math.random): string {
+  const {
+    window,
+    projectedUsage,
+    daysUntilReset,
+    workingDaysUntilReset,
+    estimatedAutonomyWorkingDays,
+    instantRate,
+    sustainableRate,
+    efficiencyRating,
+  } = ctx;
+  const utilization = normalizedUtilization(window);
+  const candidates: string[] = [];
+
+  // 1. L'autonomia stimata al ritmo attuale è più corta del tempo che manca al
+  // reset: rischio concreto di esaurire la quota prima del rinnovo. Include il
+  // rallentamento necessario per arrivarci (rapporto tra le due durate).
+  if (
+    estimatedAutonomyWorkingDays !== null && Number.isFinite(estimatedAutonomyWorkingDays) &&
+    workingDaysUntilReset !== null && workingDaysUntilReset > 0 &&
+    estimatedAutonomyWorkingDays < workingDaysUntilReset
+  ) {
+    const reductionPercent = Math.round((1 - estimatedAutonomyWorkingDays / workingDaysUntilReset) * 100);
+    candidates.push(
+      `Al ritmo attuale ${window.label} durerebbe circa ${round1(estimatedAutonomyWorkingDays)}gg lavorativi, ma mancano ${round1(workingDaysUntilReset)}gg al rinnovo: per arrivarci serve un ritmo circa il ${reductionPercent}% più basso.`,
+    );
+  }
+
+  // 2. Il ritmo osservato nelle ultime ore è sopra quello sostenibile per
+  // arrivare esattamente al reset — vedi instantaneousRate/sustainableHourlyRate.
+  if (instantRate !== null && sustainableRate !== null && instantRate > sustainableRate) {
+    const resetLabel = window.resetsAt ? new Date(window.resetsAt).toLocaleDateString('it-IT') : 'il prossimo reset';
+    candidates.push(
+      `Il ritmo delle ultime ore su ${window.label} (${round2(instantRate)}%/h) è sopra il ${round2(sustainableRate)}%/h sostenibile per arrivare a ${resetLabel} senza sforare.`,
+    );
+  }
+
+  // 3. Rating alto sugli ultimi giorni: margine reale per un uso più intenso oggi.
+  if (efficiencyRating !== null && efficiencyRating.stars >= 4) {
+    candidates.push(
+      `Rating ${efficiencyRating.stars}/5 su ${window.label} negli ultimi giorni (in media ${round2(efficiencyRating.avgRatio)}× il ritmo ideale): c'è margine per una sessione più lunga oggi.`,
+    );
+  }
+
+  // 4. Pochi giorni al reset e utilizzo già alto: meglio centellinare il residuo.
+  if (daysUntilReset !== null && daysUntilReset <= 2 && utilization !== null && utilization >= 70) {
+    const when = daysUntilReset === 0 ? 'meno di un giorno' : `${daysUntilReset}gg`;
+    candidates.push(
+      `Mancano ${when} al rinnovo di ${window.label} e sei già al ${round1(utilization)}%: valuta di consolidare le richieste rimanenti prima del reset.`,
+    );
+  }
+
+  // 5. La proiezione lineare a fine periodo supera il 100%, anche se non ci si è
+  // ancora arrivati — segnale anticipato rispetto al caso 1 (che serve autonomia).
+  if (projectedUsage !== null && projectedUsage >= 100 && utilization !== null && utilization < 100) {
+    candidates.push(
+      `Di questo passo ${window.label} arriverebbe al ${round1(projectedUsage)}% entro il rinnovo: supererebbe il limite se il ritmo resta questo.`,
+    );
+  }
+
+  if (candidates.length === 0) return NO_TIP_MESSAGE;
+  return candidates[Math.floor(random() * candidates.length)];
 }
 
 /**

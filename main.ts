@@ -215,21 +215,51 @@ function computeWindowSnapshot(
   const ctx = { window, workSchedule, periodStart, periodEnd, now };
   const pacingAvailable = canEstimatePacing(window);
   const totalPeriodWorkingUnits = budget.workingUnitsBetween(periodStart, periodEnd, workSchedule);
+  // Il rating a stelle si basa su delta giornalieri su una finestra di `chartDays`
+  // giorni (7/30, la stessa vista scelta dall'utente per il grafico — coerenza tra
+  // indicatori): non ha senso per una finestra che si rinnova ogni poche ore (es.
+  // "five_hour" di Claude, vedi nota sopra resolvePeriodBounds) — lì il consumo di
+  // "un giorno" può attraversare più reset, un rapporto ideale/reale giornaliero
+  // non è più significativo. In quel caso resta solo il gauge %/ora (instantRate/
+  // sustainableRate sotto), coerente a qualunque scala temporale.
+  const ratingAvailable = pacingAvailable && window.periodType !== 'rolling-hours';
+
+  const efficiencyIndex = pacingAvailable ? budget.efficiencyIndex(ctx) : null;
+  const projectedUsage = pacingAvailable ? budget.projectedUsage(ctx) : null;
+  const daysUntilReset = budget.daysUntilReset(periodEnd, now);
+  const workingDaysUntilReset = budget.workingDaysUntilReset(periodEnd, workSchedule, now);
+  const estimatedAutonomyWorkingDays = pacingAvailable ? budget.estimatedAutonomyWorkingDays(ctx) : null;
+  // Non gated da pacingAvailable: usa solo window.resetsAt, quindi resta
+  // significativo anche per finestre con periodStart sconosciuto (es. crediti
+  // una tantum) — vedi budget.sustainableHourlyRate.
+  const instantRate = budget.instantaneousRate(recentSamples, now);
+  const sustainableRate = budget.sustainableHourlyRate(window, now);
+  const efficiencyRating = ratingAvailable
+    ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, chartDays)
+    : null;
 
   return {
     window,
     dailyHistory,
-    efficiencyIndex: pacingAvailable ? budget.efficiencyIndex(ctx) : null,
-    projectedUsage: pacingAvailable ? budget.projectedUsage(ctx) : null,
-    daysUntilReset: budget.daysUntilReset(periodEnd, now),
-    workingDaysUntilReset: budget.workingDaysUntilReset(periodEnd, workSchedule, now),
-    estimatedAutonomyWorkingDays: pacingAvailable ? budget.estimatedAutonomyWorkingDays(ctx) : null,
-    // Non gated da pacingAvailable: usa solo window.resetsAt, quindi resta
-    // significativo anche per finestre con periodStart sconosciuto (es. crediti
-    // una tantum) — vedi budget.sustainableHourlyRate.
-    instantRate: budget.instantaneousRate(recentSamples, now),
-    sustainableRate: budget.sustainableHourlyRate(window, now),
-    ecoScore: pacingAvailable ? budget.ecoScore(dailyHistory, workSchedule, totalPeriodWorkingUnits) : null,
+    efficiencyIndex,
+    projectedUsage,
+    daysUntilReset,
+    workingDaysUntilReset,
+    estimatedAutonomyWorkingDays,
+    instantRate,
+    sustainableRate,
+    efficiencyRating,
+    dailyTip: budget.generateDailyTip({
+      window,
+      efficiencyIndex,
+      projectedUsage,
+      daysUntilReset,
+      workingDaysUntilReset,
+      estimatedAutonomyWorkingDays,
+      instantRate,
+      sustainableRate,
+      efficiencyRating,
+    }),
   };
 }
 

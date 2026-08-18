@@ -52,9 +52,14 @@
     </section>
 
     <section class="metrics-grid" id="metrics-grid">
-      <div class="metric">
+      <div class="metric metric-efficiency-block">
         <span class="metric-label">Indice efficienza</span>
         <span class="metric-value" id="metric-efficiency">--</span>
+        <span class="metric-hint" id="metric-efficiency-hint"></span>
+        <div class="efficiency-rating" id="efficiency-rating">
+          <div class="efficiency-rating-stars" id="efficiency-rating-stars" aria-label="Rating efficienza"></div>
+          <span class="efficiency-rating-label" id="efficiency-rating-label"></span>
+        </div>
       </div>
       <div class="metric">
         <span class="metric-label">Previsionale</span>
@@ -78,30 +83,25 @@
       </div>
     </section>
 
-    <section class="eco-score-section">
-      <span class="eco-score-label">Punteggio eco (7gg)</span>
-      <div id="eco-stars" class="eco-stars" aria-label="Punteggio eco"></div>
-    </section>
-
-    <section class="tips-section">
-      <div class="tips-label">Consiglio del giorno</div>
+    <details class="tips-section" open>
+      <summary>Consiglio del giorno</summary>
       <div class="tips-text" id="tips-text">—</div>
-    </section>
 
-    <details id="local-insights" class="local-insights" hidden>
-      <summary>Insight locali · Claude Code</summary>
-      <div class="local-insights-body">
-        <div class="metric">
-          <span class="metric-label">Contesto oltre 150k</span>
-          <span class="metric-value" id="local-insights-context">--</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">Da sessioni 8h+</span>
-          <span class="metric-value" id="local-insights-duration">--</span>
-        </div>
-        <div class="local-insights-tools">
-          <span class="metric-label">Tool più usati</span>
-          <ul id="local-insights-tools"></ul>
+      <div id="local-insights" class="local-insights" hidden>
+        <div class="local-insights-header">Insight locali · Claude Code</div>
+        <div class="local-insights-body">
+          <div class="metric">
+            <span class="metric-label">Contesto oltre 150k</span>
+            <span class="metric-value" id="local-insights-context">--</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Da sessioni 8h+</span>
+            <span class="metric-value" id="local-insights-duration">--</span>
+          </div>
+          <div class="local-insights-tools">
+            <span class="metric-label">Tool più usati</span>
+            <ul id="local-insights-tools"></ul>
+          </div>
         </div>
       </div>
     </details>

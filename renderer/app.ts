@@ -23,27 +23,11 @@ const state: RendererState = {
   activeWindowId: null,
 };
 
-const TIPS_POOL = {
-  good: [
-    'Stai andando sotto il ritmo ideale: puoi permetterti sessioni più lunghe oggi senza rischiare la quota.',
-    'Ottimo passo questa settimana: se hai task complessi in coda, oggi è un buon momento per affrontarli.',
-  ],
-  warning: [
-    'Il ritmo attuale è sopra il budget ideale: prova a spostare le richieste meno urgenti a domani.',
-    'Stai consumando più in fretta del previsto: valuta prompt più mirati per ridurre iterazioni inutili.',
-  ],
-  neutral: [
-    "Nessun dato sufficiente ancora per un consiglio mirato: continua a usare l'app, tornerò con suggerimenti più precisi.",
-  ],
-};
-
-function pickTip(efficiencyIndex: number | null | undefined): string {
-  if (efficiencyIndex === null || efficiencyIndex === undefined) {
-    return TIPS_POOL.neutral[0];
-  }
-  const pool = efficiencyIndex >= 1 ? TIPS_POOL.good : TIPS_POOL.warning;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
+// Mostrato solo quando non c'è ancora nessuna finestra di quota da cui derivare
+// un consiglio (account non collegato/prima sincronizzazione) — il consiglio vero
+// e proprio arriva sempre da winSnap.dailyTip, generato da dati reali in
+// budget.generateDailyTip, mai da qui.
+const NO_WINDOW_TIP = 'In attesa di dati per generare un consiglio.';
 
 function applyWindowStyle(style: AppSettings['ui']['windowStyle']): void {
   document.body.classList.remove('style-filled', 'style-transparent-digital');
@@ -101,6 +85,14 @@ function formatPercent(value: number | null | undefined): string {
 function formatEfficiency(value: number | null | undefined): string {
   if (value === null || value === undefined) return '--';
   return value.toFixed(2);
+}
+
+// Il valore grezzo di efficiencyIndex (es. "1.75") non è auto-esplicativo — feedback
+// utente ("non capisco che valore mostra"). >=1 = si sta consumando meno del ritmo
+// ideale (bene), <1 = più del sostenibile (rischio), vedi budget.efficiencyIndex.
+function formatEfficiencyHint(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  return value >= 1 ? 'sotto il ritmo ideale' : 'sopra il ritmo ideale';
 }
 
 function formatDays(value: number | null | undefined): string {
@@ -190,8 +182,7 @@ function renderChart(dailyHistory: DailyUsagePoint[], days: number): void {
   container.appendChild(svg);
 }
 
-// Gauge "consumo istantaneo" ispirato ai cruscotti hypermiling (Honda Insight/
-// Fiat 500e, vedi CLAUDE.md): barra che si riempie in base al ritmo recente
+// Gauge "consumo istantaneo": barra che si riempie in base al ritmo recente
 // (winSnap.instantRate, %/ora) con un marcatore verticale sul ritmo sostenibile
 // per arrivare esattamente al 100% al reset (winSnap.sustainableRate, il
 // "pallino target"). La scala si adatta al valore più alto tra i due, non è
@@ -268,31 +259,48 @@ function starIcon(filled: boolean): SVGSVGElement {
   svg.setAttribute('fill', filled ? 'var(--accent)' : 'none');
   svg.setAttribute('stroke', 'currentColor');
   svg.setAttribute('stroke-width', '1.5');
-  svg.classList.add('eco-star');
   const path = document.createElementNS(svgNs, 'path');
   path.setAttribute('d', 'M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z');
   svg.appendChild(path);
   return svg;
 }
 
-// Punteggio eco a stelle (winSnap.ecoScore), ispirato alle foglioline della
-// Honda Insight — vedi budget.ecoScore per il calcolo.
-function renderEcoStars(winSnap: QuotaWindowSnapshot | undefined): void {
-  const container = document.getElementById('eco-stars') as HTMLDivElement;
-  container.innerHTML = '';
-  const score = winSnap?.ecoScore ?? null;
-  container.title = score ? `Rapporto medio ideale/reale: ${score.avgRatio}` : 'Dati insufficienti per uno score';
-  const stars = score?.stars ?? 0;
-  for (let i = 1; i <= 5; i++) {
-    container.appendChild(starIcon(i <= stars));
+// Rating efficienza a stelle (winSnap.efficiencyRating): quanto costantemente ci
+// si è tenuti vicini al ritmo ideale nella finestra `chartDays` (7 o 30 giorni,
+// la stessa vista scelta per il grafico — coerenza tra indicatori, vedi
+// budget.efficiencyRating). Tenuto vicino a "Indice efficienza" in index.html
+// perché è lo stesso concetto su un orizzonte diverso (istantaneo/cumulativo lì,
+// media mobile qui) — feedback utente.
+function renderEfficiencyRating(winSnap: QuotaWindowSnapshot | undefined, chartDays: number): void {
+  const starsContainer = document.getElementById('efficiency-rating-stars') as HTMLDivElement;
+  const labelEl = document.getElementById('efficiency-rating-label') as HTMLSpanElement;
+  starsContainer.innerHTML = '';
+
+  const rating = winSnap?.efficiencyRating ?? null;
+  const isRollingHours = winSnap?.window?.periodType === 'rolling-hours';
+
+  if (!rating) {
+    // Su una finestra che si rinnova ogni poche ore (es. limite 5 ore di Claude)
+    // un rating su base giornaliera non è un dato mancante: è un concetto che non
+    // si applica a quella scala temporale — messaggio esplicito invece di stelle
+    // vuote (che si leggerebbero come "pessimo", non come "non applicabile").
+    labelEl.textContent = isRollingHours ? 'non applicabile su finestre così brevi' : 'dati insufficienti';
+    for (let i = 1; i <= 5; i++) starsContainer.appendChild(starIcon(false));
+    return;
   }
+
+  labelEl.textContent = `Rating (${chartDays}gg)`;
+  starsContainer.title = `Rapporto medio ideale/reale: ${rating.avgRatio}`;
+  for (let i = 1; i <= 5; i++) starsContainer.appendChild(starIcon(i <= rating.stars));
 }
 
 // Insight comportamentali da sessioni Claude Code LOCALI (opt-in, vedi
-// CLAUDE.md/RESEARCH.md §5) — collassati di default (<details> nativo in
-// index.html), solo per Claude: Copilot non ha una sorgente locale equivalente.
+// CLAUDE.md/RESEARCH.md §5) — sottosezione dentro la <details> "Consiglio del
+// giorno" (index.html), mostrata solo se abilitati e disponibili: a differenza
+// del consiglio (sempre presente), qui l'intero blocco può restare nascosto.
+// Solo per Claude: Copilot non ha una sorgente locale equivalente.
 function renderLocalInsights(account: AccountSnapshot | undefined): void {
-  const details = document.getElementById('local-insights') as HTMLDetailsElement;
+  const details = document.getElementById('local-insights') as HTMLDivElement;
   const insights = account?.accountId === 'claude' ? account.localInsights : null;
   if (!insights) {
     details.hidden = true;
@@ -382,6 +390,9 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   if (!snapshot) return;
   state.latestSnapshot = snapshot;
   renderAccountTabs(snapshot);
+  // Stessa finestra (7/30gg) della vista scelta per il grafico, usata anche dal
+  // rating a stelle — coerenza tra indicatori, vedi renderEfficiencyRating.
+  const chartDays = state.settings?.ui?.chartRange === 'month' ? 30 : 7;
 
   const account: AccountSnapshot | undefined = snapshot[state.activeAccount] || snapshot.claude || snapshot.copilot;
   if (!account) {
@@ -389,8 +400,9 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     document.getElementById('current-value')!.textContent = '--';
     document.getElementById('current-label')!.textContent = 'Nessun account collegato — apri le impostazioni';
     renderInstantGauge(undefined);
-    renderEcoStars(undefined);
+    renderEfficiencyRating(undefined, chartDays);
     renderLocalInsights(undefined);
+    document.getElementById('tips-text')!.textContent = NO_WINDOW_TIP;
     return;
   }
 
@@ -418,10 +430,11 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   document.getElementById('current-label')!.textContent = label;
 
   renderInstantGauge(winSnap);
-  renderEcoStars(winSnap);
+  renderEfficiencyRating(winSnap, chartDays);
   renderLocalInsights(account);
 
   document.getElementById('metric-efficiency')!.textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
+  document.getElementById('metric-efficiency-hint')!.textContent = formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
   document.getElementById('metric-projected')!.textContent = formatPercent(winSnap?.projectedUsage ?? null);
   document.getElementById('metric-days-left')!.textContent =
     `${winSnap?.daysUntilReset ?? '--'} (${formatDays(winSnap?.workingDaysUntilReset ?? null)} lav.)`;
@@ -434,12 +447,11 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   const streak = computeStreak(dailyHistory);
   document.getElementById('metric-streak')!.textContent = streak === null ? '--' : `${streak} gg`;
 
-  const chartDays = state.settings?.ui?.chartRange === 'month' ? 30 : 7;
   document.getElementById('chart-title')!.textContent =
     state.settings?.ui?.chartRange === 'month' ? 'Andamento mensile' : 'Andamento settimanale';
   renderChart(dailyHistory, chartDays);
 
-  document.getElementById('tips-text')!.textContent = pickTip(winSnap?.efficiencyIndex ?? null);
+  document.getElementById('tips-text')!.textContent = winSnap?.dailyTip ?? NO_WINDOW_TIP;
 }
 
 async function init(): Promise<void> {

@@ -189,40 +189,124 @@ test('sustainableHourlyRate ritorna 0 se già al 100% o il reset è già passato
 });
 
 // ---------------------------------------------------------------------------
-// ecoScore — punteggio a stelle
+// efficiencyRating — rating a stelle
 // ---------------------------------------------------------------------------
 
 function dayPoint(date: string, used: number): DailyUsagePoint {
   return { date, accountId: 'claude', windowId: 'test-window', used };
 }
 
-test('ecoScore media i rapporti ideale/reale sui giorni lavorativi validi', () => {
+test('efficiencyRating media i rapporti ideale/reale sui giorni lavorativi validi', () => {
   const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15), dayPoint('2026-07-15', 17)];
   // Periodo con 20 unità lavorative totali => quota ideale 5%/giorno pieno.
-  const result = budget.ecoScore(history, FULL_WEEK_SCHEDULE, 20);
+  const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20);
   assert.ok(result !== null);
   assert.equal(result!.avgRatio, 1.75); // rapporti 5/5=1 e 5/2=2.5, media 1.75
   assert.equal(result!.stars, 5);
 });
 
-test('ecoScore scarta un giorno con delta negativo (reset della finestra)', () => {
+test('efficiencyRating scarta un giorno con delta negativo (reset della finestra)', () => {
   const history = [
     dayPoint('2026-07-13', 10),
     dayPoint('2026-07-14', 15),
     dayPoint('2026-07-15', 17),
     dayPoint('2026-07-16', 3), // reset: il valore scende invece di salire
   ];
-  const result = budget.ecoScore(history, FULL_WEEK_SCHEDULE, 20);
+  const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20);
   assert.equal(result!.avgRatio, 1.75); // identico al test precedente: il giorno di reset non altera la media
 });
 
-test('ecoScore esclude i giorni non lavorativi', () => {
+test('efficiencyRating esclude i giorni non lavorativi', () => {
   // 2026-07-17 è venerdì, 2026-07-18 è sabato (off nello schedule di test).
   const history = [dayPoint('2026-07-17', 20), dayPoint('2026-07-18', 25)];
-  assert.equal(budget.ecoScore(history, FULL_WEEK_SCHEDULE, 20), null);
+  assert.equal(budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20), null);
 });
 
-test('ecoScore ritorna null con dati insufficienti', () => {
-  assert.equal(budget.ecoScore([dayPoint('2026-07-13', 10)], FULL_WEEK_SCHEDULE, 20), null);
-  assert.equal(budget.ecoScore([dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15)], FULL_WEEK_SCHEDULE, 0), null);
+test('efficiencyRating ritorna null con dati insufficienti', () => {
+  assert.equal(budget.efficiencyRating([dayPoint('2026-07-13', 10)], FULL_WEEK_SCHEDULE, 20), null);
+  assert.equal(budget.efficiencyRating([dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15)], FULL_WEEK_SCHEDULE, 0), null);
+});
+
+// ---------------------------------------------------------------------------
+// generateDailyTip — consiglio del giorno derivato dai dati reali
+// ---------------------------------------------------------------------------
+
+function baseTipContext(overrides: Partial<budget.DailyTipContext> = {}): budget.DailyTipContext {
+  return {
+    window: pctWindow(50),
+    efficiencyIndex: 1,
+    projectedUsage: 50,
+    daysUntilReset: 10,
+    workingDaysUntilReset: 8,
+    estimatedAutonomyWorkingDays: 8,
+    instantRate: null,
+    sustainableRate: null,
+    efficiencyRating: null,
+    ...overrides,
+  };
+}
+
+test('generateDailyTip ritorna NO_TIP_MESSAGE se nessuna condizione è vera', () => {
+  const result = budget.generateDailyTip(baseTipContext());
+  assert.equal(result, budget.NO_TIP_MESSAGE);
+});
+
+test('generateDailyTip segnala quando l\'autonomia stimata è più corta del tempo al reset', () => {
+  const ctx = baseTipContext({ estimatedAutonomyWorkingDays: 4, workingDaysUntilReset: 8 });
+  const result = budget.generateDailyTip(ctx);
+  assert.match(result, /4gg lavorativi/);
+  assert.match(result, /8gg al rinnovo/);
+  assert.match(result, /50% più basso/); // 1 - 4/8 = 50%
+});
+
+test('generateDailyTip segnala quando il ritmo recente supera quello sostenibile', () => {
+  const ctx = baseTipContext({ instantRate: 5, sustainableRate: 2 });
+  const result = budget.generateDailyTip(ctx);
+  assert.match(result, /5%\/h/);
+  assert.match(result, /2%\/h/);
+});
+
+test('generateDailyTip segnala un rating alto come margine per usare di più', () => {
+  const ctx = baseTipContext({ efficiencyRating: { stars: 5, avgRatio: 1.8 } });
+  const result = budget.generateDailyTip(ctx);
+  assert.match(result, /Rating 5\/5/);
+  assert.match(result, /1\.8/);
+});
+
+test('generateDailyTip non segnala un rating basso come margine (solo >= 4 stelle)', () => {
+  const ctx = baseTipContext({ efficiencyRating: { stars: 2, avgRatio: 0.7 } });
+  const result = budget.generateDailyTip(ctx);
+  assert.equal(result, budget.NO_TIP_MESSAGE);
+});
+
+test('generateDailyTip segnala pochi giorni al reset con utilizzo già alto', () => {
+  const ctx = baseTipContext({ window: pctWindow(85), daysUntilReset: 1 });
+  const result = budget.generateDailyTip(ctx);
+  assert.match(result, /1gg/);
+  assert.match(result, /85%/);
+});
+
+test('generateDailyTip segnala una proiezione oltre il 100% anche se non ancora raggiunto', () => {
+  const ctx = baseTipContext({ window: pctWindow(90), projectedUsage: 130 });
+  const result = budget.generateDailyTip(ctx);
+  assert.match(result, /130%/);
+});
+
+test('generateDailyTip non ripete la proiezione se l\'utilizzo è già al 100%', () => {
+  const ctx = baseTipContext({ window: pctWindow(100), projectedUsage: 100 });
+  const result = budget.generateDailyTip(ctx);
+  assert.equal(result, budget.NO_TIP_MESSAGE);
+});
+
+test('generateDailyTip sceglie tra i candidati applicabili in base al random iniettato, mai uno non applicabile', () => {
+  const ctx = baseTipContext({
+    instantRate: 5,
+    sustainableRate: 2, // candidato 2 applicabile
+    efficiencyRating: { stars: 5, avgRatio: 1.8 }, // candidato 3 applicabile
+  });
+  const first = budget.generateDailyTip(ctx, () => 0);
+  const second = budget.generateDailyTip(ctx, () => 0.99);
+  assert.notEqual(first, second); // due candidati applicabili, random diverso -> frasi diverse
+  assert.match(first, /%\/h|Rating/);
+  assert.match(second, /%\/h|Rating/);
 });

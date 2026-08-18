@@ -72,7 +72,7 @@ export interface RecentUsageSample {
 }
 
 /** Punteggio eco a stelle (vedi budget.ecoScore), su una finestra mobile di giorni. */
-export interface EcoScore {
+export interface EfficiencyRating {
   stars: number;
   avgRatio: number;
 }
@@ -93,12 +93,14 @@ export interface QuotaWindowSnapshot {
   estimatedAutonomyWorkingDays: number | null;
   // Consumo istantaneo (%/ora, dai campioni recenti) e ritmo orario sostenibile
   // per arrivare esattamente al 100% al reset — vedi budget.instantaneousRate /
-  // budget.sustainableHourlyRate. Ispirato ai gauge "consumo istantaneo" delle
-  // auto ibride (Honda Insight/Fiat 500e), vedi CLAUDE.md.
+  // budget.sustainableHourlyRate.
   instantRate: number | null;
   sustainableRate: number | null;
-  // Punteggio eco a stelle sugli ultimi giorni (vedi budget.ecoScore).
-  ecoScore: EcoScore | null;
+  // Rating efficienza a stelle sugli ultimi giorni (vedi budget.efficiencyRating).
+  efficiencyRating: EfficiencyRating | null;
+  // "Consiglio del giorno": frase generata da fatti reali sui dati di questa
+  // finestra, mai una frase generica — vedi budget.generateDailyTip.
+  dailyTip: string;
 }
 
 /** Quota d'uso (in volume di token) di un singolo tool/server MCP — vedi services/claudeLocalSessions.ts. */

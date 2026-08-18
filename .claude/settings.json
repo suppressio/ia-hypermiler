@@ -5,7 +5,8 @@
       "WebSearch",
       "Bash(env)",
       "Bash(env -u ELECTRON_RUN_AS_NODE timeout 15 node_modules/.bin/electron --version)",
-      "Bash(env -u ELECTRON_RUN_AS_NODE timeout 15 node_modules/.bin/electron dist/main.js)"
+      "Bash(env -u ELECTRON_RUN_AS_NODE timeout 15 node_modules/.bin/electron dist/main.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }

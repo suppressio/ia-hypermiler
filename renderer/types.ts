@@ -26,7 +26,7 @@ export interface DailyUsagePoint {
   used: number;
 }
 
-export interface EcoScore {
+export interface EfficiencyRating {
   stars: number;
   avgRatio: number;
 }
@@ -41,7 +41,8 @@ export interface QuotaWindowSnapshot {
   estimatedAutonomyWorkingDays: number | null;
   instantRate: number | null;
   sustainableRate: number | null;
-  ecoScore: EcoScore | null;
+  efficiencyRating: EfficiencyRating | null;
+  dailyTip: string;
 }
 
 export interface ToolUsageShare {
