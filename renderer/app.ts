@@ -1,7 +1,7 @@
 // app.ts — logica renderer del widget principale (nessun accesso diretto a Node.js)
 // Legge/scrive solo tramite window.hypermiler esposto da preload.ts.
 
-import type { AccountId, AccountSnapshot, AppSettings, DailyUsagePoint, HypermilerBridge, QuotaWindow, UsageSnapshot } from './types';
+import type { AccountId, AccountSnapshot, AppSettings, DailyUsagePoint, HypermilerBridge, QuotaWindow, QuotaWindowSnapshot, UsageSnapshot } from './types';
 
 declare global {
   interface Window {
@@ -13,12 +13,14 @@ interface RendererState {
   settings: AppSettings | null;
   latestSnapshot: UsageSnapshot | null;
   activeAccount: AccountId;
+  activeWindowId: string | null;
 }
 
 const state: RendererState = {
   settings: null,
   latestSnapshot: null,
   activeAccount: 'claude',
+  activeWindowId: null,
 };
 
 const TIPS_POOL = {
@@ -199,10 +201,50 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
     btn.className = id === state.activeAccount ? 'active' : '';
     btn.addEventListener('click', () => {
       state.activeAccount = id;
+      state.activeWindowId = null;
       if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
     });
     nav.appendChild(btn);
   });
+}
+
+// Seconda riga di tab, sotto quella account Claude/Copilot: quale finestra di quota
+// dell'account attivo guardare (es. Claude: limite standard + credito extra una
+// tantum, entrambi calcolati da main.ts ma appiattiti in passato a una sola finestra
+// "critica" — vedi CLAUDE.md, "Stato avanzamento"). Nascosta se l'account ha una sola
+// finestra (sempre il caso per Copilot oggi).
+function renderWindowTabs(account: AccountSnapshot): void {
+  const nav = document.getElementById('window-tabs') as HTMLElement;
+  if (account.windows.length <= 1) {
+    nav.hidden = true;
+    return;
+  }
+  nav.hidden = false;
+  nav.innerHTML = '';
+  const selected = selectWindowSnapshot(account);
+  account.windows.forEach((winSnap) => {
+    const btn = document.createElement('button');
+    btn.textContent = winSnap.window.label;
+    btn.title = winSnap.window.label;
+    btn.className = winSnap.window.id === selected?.window.id ? 'active' : '';
+    btn.addEventListener('click', () => {
+      state.activeWindowId = winSnap.window.id;
+      if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+    });
+    nav.appendChild(btn);
+  });
+}
+
+function selectWindowSnapshot(account: AccountSnapshot): QuotaWindowSnapshot | undefined {
+  if (!account.windows.length) return undefined;
+  const byActive = state.activeWindowId
+    ? account.windows.find((w) => w.window.id === state.activeWindowId)
+    : undefined;
+  if (byActive) return byActive;
+  const critical = account.criticalWindow
+    ? account.windows.find((w) => w.window.id === account.criticalWindow!.id)
+    : undefined;
+  return critical ?? account.windows[0];
 }
 
 function renderSnapshot(snapshot: UsageSnapshot): void {
@@ -212,12 +254,15 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
 
   const account: AccountSnapshot | undefined = snapshot[state.activeAccount] || snapshot.claude || snapshot.copilot;
   if (!account) {
+    document.getElementById('window-tabs')!.hidden = true;
     document.getElementById('current-value')!.textContent = '--';
     document.getElementById('current-label')!.textContent = 'Nessun account collegato — apri le impostazioni';
     return;
   }
 
-  const win = account.criticalWindow;
+  renderWindowTabs(account);
+  const winSnap = selectWindowSnapshot(account);
+  const win = winSnap?.window ?? null;
   const utilization = win ? budgetNormalizedUtilization(win) : null;
 
   document.getElementById('current-value')!.textContent =
@@ -238,24 +283,25 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   }
   document.getElementById('current-label')!.textContent = label;
 
-  document.getElementById('metric-efficiency')!.textContent = formatEfficiency(account.efficiencyIndex);
-  document.getElementById('metric-projected')!.textContent = formatPercent(account.projectedUsage);
+  document.getElementById('metric-efficiency')!.textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
+  document.getElementById('metric-projected')!.textContent = formatPercent(winSnap?.projectedUsage ?? null);
   document.getElementById('metric-days-left')!.textContent =
-    `${account.daysUntilReset ?? '--'} (${formatDays(account.workingDaysUntilReset)} lav.)`;
-  document.getElementById('metric-autonomy')!.textContent = formatDays(account.estimatedAutonomyWorkingDays);
+    `${winSnap?.daysUntilReset ?? '--'} (${formatDays(winSnap?.workingDaysUntilReset ?? null)} lav.)`;
+  document.getElementById('metric-autonomy')!.textContent = formatDays(winSnap?.estimatedAutonomyWorkingDays ?? null);
 
-  const { peak, avg } = computePeakAvg(account.dailyHistory);
+  const dailyHistory = winSnap?.dailyHistory ?? [];
+  const { peak, avg } = computePeakAvg(dailyHistory);
   document.getElementById('metric-peak-avg')!.textContent = peak === null ? '--' : `${peak} / ${avg}`;
 
-  const streak = computeStreak(account.dailyHistory);
+  const streak = computeStreak(dailyHistory);
   document.getElementById('metric-streak')!.textContent = streak === null ? '--' : `${streak} gg`;
 
   const chartDays = state.settings?.ui?.chartRange === 'month' ? 30 : 7;
   document.getElementById('chart-title')!.textContent =
     state.settings?.ui?.chartRange === 'month' ? 'Andamento mensile' : 'Andamento settimanale';
-  renderChart(account.dailyHistory, chartDays);
+  renderChart(dailyHistory, chartDays);
 
-  document.getElementById('tips-text')!.textContent = pickTip(account.efficiencyIndex);
+  document.getElementById('tips-text')!.textContent = pickTip(winSnap?.efficiencyIndex ?? null);
 }
 
 async function init(): Promise<void> {

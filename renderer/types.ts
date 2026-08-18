@@ -26,11 +26,22 @@ export interface DailyUsagePoint {
   used: number;
 }
 
+export interface QuotaWindowSnapshot {
+  window: QuotaWindow;
+  dailyHistory: DailyUsagePoint[];
+  efficiencyIndex: number | null;
+  projectedUsage: number | null;
+  daysUntilReset: number | null;
+  workingDaysUntilReset: number | null;
+  estimatedAutonomyWorkingDays: number | null;
+}
+
 export interface AccountSnapshot {
   planTier: string | null;
   subscriptionRenewsAt: string | null;
   quotaWindows: QuotaWindow[];
   accountId: AccountId;
+  windows: QuotaWindowSnapshot[];
   criticalWindow: QuotaWindow | null;
   dailyHistory: DailyUsagePoint[];
   efficiencyIndex: number | null;

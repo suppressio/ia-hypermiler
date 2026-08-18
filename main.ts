@@ -21,6 +21,7 @@ import type {
   AppSettings,
   DailyUsagePoint,
   QuotaWindow,
+  QuotaWindowSnapshot,
   RawAccountUsage,
   RenewalRule,
   UsageSnapshot,
@@ -122,16 +123,56 @@ function resolvePeriodBounds(
   return { periodStart, periodEnd };
 }
 
+// Una finestra "billing-cycle" con periodLength sconosciuto (es. i crediti riconosciuti
+// solo dalla forma del valore in services/claude.ts, sia quelli ricorrenti sia quelli
+// una tantum: non c'è modo di distinguerli senza indovinare un formato non documentato)
+// non ha un periodStart deducibile con certezza: niente pacing fabbricato su uno span
+// fittizio (vedi resolvePeriodBounds sotto), solo daysUntilReset, che usa il resetsAt
+// reale della finestra ed è sempre affidabile.
+function canEstimatePacing(window: QuotaWindow): boolean {
+  return window.periodType !== 'billing-cycle' || window.periodLength !== null;
+}
+
+function computeWindowSnapshot(
+  accountId: AccountId,
+  window: QuotaWindow,
+  subscription: { renewalRule: RenewalRule },
+  workSchedule: WorkSchedule,
+  now: Date,
+): QuotaWindowSnapshot {
+  recordDailyUsage(accountId, window);
+  const chartDays = store.get('ui.chartRange') === 'month' ? 30 : 7;
+  const dailyHistory = getDailyHistory(accountId, window.id, chartDays);
+
+  const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, now);
+  const ctx = { window, workSchedule, periodStart, periodEnd, now };
+  const pacingAvailable = canEstimatePacing(window);
+
+  return {
+    window,
+    dailyHistory,
+    efficiencyIndex: pacingAvailable ? budget.efficiencyIndex(ctx) : null,
+    projectedUsage: pacingAvailable ? budget.projectedUsage(ctx) : null,
+    daysUntilReset: budget.daysUntilReset(periodEnd, now),
+    workingDaysUntilReset: budget.workingDaysUntilReset(periodEnd, workSchedule, now),
+    estimatedAutonomyWorkingDays: pacingAvailable ? budget.estimatedAutonomyWorkingDays(ctx) : null,
+  };
+}
+
 function computeAccountSnapshot(
   raw: RawAccountUsage & { accountId: AccountId; lastUpdatedAt?: string; stale?: boolean; lastError?: string },
   subscription: { renewalRule: RenewalRule },
   workSchedule: WorkSchedule,
   now: Date,
 ): AccountSnapshot {
+  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(raw.accountId, w, subscription, workSchedule, now));
   const criticalWindow = budget.pickCriticalWindow(raw.quotaWindows);
-  if (!criticalWindow) {
+  const criticalSnapshot = criticalWindow ? windows.find((w) => w.window.id === criticalWindow.id) : undefined;
+
+  if (!criticalWindow || !criticalSnapshot) {
     return {
       ...raw,
+      windows,
       criticalWindow: null,
       dailyHistory: [],
       efficiencyIndex: null,
@@ -142,22 +183,16 @@ function computeAccountSnapshot(
     };
   }
 
-  recordDailyUsage(raw.accountId, criticalWindow);
-  const chartDays = store.get('ui.chartRange') === 'month' ? 30 : 7;
-  const dailyHistory = getDailyHistory(raw.accountId, criticalWindow.id, chartDays);
-
-  const { periodStart, periodEnd } = resolvePeriodBounds(criticalWindow, subscription, now);
-  const ctx = { window: criticalWindow, workSchedule, periodStart, periodEnd, now };
-
   return {
     ...raw,
+    windows,
     criticalWindow,
-    dailyHistory,
-    efficiencyIndex: budget.efficiencyIndex(ctx),
-    projectedUsage: budget.projectedUsage(ctx),
-    daysUntilReset: budget.daysUntilReset(periodEnd, now),
-    workingDaysUntilReset: budget.workingDaysUntilReset(periodEnd, workSchedule, now),
-    estimatedAutonomyWorkingDays: budget.estimatedAutonomyWorkingDays(ctx),
+    dailyHistory: criticalSnapshot.dailyHistory,
+    efficiencyIndex: criticalSnapshot.efficiencyIndex,
+    projectedUsage: criticalSnapshot.projectedUsage,
+    daysUntilReset: criticalSnapshot.daysUntilReset,
+    workingDaysUntilReset: criticalSnapshot.workingDaysUntilReset,
+    estimatedAutonomyWorkingDays: criticalSnapshot.estimatedAutonomyWorkingDays,
   };
 }
 
@@ -237,6 +272,7 @@ function emptyAccountSnapshot(accountId: AccountId, planTier: string | null, las
     planTier,
     subscriptionRenewsAt: null,
     quotaWindows: [],
+    windows: [],
     criticalWindow: null,
     dailyHistory: [],
     efficiencyIndex: null,

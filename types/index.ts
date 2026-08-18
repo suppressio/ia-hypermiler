@@ -58,9 +58,29 @@ export interface DailyUsagePoint {
   meta?: Record<string, unknown>;
 }
 
+/**
+ * Metriche calcolate per UNA finestra di quota (vedi main.ts, computeWindowSnapshot).
+ * Un account può avere più finestre attive contemporaneamente (es. Claude: limite
+ * standard + credito extra una tantum) — il widget le mostra come tab separate invece
+ * di appiattirle a una sola "finestra critica".
+ */
+export interface QuotaWindowSnapshot {
+  window: QuotaWindow;
+  dailyHistory: DailyUsagePoint[];
+  efficiencyIndex: number | null;
+  projectedUsage: number | null;
+  daysUntilReset: number | null;
+  workingDaysUntilReset: number | null;
+  estimatedAutonomyWorkingDays: number | null;
+}
+
 /** Snapshot arricchito inviato al renderer via IPC (vedi main.ts). */
 export interface AccountSnapshot extends RawAccountUsage {
   accountId: AccountId;
+  windows: QuotaWindowSnapshot[];
+  // Campi derivati dalla finestra più critica (budget.pickCriticalWindow), mantenuti per
+  // compatibilità (notifica soglia 80%, vista di default nel widget) — vedi anche
+  // QuotaWindowSnapshot in `windows` per le altre finestre dell'account.
   criticalWindow: QuotaWindow | null;
   dailyHistory: DailyUsagePoint[];
   efficiencyIndex: number | null;

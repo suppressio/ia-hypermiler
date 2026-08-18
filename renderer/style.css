@@ -195,6 +195,20 @@ body.style-transparent-digital .account-tabs button.active {
 }
 .account-tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* Seconda riga di tab (finestre di quota dell'account attivo, es. limite standard +
+   credito extra Claude) — stessa interazione delle tab account sopra, solo più
+   compatta e con etichette troncate: alcune finestre hanno label lunghe (es. campi
+   non documentati, vedi services/claude.ts) — il testo completo resta nel title. */
+.window-tabs { margin-top: -4px; }
+.window-tabs button {
+  font-size: 11px;
+  padding: 3px 8px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .current-indicator { text-align: center; margin: 8px 0 16px; }
 .current-value { font-size: 42px; font-weight: 700; line-height: 1; }
 .current-label { font-size: 12px; opacity: 0.75; margin-top: 4px; }
