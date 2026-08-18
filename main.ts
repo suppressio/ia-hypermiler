@@ -12,6 +12,7 @@ import { captureGithubOAuthToken } from './main/copilot-oauth';
 import * as budget from './budget';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
+import { computeClaudeLocalInsights } from './services/claudeLocalSessions';
 import { FormatDriftError, shapeSignature } from './services/_shape';
 import { buildFormatDriftIssueUrl } from './diagnostics/githubIssue';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -19,6 +20,7 @@ import type {
   AccountId,
   AccountSnapshot,
   AppSettings,
+  ClaudeLocalInsights,
   DailyUsagePoint,
   QuotaWindow,
   QuotaWindowSnapshot,
@@ -31,6 +33,12 @@ import type {
 } from './types/index';
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minuti, come da CLAUDE.md
+// Ricalcolo insight locali (services/claudeLocalSessions.ts): più costoso di un
+// refresh usuale (scansione file su disco, non un poll di rete), non serve farlo
+// ad ogni refresh di 30 min — cache con questo intervallo minimo, stesso pattern
+// di advisorCache.
+const LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 ore
+const LOCAL_INSIGHTS_WINDOW_DAYS = 7; // stessa finestra del punteggio eco (budget.ecoScore)
 
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -125,6 +133,31 @@ function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSa
   return ((store.get('history.recentSamples') as RecentUsageSample[] | undefined) ?? [])
     .filter((s) => s.accountId === accountId && s.windowId === windowId)
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+// ---------------------------------------------------------------------------
+// Insight locali da sessioni Claude Code (services/claudeLocalSessions.ts, vedi
+// RESEARCH.md §5): opt-in (localInsights.claudeCode.enabled, default false),
+// cachati perché più costosi di un refresh usuale (scansione file su disco, non
+// un poll di rete) — ricalcolati al massimo ogni LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
+// ---------------------------------------------------------------------------
+async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | null> {
+  if (store.get('localInsights.claudeCode.enabled') !== true) return null;
+
+  const cached = (store.get('localInsightsCache.claudeCode') as ClaudeLocalInsights | null | undefined) ?? null;
+  const cacheAgeMs = cached ? Date.now() - new Date(cached.computedAt).getTime() : Infinity;
+  if (cached && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
+
+  try {
+    const result = await computeClaudeLocalInsights(LOCAL_INSIGHTS_WINDOW_DAYS);
+    store.set('localInsightsCache.claudeCode', result);
+    return result;
+  } catch (err) {
+    // Mai bloccare il refresh dell'account per un problema sulla sorgente locale
+    // opzionale: logga e ricadi sull'ultima cache valida (anche se scaduta), se c'è.
+    console.error('[main] calcolo insight locali Claude Code fallito:', (err as Error).message);
+    return cached;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +395,10 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
       console.error('[main] Claude non disponibile e nessun dato pregresso:', message);
       snapshot.claude = emptyAccountSnapshot('claude', accounts.claude.planTier, message);
     }
+    // Sorgente locale indipendente dal fetch dell'account: la calcoliamo anche se
+    // claude.ai non ha risposto (snapshot.claude è comunque valorizzato sopra, sia
+    // sul percorso riuscito sia su quello di fallback).
+    snapshot.claude.localInsights = await computeLocalInsightsIfNeeded();
   }
 
   if (isCopilotConnected(accounts)) {

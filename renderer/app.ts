@@ -288,6 +288,34 @@ function renderEcoStars(winSnap: QuotaWindowSnapshot | undefined): void {
   }
 }
 
+// Insight comportamentali da sessioni Claude Code LOCALI (opt-in, vedi
+// CLAUDE.md/RESEARCH.md §5) — collassati di default (<details> nativo in
+// index.html), solo per Claude: Copilot non ha una sorgente locale equivalente.
+function renderLocalInsights(account: AccountSnapshot | undefined): void {
+  const details = document.getElementById('local-insights') as HTMLDetailsElement;
+  const insights = account?.accountId === 'claude' ? account.localInsights : null;
+  if (!insights) {
+    details.hidden = true;
+    return;
+  }
+  details.hidden = false;
+  document.getElementById('local-insights-context')!.textContent = formatPercent(insights.highContextSharePercent);
+  document.getElementById('local-insights-duration')!.textContent = formatPercent(insights.longSessionSharePercent);
+
+  const list = document.getElementById('local-insights-tools') as HTMLUListElement;
+  list.innerHTML = '';
+  insights.topTools.forEach((tool) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = tool.name;
+    const share = document.createElement('span');
+    share.textContent = formatPercent(tool.sharePercent);
+    li.appendChild(name);
+    li.appendChild(share);
+    list.appendChild(li);
+  });
+}
+
 function renderAccountTabs(snapshot: UsageSnapshot): void {
   const nav = document.getElementById('account-tabs') as HTMLElement;
   const available = (['claude', 'copilot'] as AccountId[]).filter((id) => snapshot[id]);
@@ -362,6 +390,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     document.getElementById('current-label')!.textContent = 'Nessun account collegato — apri le impostazioni';
     renderInstantGauge(undefined);
     renderEcoStars(undefined);
+    renderLocalInsights(undefined);
     return;
   }
 
@@ -390,6 +419,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
 
   renderInstantGauge(winSnap);
   renderEcoStars(winSnap);
+  renderLocalInsights(account);
 
   document.getElementById('metric-efficiency')!.textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
   document.getElementById('metric-projected')!.textContent = formatPercent(winSnap?.projectedUsage ?? null);

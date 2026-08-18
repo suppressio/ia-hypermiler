@@ -101,10 +101,38 @@ export interface QuotaWindowSnapshot {
   ecoScore: EcoScore | null;
 }
 
+/** Quota d'uso (in volume di token) di un singolo tool/server MCP — vedi services/claudeLocalSessions.ts. */
+export interface ToolUsageShare {
+  name: string;
+  sharePercent: number;
+}
+
+/**
+ * Insight comportamentali calcolati da sessioni Claude Code LOCALI (CLI/estensione
+ * VS Code, stessa sorgente — vedi RESEARCH.md §5), non dall'account claude.ai.
+ * Solo per Claude: Copilot non ha una sorgente locale equivalente. Cross-finestra
+ * (non legato a una QuotaWindow specifica): vive su AccountSnapshot, non su
+ * QuotaWindowSnapshot. Le quote sono pesate per volume di token (output_tokens),
+ * non per conteggio di turni — coerente con "% del tuo utilizzo" del pannello
+ * VS Code che l'ha ispirato. Mai calcolato da contenuto reale dei messaggi, solo
+ * da campi strutturali (usage, nomi di tool) — vedi services/claudeLocalSessions.ts.
+ */
+export interface ClaudeLocalInsights {
+  computedAt: string;
+  windowDays: number;
+  sessionsAnalyzed: number;
+  highContextSharePercent: number | null;
+  longSessionSharePercent: number | null;
+  topTools: ToolUsageShare[];
+}
+
 /** Snapshot arricchito inviato al renderer via IPC (vedi main.ts). */
 export interface AccountSnapshot extends RawAccountUsage {
   accountId: AccountId;
   windows: QuotaWindowSnapshot[];
+  // Presente solo per accountId === 'claude', solo se l'utente ha abilitato
+  // localInsights.claudeCode nelle Impostazioni — vedi main.ts/computeLocalInsightsIfNeeded.
+  localInsights?: ClaudeLocalInsights | null;
   // Campi derivati dalla finestra più critica (budget.pickCriticalWindow), mantenuti per
   // compatibilità (notifica soglia 80%, vista di default nel widget) — vedi anche
   // QuotaWindowSnapshot in `windows` per le altre finestre dell'account.
@@ -189,6 +217,15 @@ export interface DiagnosticsSettings {
   reportedSignatures: Record<string, string>; // firma -> timestamp ISO di prima segnalazione
 }
 
+/**
+ * Sorgenti locali opzionali per insight comportamentali (vedi RESEARCH.md §5,
+ * services/claudeLocalSessions.ts) — opt-in, default OFF: legge sessioni Claude
+ * Code su questa macchina, mai un dato dell'account claude.ai.
+ */
+export interface LocalInsightsSettings {
+  claudeCode: { enabled: boolean };
+}
+
 export interface AppSettings {
   accounts: {
     claude: ClaudeAccountSettings;
@@ -200,6 +237,11 @@ export interface AppSettings {
   advisorCache: { generatedAt: string | null; adviceText: string | null };
   meta: { notifiedToday: Record<string, boolean> };
   diagnostics: DiagnosticsSettings;
+  localInsights: LocalInsightsSettings;
+  // Cache gestita dall'app (non impostazione utente), stesso pattern di advisorCache:
+  // evita di riscandire tutte le sessioni Claude Code locali ad ogni refresh di 30 min
+  // — vedi main.ts LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
+  localInsightsCache: { claudeCode: ClaudeLocalInsights | null };
 }
 
 /** Credenziali passate a services/claude.ts fetchUsage(). */

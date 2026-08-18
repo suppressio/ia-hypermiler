@@ -125,6 +125,29 @@ Fuori scope, per scelta esplicita: qualunque funzionalità di monitoraggio a liv
 
 ---
 
+## 5. Sorgenti dati locali per insight comportamentali (Addendum 2026-08-18)
+
+Spunto: un pannello "Account & Usage" di VS Code (estensione Claude Code) mostra, oltre alla percentuale di quota, insight comportamentali — "87% del tuo utilizzo era a >150k di contesto", "22% da sessioni attive 8+ ore", breakdown per server MCP — con la didascalia esplicita *"Approximate, based on local sessions on this machine — does not include other devices or claude.ai"*. Confermato: **non è un dato dell'account recuperabile via l'endpoint che già usiamo** (`services/claude.ts`, `/organizations/{id}/usage` — solo `utilization`/`resets_at`/importi per finestra, nessun campo per-sessione: verificato per assenza di questi campi sia nel parsing sia in questo stesso file). È telemetria locale calcolata dall'estensione leggendo le proprie trascrizioni di sessione salvate su disco.
+
+### 5.1 Claude Code (CLI + estensione VS Code) — CONFERMATO, stessa sorgente
+
+- **Percorso**: `~/.claude/projects/<cwd-con-caratteri-non-alfanumerici-sostituiti-da-trattini>/<session-id>.jsonl`. Verificato empiricamente su questa macchina (`~/.claude/projects/-home-suppressio-Dev-electron-ia-hypermiler/*.jsonl`) — un file JSONL per sessione, una riga JSON per evento (messaggio utente, risposta assistant, chiamata di tool).
+- **L'estensione VS Code usa lo stesso motore/formato della CLI**, non un percorso separato: confermato sia empiricamente (questa sessione di lavoro, condotta dentro VS Code, scrive esattamente in quel percorso) sia da fonti esterne. Per il developer, "Claude CLI" e "Claude Code in VS Code" sono quindi **un'unica sorgente**, non due voci separate in una eventuale lista di sorgenti configurabili.
+- **Contenuto utile, ispezionato SOLO per struttura/chiavi (mai contenuto reale dei messaggi)**: ogni voce `assistant` ha `message.usage` con `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`, `output_tokens_details.thinking_tokens`, `server_tool_use` (conteggi `web_search_requests`/`web_fetch_requests`), oltre a `message.model`, `timestamp`, `sessionId`, `cwd`, `gitBranch`. La somma `cache_read_input_tokens + cache_creation_input_tokens + input_tokens` è la base diretta per un indicatore "dimensione contesto per turno" equivalente a quello di VS Code. I blocchi `content` di tipo `tool_use` hanno un campo `name` (nome dello strumento/server MCP invocato) leggibile senza guardare i parametri della chiamata.
+- **Formato NON documentato e instabile fra versioni**: fonti multiple (doc ufficiale Claude Code, guide di terze parti) segnalano esplicitamente che il layout interno cambia release su release e raccomandano di non fare parsing diretto per script esterni, preferendo `/export` o le "interfacce a script" ufficiali. Il percorso stesso di storage è già cambiato una volta (febbraio 2026). Stessa cautela già applicata all'endpoint interno di `services/claude.ts`: parsing difensivo, mai un crash, mai un valore inventato se un campo manca.
+- **Retention**: cancellazione automatica di default dopo 30 giorni (`cleanupPeriodDays`) — limita quanto indietro nel tempo può guardare qualunque indicatore costruito su questa fonte, indipendentemente da `history.retentionDays` (90gg) già usato per lo storico account-level.
+- **Via consigliata — SDK ufficiale invece di parsing diretto**: esiste un package TypeScript ufficiale, `@anthropic-ai/claude-agent-sdk`, con `listSessions({ dir, limit })` e `getSessionMessages(sessionId, { dir, limit })` — astrae la scoperta dei file/il layout esatto su disco, più resiliente del parsing diretto del JSONL. **Non ancora verificato** se i messaggi restituiti includano il campo `usage` (la documentazione trovata non lo conferma esplicitamente) — primo passo pratico in fase di implementazione: una chiamata reale e ispezione delle chiavi, prima di costruire qualunque logica sopra. **Sarebbe una dipendenza nuova**, da confermare esplicitamente con l'utente prima di installarla (regola CLAUDE.md).
+- **Estensione JetBrains — sorgente DIVERSA, fuori scope ora**: legge da `~/.claude/sessions/<project-hash>/` (`session.json` + `conversation.jsonl`), non da `~/.claude/projects/`. Annotato per un'eventuale estensione futura, non affrontato ora: l'utente ha scelto esplicitamente di partire solo da questo IDE (VS Code).
+
+### 5.2 Claude Desktop — NON CONFERMATO per l'uso "normale" con account claude.ai
+
+- La documentazione ufficiale trovata (`claude.com/docs/third-party/claude-desktop/data-storage`) descrive esplicitamente la variante **"3P" (third-party/enterprise-managed)**: *"Claude Desktop on 3P has no Anthropic account. There is no sign-in step, no cloud-stored conversation history"* — un deployment diverso da quello con account claude.ai personale (pro/max/team/enterprise) che l'app già gestisce per Claude via `sessionKey`.
+- In quella variante 3P, le sessioni Cowork/Chat/Code sono salvate localmente sotto `local-agent-mode-sessions/` (macOS: `~/Library/Application Support/Claude-3p/`, Windows: `%LOCALAPPDATA%\Claude-3p\`, spostato da `%APPDATA%` in un aggiornamento recente), con un `audit.jsonl` per sessione (invocazioni di tool, decisioni di permesso — concatenato via HMAC) ma **nessuna menzione esplicita di statistiche token/usage** in quel log.
+- Per il Claude Desktop "normale" (account claude.ai standard, il caso rilevante per la maggior parte degli utenti dell'app): le conversazioni Chat vivono nell'account cloud, sincronizzate multi-dispositivo — è la ragione stessa di avere un account. Non risulta, dalla documentazione trovata, un log locale strutturato equivalente per questo caso.
+- **Conclusione**: sorgente non confermata, a differenza di Claude Code (verificato empiricamente su questa macchina). Non includerla nella v1 della funzionalità; riverificare solo se in futuro serve davvero, con un'ispezione diretta su una macchina che ha Claude Desktop installato con un account claude.ai normale.
+
+---
+
 ## Fonti
 
 **Claude / Anthropic**
@@ -132,6 +155,14 @@ Fuori scope, per scelta esplicita: qualunque funzionalità di monitoraggio a liv
 - [Come funzionano i limiti di usage/length](https://support.claude.com/en/articles/11647753-how-do-usage-and-length-limits-work)
 - [linuxlewis/claude-usage — SPEC.md](https://github.com/linuxlewis/claude-usage/blob/main/SPEC.md)
 - [steipete/CodexBar — claude.md](https://github.com/steipete/CodexBar/blob/main/docs/claude.md)
+
+**Sorgenti dati locali (Addendum 2026-08-18, §5)**
+- [Claude Desktop — User identity and local data](https://claude.com/docs/third-party/claude-desktop/data-storage)
+- [Claude Code — Manage sessions](https://code.claude.com/docs/en/sessions)
+- [Claude Code — Work with sessions (Agent SDK)](https://code.claude.com/docs/en/agent-sdk/sessions)
+- [Agent SDK reference — TypeScript](https://platform.claude.com/docs/en/agent-sdk/typescript)
+- [Claude Agent SDK — Building a session browser (cookbook)](https://platform.claude.com/cookbook/claude-agent-sdk-05-building-a-session-browser)
+- [anthropics/claude-agent-sdk-typescript — Issue #165, listing past sessions](https://github.com/anthropics/claude-agent-sdk-typescript/issues/165)
 - [Claude Code — statusline docs](https://code.claude.com/docs/en/statusline)
 - [Tracking dei costi in Claude Code](https://avinashsangle.com/blog/claude-code-cost-tracking)
 - [cc-friend/ccost](https://github.com/cc-friend/ccost)

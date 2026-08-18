@@ -44,6 +44,20 @@ export interface QuotaWindowSnapshot {
   ecoScore: EcoScore | null;
 }
 
+export interface ToolUsageShare {
+  name: string;
+  sharePercent: number;
+}
+
+export interface ClaudeLocalInsights {
+  computedAt: string;
+  windowDays: number;
+  sessionsAnalyzed: number;
+  highContextSharePercent: number | null;
+  longSessionSharePercent: number | null;
+  topTools: ToolUsageShare[];
+}
+
 export interface AccountSnapshot {
   planTier: string | null;
   subscriptionRenewsAt: string | null;
@@ -57,6 +71,7 @@ export interface AccountSnapshot {
   daysUntilReset: number | null;
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
+  localInsights?: ClaudeLocalInsights | null;
   lastUpdatedAt?: string;
   stale?: boolean;
   lastError?: string;

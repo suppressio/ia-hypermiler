@@ -87,6 +87,24 @@
       <div class="tips-label">Consiglio del giorno</div>
       <div class="tips-text" id="tips-text">—</div>
     </section>
+
+    <details id="local-insights" class="local-insights" hidden>
+      <summary>Insight locali · Claude Code</summary>
+      <div class="local-insights-body">
+        <div class="metric">
+          <span class="metric-label">Contesto oltre 150k</span>
+          <span class="metric-value" id="local-insights-context">--</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Da sessioni 8h+</span>
+          <span class="metric-value" id="local-insights-duration">--</span>
+        </div>
+        <div class="local-insights-tools">
+          <span class="metric-label">Tool più usati</span>
+          <ul id="local-insights-tools"></ul>
+        </div>
+      </div>
+    </details>
   </main>
 
   <script type="module" src="app.js"></script>

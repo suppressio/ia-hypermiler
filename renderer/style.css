@@ -254,3 +254,27 @@ body.style-transparent-digital .account-tabs button.active {
 }
 .tips-label { font-size: 11px; opacity: 0.65; margin-bottom: 4px; }
 .tips-text { font-size: 13px; line-height: 1.4; }
+
+/* Insight locali (Claude Code, opt-in — vedi RESEARCH.md §5): collassati di
+   default (elemento <details> nativo, nessun JS/CSS per l'espansione) per non
+   affollare la vista principale del widget con dati non sempre disponibili. */
+.local-insights {
+  border-top: 1px solid rgba(127, 127, 127, 0.2);
+  margin-top: 10px;
+  padding-top: 10px;
+  font-size: 12px;
+}
+.local-insights summary {
+  cursor: pointer;
+  opacity: 0.75;
+  font-size: 11px;
+}
+.local-insights-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+.local-insights-tools { grid-column: 1 / -1; }
+.local-insights-tools ul { list-style: none; margin: 2px 0 0; padding: 0; font-size: 12px; }
+.local-insights-tools li { display: flex; justify-content: space-between; padding: 1px 0; }

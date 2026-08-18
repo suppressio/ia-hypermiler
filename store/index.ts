@@ -103,6 +103,15 @@ export const DEFAULTS: AppSettings = {
     autoReportFormatDrift: true,
     reportedSignatures: {},
   },
+
+  localInsights: {
+    // Opt-in esplicito: legge sessioni Claude Code locali su questa macchina
+    // (solo conteggi token/nomi di tool, mai il contenuto dei messaggi) — vedi
+    // RESEARCH.md §5, services/claudeLocalSessions.ts.
+    claudeCode: { enabled: false },
+  },
+
+  localInsightsCache: { claudeCode: null },
 };
 
 const store = new Store<AppSettings>({

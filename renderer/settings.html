@@ -213,6 +213,22 @@
     </section>
 
     <section class="card">
+      <h2>Insight locali (sperimentale)</h2>
+      <label>
+        <input type="checkbox" data-field="localInsights.claudeCode.enabled" />
+        Claude Code su questa macchina
+      </label>
+      <p class="hint">
+        Legge le sessioni Claude Code locali (CLI ed estensione VS Code — stessa sorgente) per
+        mostrare, oltre alla quota, quanto del tuo utilizzo avviene a contesto molto ampio o in
+        sessioni molto lunghe, e quali tool/server MCP usi di più. Legge solo conteggi di token e
+        nomi di tool — mai il contenuto dei messaggi. Copre solo Claude Code su questa macchina, non
+        claude.ai via browser; le sessioni più vecchie di circa 30 giorni non sono più disponibili
+        (cancellate automaticamente da Claude Code).
+      </p>
+    </section>
+
+    <section class="card">
       <h2>Diagnostica</h2>
       <label>
         <input type="checkbox" data-field="diagnostics.autoReportFormatDrift" />
