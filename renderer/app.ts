@@ -103,6 +103,17 @@ function formatDays(value: number | null | undefined): string {
   return `${Math.round(value * 10) / 10} gg`;
 }
 
+// Issue #3: se il reset cade oggi la data (dd/mm/yyyy) non dice nulla di utile —
+// conta l'orario. Confronto sul giorno di calendario LOCALE, non UTC.
+function formatResetMoment(resetsAt: Date | string): string {
+  const d = new Date(resetsAt);
+  const now = new Date();
+  const isToday = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  return isToday
+    ? `alle ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`
+    : d.toLocaleDateString('it-IT');
+}
+
 function formatRate(value: number | null | undefined): string {
   if (value === null || value === undefined) return '--';
   return `${Math.round(value * 100) / 100}%/h`;
@@ -417,7 +428,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   document.getElementById('current-value')!.textContent =
     utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
 
-  const resetLabel = win?.resetsAt ? ` · rinnovo ${new Date(win.resetsAt).toLocaleDateString('it-IT')}` : '';
+  const resetLabel = win?.resetsAt ? ` · rinnovo ${formatResetMoment(win.resetsAt)}` : '';
   let label = win ? `${win.label}${resetLabel}` : 'In attesa di dati…';
   if (account.stale) {
     if (account.lastUpdatedAt) {
