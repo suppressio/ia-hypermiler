@@ -183,6 +183,9 @@ Per Claude Code questi dati sono già presenti nei JSONL locali (modello, conteg
 { date, accountId, windowId, used, meta: { model?, sessionId?, parallelAgents?, activityType? } }
 ```
 
+**Retrospettiva e direzioni future non decise:**
+Dopo la chiusura dell'MVP (Giorno 3), l'utente ha aperto una retrospettiva concettuale sulla direzione del progetto (staccarsi dalla vista dei provider, separare dati/backend da UI con un'API interna, genericità multi-provider, ridefinire "efficienza" verso il valore-per-token, costo in risorse di Electron in modalità solo-tray). Spostata in un documento dedicato per non mischiare "cosa si sta costruendo" (questo file) con "direzioni non ancora decise, in valutazione costi/benefici" — vedi **`EVOLUTION.md`**.
+
 ---
 
 ## 6. Impatto sulla struttura file (rispetto allo scheletro in `CLAUDE.md`)
