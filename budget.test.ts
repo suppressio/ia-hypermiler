@@ -216,8 +216,8 @@ test('efficiencyRating media i rapporti ideale/reale sui giorni lavorativi valid
   // Periodo con 20 unità lavorative totali => quota ideale 5%/giorno pieno.
   const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20);
   assert.ok(result !== null);
-  assert.equal(result!.avgRatio, 1.75); // rapporti 5/5=1 e 5/2=2.5, media 1.75
-  assert.equal(result!.stars, 5);
+  assert.equal(result.avgRatio, 1.75); // rapporti 5/5=1 e 5/2=2.5, media 1.75
+  assert.equal(result.stars, 5);
 });
 
 test('efficiencyRating scarta un giorno con delta negativo (reset della finestra)', () => {
@@ -403,9 +403,9 @@ test('tokenYield: token per 1% di quota sui soli giorni presenti in entrambe le 
   const deltas = [delta('2026-07-13', 2), delta('2026-07-14', 4), delta('2026-07-15', 4), delta('2026-07-16', null), delta('2026-07-17', 10)];
   const y = budget.tokenYield(local, deltas);
   assert.equal(y?.tokensPerPercent, 6000); // 60000 token / 10 punti
-  assert.equal(y?.daysCompared, 3);
+  assert.equal(y.daysCompared, 3);
   // Metà (1 giorno ciascuna): 10000/2=5000 → 30000/4=7500 → +50%.
-  assert.equal(y?.trendPercent, 50);
+  assert.equal(y.trendPercent, 50);
 });
 
 test('tokenYield: null con meno di 3 giorni in comune o consumo totale sotto 1%', () => {

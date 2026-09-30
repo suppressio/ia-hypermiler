@@ -2,6 +2,7 @@
 // Legge/scrive solo tramite window.hypermiler esposto da preload.ts.
 
 import type { AccountId, AccountSnapshot, AppSettings, DailyDelta, HypermilerBridge, QuotaWindow, QuotaWindowSnapshot, UsageSnapshot, WindowVerdict } from './types';
+import { byId } from './dom.js';
 
 declare global {
   interface Window {
@@ -49,7 +50,7 @@ function applyAccentColor(accentColor: string | undefined): void {
 // Riflette lo stato "sempre in primo piano" sul pin in titlebar (stessa fonte di
 // verità di ui.alwaysOnTop, già impostabile anche da Impostazioni/tray).
 function updatePinButton(active: boolean): void {
-  const btn = document.getElementById('btn-pin') as HTMLButtonElement;
+  const btn = byId('btn-pin', HTMLButtonElement);
   btn.classList.toggle('active', active);
   btn.setAttribute('aria-pressed', String(active));
 }
@@ -75,7 +76,7 @@ function initHoverReveal(): void {
 // fare require()/import di budget.ts (nodeIntegration è disabilitato di proposito).
 function budgetNormalizedUtilization(win: QuotaWindow): number | null {
   if (win.unit === 'percentage') return win.used;
-  if (win.unit === 'count' && typeof win.total === 'number' && win.total > 0) {
+  if (typeof win.total === 'number' && win.total > 0) {
     return Math.round((win.used / win.total) * 1000) / 10;
   }
   return null;
@@ -124,7 +125,7 @@ function formatRate(value: number | null | undefined): string {
 // giorno di storico (account appena collegato) un'unica barra a larghezza piena
 // sembrava un rettangolo pieno invece di un grafico (feedback utente).
 function buildChartSeries(deltas: DailyDelta[], days: number): DailyDelta[] {
-  const byDate = new Map((deltas || []).map((d) => [d.date, d]));
+  const byDate = new Map(deltas.map((d) => [d.date, d]));
   const series: DailyDelta[] = [];
   const today = new Date();
   for (let i = days - 1; i >= 0; i--) {
@@ -143,8 +144,8 @@ function buildChartSeries(deltas: DailyDelta[], days: number): DailyDelta[] {
 // mezza giornata): le barre che la superano usano --warning. Giorni senza dato o
 // con un reset in mezzo restano una barra minima tenue.
 function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): void {
-  const container = document.getElementById('chart') as HTMLDivElement;
-  const idealLabel = document.getElementById('chart-ideal') as HTMLSpanElement;
+  const container = byId('chart', HTMLDivElement);
+  const idealLabel = byId('chart-ideal', HTMLSpanElement);
   container.innerHTML = '';
   idealLabel.textContent = '';
 
@@ -217,8 +218,8 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): vo
 // fissa: un ritmo istantaneo molto sopra il target riempie quasi tutta la barra
 // ed è colorato con --warning invece di --accent.
 function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
-  const container = document.getElementById('instant-gauge') as HTMLDivElement;
-  const label = document.getElementById('gauge-label') as HTMLSpanElement;
+  const container = byId('instant-gauge', HTMLDivElement);
+  const label = byId('gauge-label', HTMLSpanElement);
   container.innerHTML = '';
 
   const instant = winSnap?.instantRate ?? null;
@@ -282,7 +283,7 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
 
 function starIcon(filled: boolean): SVGSVGElement {
   const svgNs = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNs, 'svg') as SVGSVGElement;
+  const svg = document.createElementNS(svgNs, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', filled ? 'var(--accent)' : 'none');
   svg.setAttribute('stroke', 'currentColor');
@@ -300,12 +301,12 @@ function starIcon(filled: boolean): SVGSVGElement {
 // perché è lo stesso concetto su un orizzonte diverso (istantaneo/cumulativo lì,
 // media mobile qui) — feedback utente.
 function renderEfficiencyRating(winSnap: QuotaWindowSnapshot | undefined, chartDays: number): void {
-  const starsContainer = document.getElementById('efficiency-rating-stars') as HTMLDivElement;
-  const labelEl = document.getElementById('efficiency-rating-label') as HTMLSpanElement;
+  const starsContainer = byId('efficiency-rating-stars', HTMLDivElement);
+  const labelEl = byId('efficiency-rating-label', HTMLSpanElement);
   starsContainer.innerHTML = '';
 
   const rating = winSnap?.efficiencyRating ?? null;
-  const isRollingHours = winSnap?.window?.periodType === 'rolling-hours';
+  const isRollingHours = winSnap?.window.periodType === 'rolling-hours';
 
   if (!rating) {
     // Su una finestra che si rinnova ogni poche ore (es. limite 5 ore di Claude)
@@ -331,8 +332,8 @@ function renderEfficiencyRating(winSnap: QuotaWindowSnapshot | undefined, chartD
 // Resa (EVOLUTION.md punto 4, budget.tokenYield): token prodotti per 1% di quota
 // della finestra selezionata, con il trend tra seconda e prima metà dei giorni.
 function renderTokenYield(winSnap: QuotaWindowSnapshot | undefined): void {
-  const valueEl = document.getElementById('local-insights-yield') as HTMLElement;
-  const hintEl = document.getElementById('local-insights-yield-hint') as HTMLElement;
+  const valueEl = byId('local-insights-yield', HTMLElement);
+  const hintEl = byId('local-insights-yield-hint', HTMLElement);
   const y = winSnap?.tokenYield ?? null;
   if (!y) {
     valueEl.textContent = '--';
@@ -347,17 +348,17 @@ function renderTokenYield(winSnap: QuotaWindowSnapshot | undefined): void {
 }
 
 function renderLocalInsights(account: AccountSnapshot | undefined): void {
-  const details = document.getElementById('local-insights') as HTMLDivElement;
+  const details = byId('local-insights', HTMLDivElement);
   const insights = account?.localInsights ?? null;
   if (!insights) {
     details.hidden = true;
     return;
   }
   details.hidden = false;
-  document.getElementById('local-insights-context')!.textContent = formatPercent(insights.highContextSharePercent);
-  document.getElementById('local-insights-duration')!.textContent = formatPercent(insights.longSessionSharePercent);
+  byId('local-insights-context').textContent = formatPercent(insights.highContextSharePercent);
+  byId('local-insights-duration').textContent = formatPercent(insights.longSessionSharePercent);
 
-  const list = document.getElementById('local-insights-tools') as HTMLUListElement;
+  const list = byId('local-insights-tools', HTMLUListElement);
   list.innerHTML = '';
   insights.topTools.forEach((tool) => {
     const li = document.createElement('li');
@@ -375,13 +376,13 @@ function renderLocalInsights(account: AccountSnapshot | undefined): void {
 // account, anche due dello stesso provider — da qui l'etichetta dell'account, non
 // il nome del provider).
 function selectAccount(snapshot: UsageSnapshot): AccountSnapshot | undefined {
-  const accounts = snapshot.accounts ?? [];
+  const accounts = snapshot.accounts;
   return accounts.find((a) => a.accountId === state.activeAccount) ?? accounts[0];
 }
 
 function renderAccountTabs(snapshot: UsageSnapshot): void {
-  const nav = document.getElementById('account-tabs') as HTMLElement;
-  const available = snapshot.accounts ?? [];
+  const nav = byId('account-tabs', HTMLElement);
+  const available = snapshot.accounts;
   if (available.length <= 1) {
     nav.innerHTML = '';
     nav.hidden = true;
@@ -423,7 +424,7 @@ function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
 // per prima. Clic su una riga = dettaglio di quella finestra nel resto del widget.
 // Nascosta se l'account ha una sola finestra.
 function renderWindowList(account: AccountSnapshot): void {
-  const list = document.getElementById('window-list') as HTMLElement;
+  const list = byId('window-list', HTMLElement);
   // Svuotata sempre, anche quando va nascosta: non deve restare nel DOM nessuna
   // riga di un altro account (vedi [hidden] in style.css, bug della 0.2.0).
   list.innerHTML = '';
@@ -475,29 +476,29 @@ function selectWindowSnapshot(account: AccountSnapshot): QuotaWindowSnapshot | u
     ? account.windows.find((w) => w.window.id === state.activeWindowId)
     : undefined;
   if (byActive) return byActive;
-  const critical = account.criticalWindow
-    ? account.windows.find((w) => w.window.id === account.criticalWindow!.id)
+  const criticalId = account.criticalWindow?.id;
+  const critical = criticalId !== undefined
+    ? account.windows.find((w) => w.window.id === criticalId)
     : undefined;
   return critical ?? account.windows[0];
 }
 
 function renderSnapshot(snapshot: UsageSnapshot): void {
-  if (!snapshot) return;
   state.latestSnapshot = snapshot;
   renderAccountTabs(snapshot);
   // Stessa finestra (7/30gg) della vista scelta per il grafico, usata anche dal
   // rating a stelle — coerenza tra indicatori, vedi renderEfficiencyRating.
-  const chartDays = state.settings?.ui?.chartRange === 'month' ? 30 : 7;
+  const chartDays = state.settings?.ui.chartRange === 'month' ? 30 : 7;
 
   const account = selectAccount(snapshot);
   if (!account) {
-    document.getElementById('window-list')!.hidden = true;
-    document.getElementById('current-value')!.textContent = '--';
-    document.getElementById('current-label')!.textContent = 'Nessun account collegato — apri le impostazioni';
+    byId('window-list').hidden = true;
+    byId('current-value').textContent = '--';
+    byId('current-label').textContent = 'Nessun account collegato — apri le impostazioni';
     renderInstantGauge(undefined);
     renderEfficiencyRating(undefined, chartDays);
     renderLocalInsights(undefined);
-    document.getElementById('tips-text')!.textContent = NO_WINDOW_TIP;
+    byId('tips-text').textContent = NO_WINDOW_TIP;
     return;
   }
 
@@ -506,7 +507,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   const win = winSnap?.window ?? null;
   const utilization = win ? budgetNormalizedUtilization(win) : null;
 
-  document.getElementById('current-value')!.textContent =
+  byId('current-value').textContent =
     utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
 
   const resetLabel = win?.resetsAt ? ` · rinnovo ${formatResetMoment(win.resetsAt)}` : '';
@@ -522,30 +523,30 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     }
     if (account.lastError) label += ` (${account.lastError})`;
   }
-  document.getElementById('current-label')!.textContent = label;
+  byId('current-label').textContent = label;
 
   renderInstantGauge(winSnap);
   renderEfficiencyRating(winSnap, chartDays);
   renderLocalInsights(account);
   renderTokenYield(winSnap);
 
-  document.getElementById('metric-efficiency')!.textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
-  document.getElementById('metric-efficiency-hint')!.textContent = formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
-  document.getElementById('metric-projected')!.textContent = formatPercent(winSnap?.projectedUsage ?? null);
-  document.getElementById('metric-days-left')!.textContent =
+  byId('metric-efficiency').textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
+  byId('metric-efficiency-hint').textContent = formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
+  byId('metric-projected').textContent = formatPercent(winSnap?.projectedUsage ?? null);
+  byId('metric-days-left').textContent =
     `${winSnap?.daysUntilReset ?? '--'} (${formatDays(winSnap?.workingDaysUntilReset ?? null)} lav.)`;
-  document.getElementById('metric-autonomy')!.textContent = formatDays(winSnap?.estimatedAutonomyWorkingDays ?? null);
+  byId('metric-autonomy').textContent = formatDays(winSnap?.estimatedAutonomyWorkingDays ?? null);
 
   const stats = winSnap?.deltaStats;
-  document.getElementById('metric-peak-avg')!.textContent =
+  byId('metric-peak-avg').textContent =
     stats?.peak == null ? '--' : `${formatPercent(stats.peak)} / ${formatPercent(stats.avg)}`;
-  document.getElementById('metric-streak')!.textContent =
+  byId('metric-streak').textContent =
     stats?.streakUnderBudget == null ? '--' : `${stats.streakUnderBudget} gg`;
 
-  document.getElementById('chart-title')!.textContent = `Consumo giornaliero vs budget (${chartDays}gg)`;
+  byId('chart-title').textContent = `Consumo giornaliero vs budget (${chartDays}gg)`;
   renderChart(winSnap, chartDays);
 
-  document.getElementById('tips-text')!.textContent = winSnap?.dailyTip ?? NO_WINDOW_TIP;
+  byId('tips-text').textContent = winSnap?.dailyTip ?? NO_WINDOW_TIP;
 }
 
 async function togglePin(): Promise<void> {
@@ -560,31 +561,31 @@ async function init(): Promise<void> {
   state.settings = settings;
   applyWindowStyle(settings.ui.windowStyle);
   applyAccentColor(settings.ui.accentColor);
-  updatePinButton(!!settings.ui.alwaysOnTop);
+  updatePinButton(settings.ui.alwaysOnTop);
   initHoverReveal();
 
-  document.getElementById('btn-settings')!.addEventListener('click', () => {
+  byId('btn-settings').addEventListener('click', () => {
     window.hypermiler.openSettingsWindow();
   });
-  document.getElementById('btn-minimize')!.addEventListener('click', () => {
+  byId('btn-minimize').addEventListener('click', () => {
     window.hypermiler.minimizeWindow();
   });
-  document.getElementById('btn-close')!.addEventListener('click', () => {
+  byId('btn-close').addEventListener('click', () => {
     window.hypermiler.closeWindow();
   });
-  document.getElementById('btn-pin')!.addEventListener('click', () => { runGuarded(togglePin()); });
-  document.getElementById('btn-refresh')!.addEventListener('click', () => {
+  byId('btn-pin').addEventListener('click', () => { runGuarded(togglePin()); });
+  byId('btn-refresh').addEventListener('click', () => {
     // requestUsageRefresh() è "fire and forget" (ipcRenderer.send): il risultato
     // arriva comunque via onUsageUpdate qui sotto, che riabilita il pulsante —
     // disabilitarlo nel frattempo evita solo lo spam-click, non serve altro stato.
-    const btn = document.getElementById('btn-refresh') as HTMLButtonElement;
+    const btn = byId('btn-refresh', HTMLButtonElement);
     btn.disabled = true;
     window.hypermiler.requestUsageRefresh();
   });
 
   window.hypermiler.onUsageUpdate((snapshot) => {
     renderSnapshot(snapshot);
-    (document.getElementById('btn-refresh') as HTMLButtonElement).disabled = false;
+    byId('btn-refresh', HTMLButtonElement).disabled = false;
   });
   // Applica dal vivo i cambi di Impostazioni (es. colore accento, always-on-top
   // cambiato da Impostazioni o dal tray) mentre il widget è già aperto — vedi
@@ -592,7 +593,7 @@ async function init(): Promise<void> {
   window.hypermiler.onSettingsUpdate((updated) => {
     state.settings = updated;
     applyAccentColor(updated.ui.accentColor);
-    updatePinButton(!!updated.ui.alwaysOnTop);
+    updatePinButton(updated.ui.alwaysOnTop);
   });
   window.hypermiler.requestUsageRefresh();
 }

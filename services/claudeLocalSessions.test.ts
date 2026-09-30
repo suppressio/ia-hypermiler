@@ -32,13 +32,13 @@ function assistantMessage(usage: Record<string, unknown>, toolNames: string[] = 
     parent_tool_use_id: null,
     parent_agent_id: null,
     message: { usage, content },
-  } as SessionMessage;
+  };
 }
 
 function makeDeps(sessions: SDKSessionInfo[], messagesBySession: Record<string, SessionMessage[]>): LocalSessionsDeps {
   return {
-    listSessions: (async () => sessions) as LocalSessionsDeps['listSessions'],
-    getSessionMessages: (async (sessionId: string) => messagesBySession[sessionId] ?? []) as LocalSessionsDeps['getSessionMessages'],
+    listSessions: (async () => sessions),
+    getSessionMessages: (async (sessionId: string) => messagesBySession[sessionId] ?? []),
   };
 }
 
@@ -91,28 +91,28 @@ test('computeClaudeLocalInsights tronca topTools a 5 e ordina per frequenza', as
   const deps = makeDeps([s], { s1: messages });
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result?.topTools.length, 5);
-  assert.equal(at(result?.topTools, 0).name, 'Bash'); // 3 occorrenze, il più frequente
+  assert.equal(at(result.topTools, 0).name, 'Bash'); // 3 occorrenze, il più frequente
 });
 
 test('computeClaudeLocalInsights salta una sessione illeggibile senza interrompere le altre', async () => {
   const broken = session({ sessionId: 'broken' });
   const ok = session({ sessionId: 'ok' });
   const deps: LocalSessionsDeps = {
-    listSessions: (async () => [broken, ok]) as LocalSessionsDeps['listSessions'],
+    listSessions: (async () => [broken, ok]),
     getSessionMessages: (async (sessionId: string) => {
       if (sessionId === 'broken') throw new Error('file corrotto');
       return [assistantMessage({ output_tokens: 50, input_tokens: 1 })];
-    }) as LocalSessionsDeps['getSessionMessages'],
+    }),
   };
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result?.sessionsAnalyzed, 2); // entrambe contate come "nella finestra", solo una contribuisce dati
-  assert.equal(result?.highContextSharePercent, 0);
+  assert.equal(result.highContextSharePercent, 0);
 });
 
 test('computeClaudeLocalInsights ritorna null se listSessions fallisce', async () => {
   const deps: LocalSessionsDeps = {
-    listSessions: (async () => { throw new Error('errore SDK'); }) as LocalSessionsDeps['listSessions'],
-    getSessionMessages: (async () => []) as LocalSessionsDeps['getSessionMessages'],
+    listSessions: (async () => { throw new Error('errore SDK'); }),
+    getSessionMessages: (async () => []),
   };
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result, null);

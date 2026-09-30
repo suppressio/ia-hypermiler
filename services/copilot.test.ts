@@ -6,6 +6,7 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import * as copilotService from './copilot';
 import { at } from '../tests/support/at';
+import { FormatDriftError } from './_shape';
 
 type FetchMock = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -153,7 +154,7 @@ test('fetchOrgManagedUsage lancia FormatDriftError con la shape (mai i valori) s
     await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
     assert.fail('doveva lanciare');
   } catch (err) {
-    assert.equal((err as Error).name, 'FormatDriftError');
-    assert.ok(!JSON.stringify((err as any).shape).includes('42'));
+    assert.ok(err instanceof FormatDriftError);
+    assert.ok(!JSON.stringify(err.shape).includes('42'));
   }
 });

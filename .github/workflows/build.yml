@@ -43,6 +43,11 @@ jobs:
       - name: Installa dipendenze
         run: npm ci
 
+      # Lint con regole basate sui tipi (eslint.config.mjs): una segnalazione
+      # blocca il rilascio, come un test che fallisce.
+      - name: Lint
+        run: npm run lint
+
       - name: Build + test
         run: npm test
 

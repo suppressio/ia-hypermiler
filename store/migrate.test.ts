@@ -45,7 +45,6 @@ test('migrateAccounts: conserva credenziali e configurazione, aggiunge partition
   const claude = at(migrated, 0);
   const copilot = at(migrated, 1);
   assert.equal(claude.provider, 'claude');
-  if (claude.provider !== 'claude') return;
   assert.equal(claude.session.sessionKey, 'sk-real');
   assert.equal(claude.planTier, 'enterprise');
   assert.equal(claude.subscription.renewalRule.day, 15);
@@ -53,7 +52,6 @@ test('migrateAccounts: conserva credenziali e configurazione, aggiunge partition
   assert.equal(claude.label, 'Claude');
 
   assert.equal(copilot.provider, 'copilot');
-  if (copilot.provider !== 'copilot') return;
   assert.equal(copilot.credentials.token, 'ghp_real');
   assert.equal(copilot.manualQuota, 500);
   assert.equal(copilot.oauthApp.clientId, 'Iv1.x');
@@ -73,7 +71,6 @@ test('migrateAccounts: slot legacy incompleto (merge shallow electron-store) ric
   const partial = { claude: { enabled: true, session: { sessionKey: 'sk' } } };
   const claude = at(migrateAccounts(partial, false), 0);
   assert.equal(claude.provider, 'claude');
-  if (claude.provider !== 'claude') return;
   assert.equal(claude.session.organizationId, null);
   assert.equal(claude.planTier, 'pro');
   assert.deepEqual(claude.subscription.renewalRule, { type: 'dayOfMonth', day: 1 });

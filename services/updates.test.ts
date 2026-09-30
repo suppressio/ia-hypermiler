@@ -89,20 +89,20 @@ test('fetchLatestUpdate: interroga l\'elenco release (non /latest) e propone il 
 });
 
 test('fetchLatestUpdate: senza pacchetto adatto ripiega sulla pagina della release', async () => {
-  globalThis.fetch = (async () => new Response(JSON.stringify([release('v0.3.0-beta')]), { status: 200 })) as typeof fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify([release('v0.3.0-beta')]), { status: 200 }));
   const update = await fetchLatestUpdate('0.2.1-beta', { platform: 'darwin', arch: 'x64', isAppImage: false });
   assert.equal(update?.downloadUrl, 'https://github.com/suppressio/ia-hypermiler/releases/tag/v0.3.0-beta');
-  assert.equal(update?.assetName, null);
+  assert.equal(update.assetName, null);
 });
 
 test('fetchLatestUpdate: già aggiornato → null', async () => {
-  globalThis.fetch = (async () => new Response(JSON.stringify([release('v0.2.1-beta')]), { status: 200 })) as typeof fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify([release('v0.2.1-beta')]), { status: 200 }));
   assert.equal(await fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), null);
 });
 
 test('fetchLatestUpdate: errore HTTP o risposta inattesa → errore esplicito', async () => {
-  globalThis.fetch = (async () => new Response('rate limited', { status: 403, statusText: 'Forbidden' })) as typeof fetch;
+  globalThis.fetch = (async () => new Response('rate limited', { status: 403, statusText: 'Forbidden' }));
   await assert.rejects(fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), /GitHub Releases ha risposto 403/);
-  globalThis.fetch = (async () => new Response(JSON.stringify({ message: 'x' }), { status: 200 })) as typeof fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ message: 'x' }), { status: 200 }));
   await assert.rejects(fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), /non un elenco/);
 });

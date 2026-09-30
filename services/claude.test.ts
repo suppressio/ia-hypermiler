@@ -6,6 +6,7 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import * as claudeService from './claude';
 import { at } from '../tests/support/at';
+import { FormatDriftError } from './_shape';
 
 type FetchMock = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -61,11 +62,13 @@ test('buildQuotaWindows lancia errore esplicito se nessuna finestra riconosciuta
 
 test('buildQuotaWindows lancia un FormatDriftError con la shape (mai i valori) quando nulla è riconosciuto', () => {
   try {
-    claudeService.buildQuotaWindows({ cinder_cove: { some_unrelated_field: 389.19 } } as any);
+    // Forma volutamente fuori schema: il cast passa per unknown, niente `any`.
+    const unrecognized = { cinder_cove: { some_unrelated_field: 389.19 } } as unknown as Parameters<typeof claudeService.buildQuotaWindows>[0];
+    claudeService.buildQuotaWindows(unrecognized);
     assert.fail('doveva lanciare');
   } catch (err) {
-    assert.equal((err as Error).name, 'FormatDriftError');
-    const shape = (err as any).shape;
+    assert.ok(err instanceof FormatDriftError);
+    const shape = err.shape;
     assert.ok(!JSON.stringify(shape).includes('389.19'));
   }
 });
@@ -74,7 +77,7 @@ test('buildQuotaWindows riconosce una finestra qualunque sia il nome della chiav
   // Nomi dei campi non stabili (vedi CLAUDE.md, caso reale osservato il 2026-07):
   // "cinder_cove" non è un nome documentato, ma va comunque riconosciuto come
   // finestra valida perché ha la forma giusta (utilization numerico).
-  const windows = claudeService.buildQuotaWindows({ cinder_cove: { utilization: 38.9, resets_at: '2026-09-13T00:00:00Z' } } as any);
+  const windows = claudeService.buildQuotaWindows({ cinder_cove: { utilization: 38.9, resets_at: '2026-09-13T00:00:00Z' } });
   assert.equal(windows.length, 1);
   assert.equal(at(windows, 0).id, 'cinder_cove');
   assert.equal(at(windows, 0).used, 38.9);
@@ -90,7 +93,7 @@ test('buildQuotaWindows tratta le finestre con limit_dollars/used_dollars come "
       used_dollars: 395.166701,
       remaining_dollars: 604.83,
     },
-  } as any);
+  });
   assert.equal(windows.length, 1);
   assert.equal(at(windows, 0).unit, 'count');
   assert.equal(at(windows, 0).used, 395.166701);
@@ -100,7 +103,7 @@ test('buildQuotaWindows tratta le finestre con limit_dollars/used_dollars come "
 test('buildQuotaWindows scarta le finestre a 0% senza reset e senza importi (non applicabili al piano)', () => {
   const windows = claudeService.buildQuotaWindows({
     omelette_promotional: { utilization: 0, resets_at: null, limit_dollars: null, used_dollars: null, remaining_dollars: null },
-  } as any);
+  });
   assert.equal(windows.length, 0);
 });
 
@@ -127,7 +130,7 @@ test('buildQuotaWindows: caso reale — payload con nomi di campo offuscati (202
       used_dollars: 395.166701,
       remaining_dollars: 604.83,
     },
-  } as any);
+  });
   assert.equal(windows.length, 1); // solo cinder_cove: gli altri sono null o filtrati come non applicabili
   assert.equal(at(windows, 0).id, 'cinder_cove');
   assert.equal(at(windows, 0).unit, 'count');
