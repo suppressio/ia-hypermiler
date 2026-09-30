@@ -18,7 +18,7 @@
 // via interop, quello dentro Electron no). Fix: import() dinamico, che tsc lascia
 // nativo anche in emit CommonJS — unico modo di caricare ESM da qui.
 import type { ListSessionsOptions, GetSessionMessagesOptions, SDKSessionInfo, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ClaudeLocalInsights, ToolUsageShare } from '../types/index';
+import type { ClaudeLocalInsights, LocalDailyTokens, ToolUsageShare } from '../types/index';
 
 const HIGH_CONTEXT_THRESHOLD = 150_000; // token di contesto stimato, stessa soglia del pannello VS Code che ha ispirato questa funzionalità
 const LONG_SESSION_HOURS = 8;
@@ -101,9 +101,18 @@ export async function computeClaudeLocalInsights(
   let longSessionOutputTokens = 0;
   const toolCounts = new Map<string, number>();
   let totalToolCalls = 0;
+  // Token per giorno, per l'incrocio con il consumo di quota (budget.tokenYield /
+  // budget.consumptionCause). L'SDK non espone un timestamp per singolo messaggio
+  // (SessionMessage non ne ha), quindi l'intera sessione è attribuita al giorno
+  // della sua ultima modifica: approssimazione dichiarata in UI. Data in formato
+  // YYYY-MM-DD UTC, la stessa convenzione di history.dailyUsage (main.ts).
+  const daily = new Map<string, LocalDailyTokens>();
 
   for (const session of inWindow) {
     const durationMs = typeof session.createdAt === 'number' ? session.lastModified - session.createdAt : null;
+    const day = new Date(session.lastModified).toISOString().slice(0, 10);
+    const dayBucket = daily.get(day) ?? { date: day, outputTokens: 0, highContextOutputTokens: 0 };
+    daily.set(day, dayBucket);
     const isLongSession = durationMs !== null && durationMs >= LONG_SESSION_HOURS * 3600 * 1000;
 
     let messages: SessionMessage[];
@@ -126,7 +135,11 @@ export async function computeClaudeLocalInsights(
       if (outputTokens <= 0) continue;
 
       totalOutputTokens += outputTokens;
-      if (turnContextTokens(usage) > HIGH_CONTEXT_THRESHOLD) highContextOutputTokens += outputTokens;
+      dayBucket.outputTokens += outputTokens;
+      if (turnContextTokens(usage) > HIGH_CONTEXT_THRESHOLD) {
+        highContextOutputTokens += outputTokens;
+        dayBucket.highContextOutputTokens += outputTokens;
+      }
       if (isLongSession) longSessionOutputTokens += outputTokens;
 
       // Solo il nome del tool/server MCP invocato — mai i parametri della chiamata
@@ -157,5 +170,6 @@ export async function computeClaudeLocalInsights(
     highContextSharePercent: Math.round((highContextOutputTokens / totalOutputTokens) * 1000) / 10,
     longSessionSharePercent: Math.round((longSessionOutputTokens / totalOutputTokens) * 1000) / 10,
     topTools,
+    daily: [...daily.values()].filter((d) => d.outputTokens > 0).sort((a, b) => a.date.localeCompare(b.date)),
   };
 }

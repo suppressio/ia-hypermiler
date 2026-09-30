@@ -43,7 +43,6 @@ const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minuti, come da CLAUDE.md
 // ad ogni refresh di 30 min — cache con questo intervallo minimo, stesso pattern
 // di advisorCache.
 const LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 ore
-const LOCAL_INSIGHTS_WINDOW_DAYS = 7; // stessa finestra del punteggio eco (budget.ecoScore)
 
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -147,13 +146,17 @@ function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSa
 // cachati perché più costosi di un refresh usuale (scansione file su disco, non
 // un poll di rete) — ricalcolati al massimo ogni LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
 // ---------------------------------------------------------------------------
+// Finestra di analisi = vista scelta per il grafico (7/30gg, +1 giorno come per i
+// delta giornalieri): insight, resa e grafico guardano lo stesso periodo.
 async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | null> {
+  const windowDays = (store.get('ui.chartRange') === 'month' ? 30 : 7) + 1;
   const cached = (store.get('localInsightsCache.claudeCode') as ClaudeLocalInsights | null | undefined) ?? null;
   const cacheAgeMs = cached ? Date.now() - new Date(cached.computedAt).getTime() : Infinity;
-  if (cached && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
+  // Cache precedente senza `daily` (prima del punto 4) o su un'altra finestra: ricalcola.
+  if (cached && Array.isArray(cached.daily) && cached.windowDays === windowDays && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
 
   try {
-    const result = await computeClaudeLocalInsights(LOCAL_INSIGHTS_WINDOW_DAYS);
+    const result = await computeClaudeLocalInsights(windowDays);
     store.set('localInsightsCache.claudeCode', result);
     return result;
   } catch (err) {
@@ -208,6 +211,7 @@ function computeWindowSnapshot(
   subscription: { renewalRule: RenewalRule },
   workSchedule: WorkSchedule,
   now: Date,
+  localInsights: ClaudeLocalInsights | null,
 ): QuotaWindowSnapshot {
   recordDailyUsage(accountId, window);
   recordRecentSample(accountId, window);
@@ -246,6 +250,9 @@ function computeWindowSnapshot(
   // Stesso gate del rating: su una finestra di poche ore un delta "giornaliero"
   // attraversa più reset e non misura nulla. Senza pacing i delta restano, ma
   // senza quota ideale (idealShare null).
+  // Valore per token (EVOLUTION.md punto 4): solo se l'account ha gli insight
+  // locali attivi — incrocia i token per giorno con i delta di questa finestra.
+  const localDaily = localInsights?.daily ?? null;
   const dailyDeltasForWindow = window.periodType === 'rolling-hours'
     ? []
     : budget.dailyDeltas(dailyHistory, workSchedule, pacingAvailable ? totalPeriodWorkingUnits : 0);
@@ -264,6 +271,7 @@ function computeWindowSnapshot(
     instantRate,
     sustainableRate,
     efficiencyRating,
+    tokenYield: localDaily ? budget.tokenYield(localDaily, dailyDeltasForWindow) : null,
     dailyTip: budget.generateDailyTip({
       window,
       efficiencyIndex,
@@ -274,6 +282,7 @@ function computeWindowSnapshot(
       instantRate,
       sustainableRate,
       efficiencyRating,
+      consumptionCause: localDaily ? budget.consumptionCause(localDaily, dailyDeltasForWindow) : null,
     }),
   };
 }
@@ -283,10 +292,11 @@ function computeAccountSnapshot(
   cfg: AccountConfig,
   workSchedule: WorkSchedule,
   now: Date,
+  localInsights: ClaudeLocalInsights | null,
 ): AccountSnapshot {
   const subscription = cfg.subscription;
   const identity = { accountId: cfg.id, provider: cfg.provider, label: cfg.label };
-  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(cfg.id, w, subscription, workSchedule, now));
+  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(cfg.id, w, subscription, workSchedule, now, localInsights));
   const criticalWindow = budget.pickCriticalWindow(raw.quotaWindows);
   const criticalSnapshot = criticalWindow ? windows.find((w) => w.window.id === criticalWindow.id) : undefined;
 
@@ -442,21 +452,19 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
 
   for (const cfg of getAccounts()) {
     if (!cfg.enabled || !providers.isConnected(cfg)) continue;
+    // Sorgente locale indipendente dal fetch dell'account: calcolata prima (serve
+    // alla resa per finestra) e mostrata anche se il provider non ha risposto.
+    const localInsights = cfg.provider === 'claude' && cfg.localInsights ? await computeLocalInsightsIfNeeded() : null;
     let account: AccountSnapshot;
     try {
       const raw = await fetchAccountOrFallback(cfg.id, cfg.provider, () => providers.fetchUsage(cfg), `history.lastGood.${cfg.id}`);
-      account = computeAccountSnapshot(raw, cfg, workSchedule, now);
+      account = computeAccountSnapshot(raw, cfg, workSchedule, now, localInsights);
     } catch (err) {
       const message = friendlyErrorMessage(err);
       console.error(`[main] ${cfg.label} non disponibile e nessun dato pregresso:`, message);
       account = emptyAccountSnapshot(cfg, message);
     }
-    // Sorgente locale indipendente dal fetch dell'account: calcolata anche se il
-    // provider non ha risposto (account è valorizzato sia sul percorso riuscito
-    // sia su quello di fallback).
-    if (cfg.provider === 'claude' && cfg.localInsights) {
-      account.localInsights = await computeLocalInsightsIfNeeded();
-    }
+    if (localInsights) account.localInsights = localInsights;
     snapshot.accounts.push(account);
   }
 

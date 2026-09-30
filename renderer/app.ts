@@ -328,6 +328,24 @@ function renderEfficiencyRating(winSnap: QuotaWindowSnapshot | undefined, chartD
 // del consiglio (sempre presente), qui l'intero blocco può restare nascosto.
 // Presente solo sull'account Claude a cui l'utente ha attribuito le sessioni
 // locali (flag per account in Impostazioni): Copilot non ha una sorgente equivalente.
+// Resa (EVOLUTION.md punto 4, budget.tokenYield): token prodotti per 1% di quota
+// della finestra selezionata, con il trend tra seconda e prima metà dei giorni.
+function renderTokenYield(winSnap: QuotaWindowSnapshot | undefined): void {
+  const valueEl = document.getElementById('local-insights-yield') as HTMLElement;
+  const hintEl = document.getElementById('local-insights-yield-hint') as HTMLElement;
+  const y = winSnap?.tokenYield ?? null;
+  if (!y) {
+    valueEl.textContent = '--';
+    hintEl.textContent = winSnap?.window.periodType === 'rolling-hours'
+      ? 'non applicabile su finestre di poche ore'
+      : 'servono almeno 3 giorni con sessioni locali e consumo di quota';
+    return;
+  }
+  valueEl.textContent = y.tokensPerPercent >= 1000 ? `${Math.round(y.tokensPerPercent / 100) / 10}k` : String(y.tokensPerPercent);
+  const trend = y.trendPercent === null ? '' : ` · ${y.trendPercent >= 0 ? '▲' : '▼'}${Math.abs(y.trendPercent)}% vs prima metà`;
+  hintEl.textContent = `su ${y.daysCompared}gg${trend}`;
+}
+
 function renderLocalInsights(account: AccountSnapshot | undefined): void {
   const details = document.getElementById('local-insights') as HTMLDivElement;
   const insights = account?.localInsights ?? null;
@@ -506,6 +524,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   renderInstantGauge(winSnap);
   renderEfficiencyRating(winSnap, chartDays);
   renderLocalInsights(account);
+  renderTokenYield(winSnap);
 
   document.getElementById('metric-efficiency')!.textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
   document.getElementById('metric-efficiency-hint')!.textContent = formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);

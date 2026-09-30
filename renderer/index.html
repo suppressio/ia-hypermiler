@@ -91,6 +91,11 @@
       <div id="local-insights" class="local-insights" hidden>
         <div class="local-insights-header">Insight locali · Claude Code</div>
         <div class="local-insights-body">
+          <div class="metric local-insights-yield" title="Token di output prodotti nelle sessioni Claude Code di questa macchina per ogni 1% di quota consumato, sui soli giorni presenti in entrambe le fonti. Più alta = ogni token è costato meno quota. Limite: una sessione è attribuita al giorno della sua ultima modifica (l'SDK non espone l'orario dei singoli messaggi), e l'uso di claude.ai dal browser non è contato nei token.">
+            <span class="metric-label">Resa (token per 1% di quota)</span>
+            <span class="metric-value" id="local-insights-yield">--</span>
+            <span class="metric-hint" id="local-insights-yield-hint"></span>
+          </div>
           <div class="metric">
             <span class="metric-label">Contesto oltre 150k</span>
             <span class="metric-value" id="local-insights-context">--</span>

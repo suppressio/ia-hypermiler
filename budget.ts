@@ -8,7 +8,19 @@
 // Tutte le funzioni sono pure (nessun I/O), testabili da terminale/test runner.
 
 import { addDays, differenceInCalendarDays, isBefore, startOfDay, setDate, addMonths } from 'date-fns';
-import type { QuotaWindow, WorkSchedule, RenewalRule, DailyUsagePoint, EfficiencyRating, DailyDelta, DeltaStats, WindowVerdict } from './types/index';
+import type {
+  QuotaWindow,
+  WorkSchedule,
+  RenewalRule,
+  DailyUsagePoint,
+  EfficiencyRating,
+  DailyDelta,
+  DeltaStats,
+  WindowVerdict,
+  LocalDailyTokens,
+  TokenYield,
+  ConsumptionCause,
+} from './types/index';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
@@ -337,6 +349,92 @@ export function windowVerdict(ctx: WindowVerdictContext): WindowVerdict {
   return { kind: 'no-pacing' };
 }
 
+// ---------------------------------------------------------------------------
+// Valore per token (EVOLUTION.md punto 4): incrocio tra i token prodotti nelle
+// sessioni Claude Code locali (services/claudeLocalSessions.ts, per giorno) e il
+// consumo di quota dello stesso giorno (dailyDeltas). Si confrontano solo i giorni
+// presenti in entrambe le fonti: un giorno con quota consumata ma nessuna sessione
+// locale (es. uso di claude.ai dal browser) non sarebbe attribuibile.
+// ---------------------------------------------------------------------------
+
+const TOKEN_YIELD_MIN_DAYS = 3;
+const TOKEN_YIELD_MIN_TOTAL_DELTA = 1; // punti % di quota: sotto, il rapporto è rumore
+const CAUSE_MIN_DAYS = 5;
+const CAUSE_MIN_RATIO = 1.5;
+const CAUSE_MIN_GAP_POINTS = 20;
+
+interface PairedDay { date: string; delta: number; outputTokens: number; highContextOutputTokens: number }
+
+function pairDays(localDaily: LocalDailyTokens[], deltas: DailyDelta[]): PairedDay[] {
+  const local = new Map(localDaily.map((d) => [d.date, d]));
+  const paired: PairedDay[] = [];
+  for (const d of deltas) {
+    const l = local.get(d.date);
+    if (d.delta === null || d.delta <= 0 || !l || l.outputTokens <= 0) continue;
+    paired.push({ date: d.date, delta: d.delta, outputTokens: l.outputTokens, highContextOutputTokens: l.highContextOutputTokens });
+  }
+  return paired.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function yieldOf(days: PairedDay[]): number | null {
+  const totalDelta = days.reduce((s, d) => s + d.delta, 0);
+  if (totalDelta <= 0) return null;
+  return days.reduce((s, d) => s + d.outputTokens, 0) / totalDelta;
+}
+
+/**
+ * "Resa": token di output prodotti per ogni punto percentuale di quota consumato,
+ * sui giorni presenti in entrambe le fonti. È una misura di valore, non di ritmo:
+ * a parità di lavoro prodotto, una resa più bassa significa che ogni token è
+ * costato più quota (tipicamente contesto molto ampio riletto ad ogni turno).
+ * Trend: resa della seconda metà dei giorni confrontati rispetto alla prima.
+ * null con meno di TOKEN_YIELD_MIN_DAYS giorni o consumo totale troppo basso.
+ */
+export function tokenYield(localDaily: LocalDailyTokens[], deltas: DailyDelta[]): TokenYield | null {
+  const paired = pairDays(localDaily, deltas);
+  if (paired.length < TOKEN_YIELD_MIN_DAYS) return null;
+  if (paired.reduce((s, d) => s + d.delta, 0) < TOKEN_YIELD_MIN_TOTAL_DELTA) return null;
+  const overall = yieldOf(paired);
+  if (overall === null) return null;
+
+  const half = Math.floor(paired.length / 2);
+  const first = yieldOf(paired.slice(0, half));
+  const second = yieldOf(paired.slice(paired.length - half));
+  const trendPercent = first !== null && second !== null && first > 0 ? round1((second / first - 1) * 100) : null;
+
+  return { tokensPerPercent: Math.round(overall), trendPercent, daysCompared: paired.length };
+}
+
+/**
+ * Legame tra consumo di quota e contesto ampio, dichiarato SOLO se netto:
+ * almeno CAUSE_MIN_DAYS giorni confrontati, e nei giorni sopra la mediana di
+ * consumo la quota di token prodotti a contesto >150k è almeno CAUSE_MIN_RATIO
+ * volte (e CAUSE_MIN_GAP_POINTS punti sopra) quella dei giorni sotto la mediana.
+ * Altrimenti null: meglio nessuna frase che una correlazione debole presentata
+ * come causa (EVOLUTION.md, "un cattivo insight mina la fiducia più di nessun insight").
+ */
+export function consumptionCause(localDaily: LocalDailyTokens[], deltas: DailyDelta[]): ConsumptionCause | null {
+  const paired = pairDays(localDaily, deltas);
+  if (paired.length < CAUSE_MIN_DAYS) return null;
+
+  const sortedDeltas = paired.map((d) => d.delta).sort((a, b) => a - b);
+  const mid = Math.floor(sortedDeltas.length / 2);
+  const median = sortedDeltas.length % 2 ? sortedDeltas[mid] : (sortedDeltas[mid - 1] + sortedDeltas[mid]) / 2;
+  const high = paired.filter((d) => d.delta > median);
+  const low = paired.filter((d) => d.delta <= median);
+  if (high.length === 0 || low.length === 0) return null;
+
+  const share = (days: PairedDay[]) => {
+    const out = days.reduce((s, d) => s + d.outputTokens, 0);
+    return out > 0 ? (days.reduce((s, d) => s + d.highContextOutputTokens, 0) / out) * 100 : 0;
+  };
+  const highShare = share(high);
+  const lowShare = share(low);
+  if (highShare < lowShare * CAUSE_MIN_RATIO || highShare - lowShare < CAUSE_MIN_GAP_POINTS) return null;
+
+  return { highDaysHighContextPercent: Math.round(highShare), lowDaysHighContextPercent: Math.round(lowShare), daysCompared: paired.length };
+}
+
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -355,6 +453,8 @@ export interface DailyTipContext {
   instantRate: number | null;
   sustainableRate: number | null;
   efficiencyRating: EfficiencyRating | null;
+  // Solo per l'account Claude con insight locali attivi — vedi consumptionCause.
+  consumptionCause?: ConsumptionCause | null;
 }
 
 export const NO_TIP_MESSAGE = 'Non ci sono ancora abbastanza dati per un consiglio specifico su questa finestra.';
@@ -379,6 +479,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
     instantRate,
     sustainableRate,
     efficiencyRating,
+    consumptionCause: cause,
   } = ctx;
   const utilization = normalizedUtilization(window);
   const candidates: string[] = [];
@@ -426,6 +527,14 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
   if (projectedUsage !== null && projectedUsage >= 100 && utilization !== null && utilization < 100) {
     candidates.push(
       `Di questo passo ${window.label} arriverebbe al ${round1(projectedUsage)}% entro il rinnovo: supererebbe il limite se il ritmo resta questo.`,
+    );
+  }
+
+  // 6. Legame netto tra giorni di consumo alto e contesto ampio (sessioni Claude
+  // Code locali) — vedi consumptionCause: presente solo se il segnale è forte.
+  if (cause) {
+    candidates.push(
+      `Nei giorni in cui consumi più quota di ${window.label}, il ${cause.highDaysHighContextPercent}% dei token è prodotto a contesto oltre 150k (contro il ${cause.lowDaysHighContextPercent}% negli altri giorni, su ${cause.daysCompared}gg): ridurre il contesto (/clear tra un task e l'altro, /compact) abbassa il costo di ogni turno.`,
     );
   }
 

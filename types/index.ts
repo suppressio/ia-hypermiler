@@ -135,6 +135,8 @@ export interface QuotaWindowSnapshot {
   // "Consiglio del giorno": frase generata da fatti reali sui dati di questa
   // finestra, mai una frase generica — vedi budget.generateDailyTip.
   dailyTip: string;
+  // Solo per l'account Claude con insight locali attivi (null altrimenti) — vedi budget.tokenYield.
+  tokenYield: TokenYield | null;
 }
 
 /** Quota d'uso (in volume di token) di un singolo tool/server MCP — vedi services/claudeLocalSessions.ts. */
@@ -160,6 +162,29 @@ export interface ClaudeLocalInsights {
   highContextSharePercent: number | null;
   longSessionSharePercent: number | null;
   topTools: ToolUsageShare[];
+  // Token di output per giorno (sessione attribuita al giorno di ultima modifica).
+  daily: LocalDailyTokens[];
+}
+
+export interface LocalDailyTokens {
+  date: string;
+  outputTokens: number;
+  highContextOutputTokens: number;
+}
+
+/** "Resa": token di output per 1% di quota consumata — vedi budget.tokenYield. */
+export interface TokenYield {
+  tokensPerPercent: number;
+  // Variazione % della resa tra seconda e prima metà dei giorni confrontati (null se non calcolabile).
+  trendPercent: number | null;
+  daysCompared: number;
+}
+
+/** Legame osservato tra giorni di consumo alto e contesto ampio — vedi budget.consumptionCause. */
+export interface ConsumptionCause {
+  highDaysHighContextPercent: number;
+  lowDaysHighContextPercent: number;
+  daysCompared: number;
 }
 
 /** Snapshot arricchito inviato al renderer via IPC (vedi main.ts). */

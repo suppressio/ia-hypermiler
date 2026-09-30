@@ -116,3 +116,21 @@ test('computeClaudeLocalInsights ritorna null se listSessions fallisce', async (
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result, null);
 });
+
+test('computeClaudeLocalInsights raggruppa i token per giorno di ultima modifica della sessione', async () => {
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const yesterday = new Date(now - DAY).toISOString().slice(0, 10);
+  const deps = makeDeps(
+    [session({ sessionId: 'a', lastModified: now }), session({ sessionId: 'b', lastModified: now - DAY, createdAt: now - DAY - HOUR })],
+    {
+      a: [assistantMessage({ output_tokens: 100, cache_read_input_tokens: 200_000 }), assistantMessage({ output_tokens: 50, input_tokens: 10 })],
+      b: [assistantMessage({ output_tokens: 30, input_tokens: 10 })],
+    },
+  );
+  const result = await computeClaudeLocalInsights(7, deps);
+  assert.deepEqual(result?.daily, [
+    { date: yesterday, outputTokens: 30, highContextOutputTokens: 0 },
+    { date: today, outputTokens: 150, highContextOutputTokens: 100 },
+  ]);
+});

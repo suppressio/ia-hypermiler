@@ -389,3 +389,59 @@ test('windowVerdict: esaurita, a rischio (autonomia o proiezione), in linea, sen
     { kind: 'no-pacing' },
   );
 });
+
+// ---------------------------------------------------------------------------
+// tokenYield / consumptionCause — valore per token (EVOLUTION.md punto 4)
+// ---------------------------------------------------------------------------
+
+function localDay(date: string, outputTokens: number, highContextOutputTokens = 0) {
+  return { date, outputTokens, highContextOutputTokens };
+}
+
+function delta(date: string, value: number | null) {
+  return { date, delta: value, idealShare: 5 };
+}
+
+test('tokenYield: token per 1% di quota sui soli giorni presenti in entrambe le fonti', () => {
+  const local = [localDay('2026-07-13', 10000), localDay('2026-07-14', 20000), localDay('2026-07-15', 30000), localDay('2026-07-16', 99999)];
+  // 2026-07-16 ha un reset (delta null) → escluso; 2026-07-17 non ha sessioni locali → escluso.
+  const deltas = [delta('2026-07-13', 2), delta('2026-07-14', 4), delta('2026-07-15', 4), delta('2026-07-16', null), delta('2026-07-17', 10)];
+  const y = budget.tokenYield(local, deltas);
+  assert.equal(y?.tokensPerPercent, 6000); // 60000 token / 10 punti
+  assert.equal(y?.daysCompared, 3);
+  // Metà (1 giorno ciascuna): 10000/2=5000 → 30000/4=7500 → +50%.
+  assert.equal(y?.trendPercent, 50);
+});
+
+test('tokenYield: null con meno di 3 giorni in comune o consumo totale sotto 1%', () => {
+  assert.equal(budget.tokenYield([localDay('2026-07-13', 1000), localDay('2026-07-14', 1000)], [delta('2026-07-13', 2), delta('2026-07-14', 2)]), null);
+  const local = [localDay('a', 1000), localDay('b', 1000), localDay('c', 1000)];
+  assert.equal(budget.tokenYield(local, [delta('a', 0.2), delta('b', 0.2), delta('c', 0.2)]), null);
+});
+
+test('consumptionCause: segnale netto → giorni ad alto consumo dominati da contesto ampio', () => {
+  const local = [
+    localDay('d1', 1000, 100), localDay('d2', 1000, 100), localDay('d3', 1000, 150),
+    localDay('d4', 1000, 800), localDay('d5', 1000, 900), localDay('d6', 1000, 850),
+  ];
+  const deltas = [delta('d1', 1), delta('d2', 1.5), delta('d3', 2), delta('d4', 8), delta('d5', 9), delta('d6', 10)];
+  assert.deepEqual(budget.consumptionCause(local, deltas), {
+    highDaysHighContextPercent: 85,
+    lowDaysHighContextPercent: 12,
+    daysCompared: 6,
+  });
+});
+
+test('consumptionCause: segnale debole o pochi giorni → nessuna frase (null)', () => {
+  const weakLocal = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6'].map((d, i) => localDay(d, 1000, i < 3 ? 400 : 500));
+  const deltas = [delta('d1', 1), delta('d2', 1.5), delta('d3', 2), delta('d4', 8), delta('d5', 9), delta('d6', 10)];
+  assert.equal(budget.consumptionCause(weakLocal, deltas), null);
+  assert.equal(budget.consumptionCause(weakLocal.slice(0, 4), deltas.slice(0, 4)), null);
+});
+
+test('generateDailyTip: il legame consumo/contesto entra come candidato solo se presente', () => {
+  const cause = { highDaysHighContextPercent: 85, lowDaysHighContextPercent: 12, daysCompared: 6 };
+  const tip = budget.generateDailyTip({ ...baseTipContext(), consumptionCause: cause });
+  assert.match(tip, /85% dei token è prodotto a contesto oltre 150k/);
+  assert.equal(budget.generateDailyTip({ ...baseTipContext(), consumptionCause: null }), budget.NO_TIP_MESSAGE);
+});
