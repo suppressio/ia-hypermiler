@@ -1,5 +1,13 @@
 /* settings.css — finestra impostazioni, stile sobrio coerente con style.css */
 
+/* L'attributo `hidden` deve vincere su qualunque `display` impostato da una
+   classe (es. .window-list/.account-tabs sono display:flex): senza questa regola
+   il display dell'autore sovrascrive il display:none del browser e l'elemento
+   "nascosto" resta visibile — bug reale della 0.2.0 (lista finestre dell'account
+   personale rimasta visibile sull'account aziendale). */
+[hidden] { display: none !important; }
+
+
 * { box-sizing: border-box; }
 
 body {

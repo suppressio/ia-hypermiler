@@ -1,5 +1,13 @@
 /* style.css — tre skin (vedi ARCHITECTURE.md §2). Sobria, nessuna animazione/pulsazione. */
 
+/* L'attributo `hidden` deve vincere su qualunque `display` impostato da una
+   classe (es. .window-list/.account-tabs sono display:flex): senza questa regola
+   il display dell'autore sovrascrive il display:none del browser e l'elemento
+   "nascosto" resta visibile — bug reale della 0.2.0 (lista finestre dell'account
+   personale rimasta visibile sull'account aziendale). */
+[hidden] { display: none !important; }
+
+
 :root {
   --accent: #2563eb;
   --warning: #dc2626;

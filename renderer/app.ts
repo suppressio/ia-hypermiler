@@ -383,6 +383,7 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
   const nav = document.getElementById('account-tabs') as HTMLElement;
   const available = snapshot.accounts ?? [];
   if (available.length <= 1) {
+    nav.innerHTML = '';
     nav.hidden = true;
     return;
   }
@@ -423,12 +424,14 @@ function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
 // Nascosta se l'account ha una sola finestra.
 function renderWindowList(account: AccountSnapshot): void {
   const list = document.getElementById('window-list') as HTMLElement;
+  // Svuotata sempre, anche quando va nascosta: non deve restare nel DOM nessuna
+  // riga di un altro account (vedi [hidden] in style.css, bug della 0.2.0).
+  list.innerHTML = '';
   if (account.windows.length <= 1) {
     list.hidden = true;
     return;
   }
   list.hidden = false;
-  list.innerHTML = '';
   const selected = selectWindowSnapshot(account);
   const criticalId = account.criticalWindow?.id;
   const ordered = [...account.windows].sort((a, b) => Number(b.window.id === criticalId) - Number(a.window.id === criticalId));
