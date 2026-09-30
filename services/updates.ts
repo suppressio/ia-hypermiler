@@ -58,9 +58,8 @@ export function compareVersions(a: string, b: string): number {
   const pb = parseVersion(b);
   if (!pa || !pb) throw new Error(`Versione non valida: ${!pa ? a : b}`);
 
-  for (let i = 0; i < 3; i++) {
-    if (pa.core[i] !== pb.core[i]) return pa.core[i] - pb.core[i];
-  }
+  const coreDiff = pa.core.map((value, i) => value - (pb.core[i] ?? 0)).find((diff) => diff !== 0);
+  if (coreDiff !== undefined) return coreDiff;
   if (pa.pre.length === 0 || pb.pre.length === 0) return pb.pre.length - pa.pre.length;
 
   for (let i = 0; i < Math.max(pa.pre.length, pb.pre.length); i++) {
@@ -132,7 +131,7 @@ export interface UpdateEnvironment {
 
 /** Controlla le Release GitHub: UpdateInfo se c'è una versione più recente, null altrimenti. Lancia su errore. */
 export async function fetchLatestUpdate(currentVersion: string, env: UpdateEnvironment): Promise<UpdateInfo | null> {
-  const releases = await fetchJson<unknown>(RELEASES_API_URL, {
+  const releases = await fetchJson(RELEASES_API_URL, {
     headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ia-hypermiler' },
     label: 'GitHub Releases',
   });
@@ -141,7 +140,7 @@ export async function fetchLatestUpdate(currentVersion: string, env: UpdateEnvir
   const latest = pickLatestRelease(releases as GithubRelease[], currentVersion);
   if (!latest) return null;
 
-  const asset = pickDownloadAsset(latest.assets ?? [], env.platform, env.arch, env.isAppImage);
+  const asset = pickDownloadAsset(latest.assets, env.platform, env.arch, env.isAppImage);
   return {
     version: latest.tag_name.replace(/^v/, ''),
     publishedAt: latest.published_at,

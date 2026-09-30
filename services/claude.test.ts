@@ -5,6 +5,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import * as claudeService from './claude';
+import { at } from '../tests/support/at';
 
 type FetchMock = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -48,10 +49,10 @@ test('buildQuotaWindows converte solo le finestre presenti e valide', () => {
     // seven_day_opus assente di proposito: non deve comparire nell'output
   });
   assert.equal(windows.length, 2);
-  assert.equal(windows[0].id, 'five_hour');
-  assert.equal(windows[0].used, 34);
-  assert.equal(windows[0].unit, 'percentage');
-  assert.equal(windows[1].id, 'seven_day');
+  assert.equal(at(windows, 0).id, 'five_hour');
+  assert.equal(at(windows, 0).used, 34);
+  assert.equal(at(windows, 0).unit, 'percentage');
+  assert.equal(at(windows, 1).id, 'seven_day');
 });
 
 test('buildQuotaWindows lancia errore esplicito se nessuna finestra riconosciuta', () => {
@@ -75,9 +76,9 @@ test('buildQuotaWindows riconosce una finestra qualunque sia il nome della chiav
   // finestra valida perché ha la forma giusta (utilization numerico).
   const windows = claudeService.buildQuotaWindows({ cinder_cove: { utilization: 38.9, resets_at: '2026-09-13T00:00:00Z' } } as any);
   assert.equal(windows.length, 1);
-  assert.equal(windows[0].id, 'cinder_cove');
-  assert.equal(windows[0].used, 38.9);
-  assert.equal(windows[0].unit, 'percentage');
+  assert.equal(at(windows, 0).id, 'cinder_cove');
+  assert.equal(at(windows, 0).used, 38.9);
+  assert.equal(at(windows, 0).unit, 'percentage');
 });
 
 test('buildQuotaWindows tratta le finestre con limit_dollars/used_dollars come "count" con importi reali', () => {
@@ -91,9 +92,9 @@ test('buildQuotaWindows tratta le finestre con limit_dollars/used_dollars come "
     },
   } as any);
   assert.equal(windows.length, 1);
-  assert.equal(windows[0].unit, 'count');
-  assert.equal(windows[0].used, 395.166701);
-  assert.equal(windows[0].total, 1000);
+  assert.equal(at(windows, 0).unit, 'count');
+  assert.equal(at(windows, 0).used, 395.166701);
+  assert.equal(at(windows, 0).total, 1000);
 });
 
 test('buildQuotaWindows scarta le finestre a 0% senza reset e senza importi (non applicabili al piano)', () => {
@@ -128,10 +129,10 @@ test('buildQuotaWindows: caso reale — payload con nomi di campo offuscati (202
     },
   } as any);
   assert.equal(windows.length, 1); // solo cinder_cove: gli altri sono null o filtrati come non applicabili
-  assert.equal(windows[0].id, 'cinder_cove');
-  assert.equal(windows[0].unit, 'count');
-  assert.equal(windows[0].used, 395.166701);
-  assert.equal(windows[0].total, 1000);
+  assert.equal(at(windows, 0).id, 'cinder_cove');
+  assert.equal(at(windows, 0).unit, 'count');
+  assert.equal(at(windows, 0).used, 395.166701);
+  assert.equal(at(windows, 0).total, 1000);
 });
 
 test('fetchUsage usa organizationId fornito senza chiamare /organizations', async () => {
@@ -144,8 +145,8 @@ test('fetchUsage usa organizationId fornito senza chiamare /organizations', asyn
   const result = await claudeService.fetchUsage({ sessionKey: 'sess-abc', organizationId: 'org-xyz' });
 
   assert.equal(calledUrls.length, 1);
-  assert.match(calledUrls[0], /organizations\/org-xyz\/usage/);
-  assert.equal(result.quotaWindows[0].used, 61);
+  assert.match(at(calledUrls, 0), /organizations\/org-xyz\/usage/);
+  assert.equal(at(result.quotaWindows, 0).used, 61);
   assert.equal(result.subscriptionRenewsAt, null);
 });
 
@@ -160,8 +161,8 @@ test('fetchUsage risolve organizationId quando assente, poi chiama /usage', asyn
   const result = await claudeService.fetchUsage({ sessionKey: 'sess-abc' });
 
   assert.equal(calledUrls.length, 2);
-  assert.match(calledUrls[1], /organizations\/org-auto\/usage/);
-  assert.equal(result.quotaWindows[0].used, 12);
+  assert.match(at(calledUrls, 1), /organizations\/org-auto\/usage/);
+  assert.equal(at(result.quotaWindows, 0).used, 12);
 });
 
 test('fetchUsage lancia errore esplicito senza sessionKey', async () => {

@@ -11,6 +11,7 @@ import {
   migrateAccounts,
   nextAccountLabel,
 } from './migrate';
+import { at } from '../tests/support/at';
 
 const legacyClaude = {
   enabled: true,
@@ -40,7 +41,9 @@ test('migrateAccounts: legacy → array, id preservati per non invalidare lo sto
 });
 
 test('migrateAccounts: conserva credenziali e configurazione, aggiunge partition', () => {
-  const [claude, copilot] = migrateAccounts({ claude: legacyClaude, copilot: legacyCopilot }, false);
+  const migrated = migrateAccounts({ claude: legacyClaude, copilot: legacyCopilot }, false);
+  const claude = at(migrated, 0);
+  const copilot = at(migrated, 1);
   assert.equal(claude.provider, 'claude');
   if (claude.provider !== 'claude') return;
   assert.equal(claude.session.sessionKey, 'sk-real');
@@ -57,7 +60,7 @@ test('migrateAccounts: conserva credenziali e configurazione, aggiunge partition
 });
 
 test('migrateAccounts: il vecchio flag globale localInsights passa all\'account Claude', () => {
-  const [claude] = migrateAccounts({ claude: legacyClaude }, true);
+  const claude = at(migrateAccounts({ claude: legacyClaude }, true), 0);
   assert.equal(claude.provider === 'claude' && claude.localInsights, true);
 });
 
@@ -68,7 +71,7 @@ test('migrateAccounts: slot legacy mai configurato non genera righe fantasma', (
 
 test('migrateAccounts: slot legacy incompleto (merge shallow electron-store) riceve i default mancanti', () => {
   const partial = { claude: { enabled: true, session: { sessionKey: 'sk' } } };
-  const [claude] = migrateAccounts(partial, false);
+  const claude = at(migrateAccounts(partial, false), 0);
   assert.equal(claude.provider, 'claude');
   if (claude.provider !== 'claude') return;
   assert.equal(claude.session.organizationId, null);
@@ -78,7 +81,7 @@ test('migrateAccounts: slot legacy incompleto (merge shallow electron-store) ric
 
 test('migrateAccounts: idempotente su un array già migrato', () => {
   const already = [defaultClaudeAccount('claude-abc')];
-  assert.equal(migrateAccounts(already, true), already);
+  assert.deepEqual(migrateAccounts(already, true), already);
 });
 
 test('migrateAccounts: valore non valido → nessun account', () => {

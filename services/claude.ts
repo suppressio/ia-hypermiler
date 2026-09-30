@@ -73,14 +73,19 @@ export async function listOrganizations(sessionKey: string, cookieHeader?: strin
   if (!sessionKey) {
     throw new Error("Claude: sessionKey mancante — collega l'account dalle Impostazioni");
   }
-  const data = await fetchJson<ClaudeOrganization[]>(`${BASE_URL}/organizations`, {
+  const data = await fetchJson<(ClaudeOrganization | null)[] | null>(`${BASE_URL}/organizations`, {
     headers: authHeaders(sessionKey, cookieHeader),
     label: 'claude.ai/api/organizations',
   });
   if (!Array.isArray(data)) {
     throw new Error('Claude: risposta inattesa da /api/organizations (formato non riconosciuto)');
   }
-  return data.map((org) => ({ id: (org.uuid || org.id) as string, name: org.name || 'Organizzazione' }));
+  // Un'organizzazione senza identificativo è scartata: prima un cast `as string`
+  // nascondeva l'undefined e la chiamata usage finiva su /organizations/undefined.
+  return data.flatMap((org) => {
+    const id = org?.uuid || org?.id;
+    return org && id ? [{ id, name: org.name || 'Organizzazione' }] : [];
+  });
 }
 
 /**
@@ -93,7 +98,7 @@ export async function listOrganizations(sessionKey: string, cookieHeader?: strin
  * dal nome. Se un campo atteso manca semplicemente non generiamo quella finestra,
  * invece di assumere un valore e mostrare un dato sbagliato.
  */
-export function buildQuotaWindows(usage: ClaudeUsageResponse): QuotaWindow[] {
+export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindow[] {
   const windows: QuotaWindow[] = [];
   // Distinto da windows.length === 0: tiene traccia se ABBIAMO riconosciuto almeno
   // una finestra dalla forma (utilization numerico), anche se poi l'abbiamo scartata
@@ -102,7 +107,7 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse): QuotaWindow[] {
   // (es. tutte 0%/non applicabili) è un risultato legittimo, non un errore.
   let recognizedAny = false;
 
-  for (const [key, entry] of Object.entries(usage || {})) {
+  for (const [key, entry] of Object.entries(usage ?? {})) {
     if (!entry || typeof entry.utilization !== 'number') continue;
     recognizedAny = true;
 
@@ -165,21 +170,21 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse): QuotaWindow[] {
 }
 
 export async function fetchUsage(credentials: ClaudeCredentials): Promise<RawAccountUsage> {
-  const { sessionKey, planTier, cookieHeader } = credentials || ({} as ClaudeCredentials);
+  const { sessionKey, planTier, cookieHeader } = credentials;
   if (!sessionKey) {
     throw new Error("Claude: sessionKey mancante — collega l'account dalle Impostazioni");
   }
 
   let organizationId = credentials.organizationId;
   if (!organizationId) {
-    const orgs = await listOrganizations(sessionKey, cookieHeader);
-    if (orgs.length === 0) {
+    const [firstOrg] = await listOrganizations(sessionKey, cookieHeader);
+    if (!firstOrg) {
       throw new Error('Claude: nessuna organizzazione trovata per questo account');
     }
-    organizationId = orgs[0].id;
+    organizationId = firstOrg.id;
   }
 
-  const usage = await fetchJson<ClaudeUsageResponse>(`${BASE_URL}/organizations/${organizationId}/usage`, {
+  const usage = await fetchJson<ClaudeUsageResponse | null>(`${BASE_URL}/organizations/${organizationId}/usage`, {
     headers: authHeaders(sessionKey, cookieHeader),
     label: 'claude.ai/api/organizations/{id}/usage',
   });

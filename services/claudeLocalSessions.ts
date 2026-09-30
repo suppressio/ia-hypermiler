@@ -57,6 +57,7 @@ export interface LocalSessionsDeps {
 // noto per questo esatto scenario (caricare un pacchetto ESM-only da codice CJS),
 // non un aggiramento accidentale. Verificato funzionante sia in Node diretto sia
 // dentro Electron 31 (lanciando `npm start`).
+// eslint-disable-next-line @typescript-eslint/no-implied-eval -- unico modo di un import() nativo da codice compilato in CommonJS, vedi commento sopra
 const dynamicImport = new Function('specifier', 'return import(specifier)') as (
   specifier: string,
 ) => Promise<typeof import('@anthropic-ai/claude-agent-sdk')>;

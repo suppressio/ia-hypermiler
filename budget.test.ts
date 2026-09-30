@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as budget from './budget';
 import type { QuotaWindow, WorkSchedule, DailyUsagePoint } from './types/index';
+import { at } from './tests/support/at';
 
 const FULL_WEEK_SCHEDULE: WorkSchedule = {
   enabled: true,
@@ -44,12 +45,6 @@ test('getDayUnit: con workSchedule.enabled=false ogni giorno vale 1, anche uno s
   const disabledSchedule: WorkSchedule = { ...FULL_WEEK_SCHEDULE, enabled: false };
   const saturday = new Date(2026, 6, 18); // sabato, 'off' in FULL_WEEK_SCHEDULE
   assert.equal(budget.getDayUnit(saturday, disabledSchedule), 1);
-});
-
-test('getDayUnit: enabled undefined (installazioni precedenti) si comporta come true', () => {
-  const legacySchedule = { days: FULL_WEEK_SCHEDULE.days, hoursPerDay: 8 } as WorkSchedule;
-  const saturday = new Date(2026, 6, 18);
-  assert.equal(budget.getDayUnit(saturday, legacySchedule), 0);
 });
 
 test('workingUnitsBetween: con calendario disattivato conta tutti i giorni di calendario', () => {
@@ -347,9 +342,9 @@ test('dailyDeltas: consumo del giorno = differenza col punto precedente, con quo
 test('dailyDeltas: reset (delta negativo) → null, giorno non lavorativo → quota ideale 0', () => {
   const history = [dayPoint('2026-07-17', 20), dayPoint('2026-07-18', 25), dayPoint('2026-07-20', 4)];
   const result = budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 20);
-  assert.equal(result[0].idealShare, 0); // sabato
-  assert.equal(result[0].delta, 5);
-  assert.equal(result[1].delta, null); // lunedì dopo un reset
+  assert.equal(at(result, 0).idealShare, 0); // sabato
+  assert.equal(at(result, 0).delta, 5);
+  assert.equal(at(result, 1).delta, null); // lunedì dopo un reset
 });
 
 test('dailyDeltas: senza pacing (unità totali 0) i delta restano, la quota ideale è null', () => {

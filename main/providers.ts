@@ -21,8 +21,8 @@ export function providerDisplayName(provider: ProviderId): string {
 
 export function isConnected(cfg: AccountConfig): boolean {
   switch (cfg.provider) {
-    case 'claude': return !!cfg.session?.sessionKey;
-    case 'copilot': return !!cfg.credentials?.token;
+    case 'claude': return !!cfg.session.sessionKey;
+    case 'copilot': return !!cfg.credentials.token;
   }
 }
 

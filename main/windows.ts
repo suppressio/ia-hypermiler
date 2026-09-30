@@ -17,10 +17,10 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
   const isTransparent = ui.windowStyle === 'transparent-digital';
 
   const win = new BrowserWindow({
-    width: ui.bounds?.width ?? 360,
-    height: ui.bounds?.height ?? 480,
+    width: ui.bounds.width,
+    height: ui.bounds.height,
     // Posizione solo se mai salvata: senza, Electron centra la finestra.
-    ...(ui.bounds?.x !== undefined && ui.bounds?.y !== undefined ? { x: ui.bounds.x, y: ui.bounds.y } : {}),
+    ...(ui.bounds.x !== undefined && ui.bounds.y !== undefined ? { x: ui.bounds.x, y: ui.bounds.y } : {}),
     minWidth: 260,
     minHeight: 320,
     // Sempre senza cornice nativa, in entrambe le skin (feedback utente — con
@@ -34,7 +34,7 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
     // flash nel colore sbagliato) — per skin "filled-dark" deve essere lo stesso
     // esadecimale di --bg-filled-dark in renderer/style.css.
     backgroundColor: isTransparent ? '#00000000' : ui.windowStyle === 'filled-dark' ? '#1a1a1a' : '#fafafa',
-    alwaysOnTop: !!ui.alwaysOnTop,
+    alwaysOnTop: ui.alwaysOnTop,
     show: true,
     icon: ICON_PATH,
     webPreferences: {
@@ -96,13 +96,5 @@ export function createSettingsWindow(existing?: BrowserWindow | null): BrowserWi
     console.error('[windows] caricamento Impostazioni fallito:', err);
   });
 
-  return win;
-}
-
-/** Applica lo stile finestra corrente: richiede ricreazione (frame/transparent non sono modificabili a runtime). */
-export function applyWindowStyle(win: BrowserWindow, _store: Store<AppSettings>): BrowserWindow {
-  // Placeholder esplicito: Electron non permette di cambiare `frame`/`transparent`
-  // su una BrowserWindow già creata. Il chiamante (main.ts) deve distruggere e
-  // ricreare la finestra con createMainWindow() quando l'utente cambia stile.
   return win;
 }

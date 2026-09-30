@@ -44,7 +44,7 @@ interface CopilotInternalQuotaSnapshot {
 interface CopilotInternalUserResponse {
   copilot_plan?: string;
   quota_reset_date?: string;
-  quota_snapshots?: Record<string, CopilotInternalQuotaSnapshot>;
+  quota_snapshots?: Record<string, CopilotInternalQuotaSnapshot | null> | null;
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -58,7 +58,7 @@ function authHeaders(token: string): Record<string, string> {
 /** Risolve lo username GitHub associato al token (usato al momento del "Connetti"). */
 export async function resolveUsername(token: string): Promise<string> {
   if (!token) throw new Error('Copilot: token mancante');
-  const data = await fetchJson<GithubUserResponse>(`${API_BASE}/user`, {
+  const data = await fetchJson<GithubUserResponse | null>(`${API_BASE}/user`, {
     headers: authHeaders(token),
     label: 'api.github.com/user',
   });
@@ -74,7 +74,7 @@ export async function resolveUsername(token: string): Promise<string> {
  * sulla richiesta): ogni item non ha una propria data, solo un `netAmount` in USD
  * (importo netto dopo eventuali sconti) — convertito in credit AI (1 credit = $0.01).
  */
-export function sumCreditsUsed(report: BillingUsageReport): number {
+export function sumCreditsUsed(report: BillingUsageReport | null): number {
   const items = report?.usageItems;
   if (!Array.isArray(items)) {
     throw new FormatDriftError(
@@ -102,16 +102,16 @@ function isHttp404(err: unknown): boolean {
  * innesca il fallback: si propaga subito, per non mascherare un problema di
  * credenziali dietro un secondo tentativo inutile.
  */
-async function fetchBillingUsageReport(username: string, token: string, year: number, month: string): Promise<BillingUsageReport> {
+async function fetchBillingUsageReport(username: string, token: string, year: number, month: string): Promise<BillingUsageReport | null> {
   const headers = authHeaders(token);
   try {
-    return await fetchJson<BillingUsageReport>(
+    return await fetchJson<BillingUsageReport | null>(
       `${API_BASE}/users/${encodeURIComponent(username)}/settings/billing/ai_credit/usage?year=${year}&month=${month}`,
       { headers, label: 'users/{username}/settings/billing/ai_credit/usage' },
     );
   } catch (err) {
     if (!isHttp404(err)) throw err;
-    return fetchJson<BillingUsageReport>(
+    return fetchJson<BillingUsageReport | null>(
       `${API_BASE}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage?year=${year}&month=${month}`,
       { headers, label: 'users/{username}/settings/billing/premium_request/usage (fallback da ai_credit/usage 404)' },
     );
@@ -166,21 +166,21 @@ async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; 
  * significa che il token fornito non è accettato da questo endpoint interno.
  */
 async function fetchCopilotInternalUsage(token: string, context: string): Promise<RawAccountUsage> {
-  let data: CopilotInternalUserResponse;
+  let data: CopilotInternalUserResponse | null;
   try {
-    data = await fetchJson<CopilotInternalUserResponse>(`${API_BASE}/copilot_internal/user`, {
+    data = await fetchJson<CopilotInternalUserResponse | null>(`${API_BASE}/copilot_internal/user`, {
       headers: authHeaders(token),
       label: 'copilot_internal/user (endpoint interno non ufficiale)',
     });
   } catch (err) {
     throw new Error(
-      `Copilot (${context}, best-effort): chiamata fallita — ${(err as Error).message}. ` +
+      `Copilot (${context}, best-effort): chiamata fallita — ${err instanceof Error ? err.message : String(err)}. ` +
       'Questo endpoint non è ufficiale: potrebbe richiedere un token Copilot diverso da un PAT standard. Vedi RESEARCH.md.',
+      { cause: err },
     );
   }
 
-  const snapshot = data?.quota_snapshots;
-  if (!snapshot) {
+  if (!data?.quota_snapshots) {
     throw new FormatDriftError(
       `Copilot (${context}, best-effort): risposta senza quota_snapshots — formato cambiato o token non valido per questo endpoint`,
       'copilot_internal/user',
@@ -189,7 +189,7 @@ async function fetchCopilotInternalUsage(token: string, context: string): Promis
   }
 
   const windows: QuotaWindow[] = [];
-  for (const [key, entry] of Object.entries(snapshot)) {
+  for (const [key, entry] of Object.entries(data.quota_snapshots)) {
     if (!entry || typeof entry.percent_remaining !== 'number') continue;
     windows.push({
       id: key,
@@ -207,7 +207,7 @@ async function fetchCopilotInternalUsage(token: string, context: string): Promis
     throw new FormatDriftError(
       `Copilot (${context}, best-effort): nessuna finestra di quota riconosciuta nella risposta`,
       'copilot_internal/user',
-      extractShape(snapshot),
+      extractShape(data.quota_snapshots),
     );
   }
 
@@ -223,7 +223,7 @@ async function fetchOrgManagedUsage({ token }: { token: string }): Promise<RawAc
 }
 
 export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAccountUsage> {
-  const { token, accountScope, manualQuota } = credentials || ({} as CopilotCredentials);
+  const { token, accountScope, manualQuota } = credentials;
   if (!token) {
     throw new Error("Copilot: token mancante — collega l'account dalle Impostazioni");
   }

@@ -19,8 +19,9 @@ export function extractShape(value: unknown, depth = 0): unknown {
   }
   if (typeof value === 'object') {
     const shape: Record<string, unknown> = {};
-    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-      shape[key] = extractShape((value as Record<string, unknown>)[key], depth + 1);
+    const record = value as Record<string, unknown>;
+    for (const key of Object.keys(record).sort()) {
+      shape[key] = extractShape(record[key], depth + 1);
     }
     return shape;
   }

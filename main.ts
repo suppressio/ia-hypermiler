@@ -4,13 +4,15 @@
 // timestamp (mai schermata bianca, vedi CLAUDE.md).
 
 import { app, dialog, ipcMain, BrowserWindow, Notification, shell, Menu, screen } from 'electron';
-import store from './store/index';
+import store, { DEFAULTS } from './store/index';
+import { normalizeSettings } from './store/normalize';
+import { isPlainRecord } from './store/merge';
 import { createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
 import { captureClaudeSession, buildClaudeCookieHeader, migrateDefaultSessionCookies } from './main/claude-auth';
 import { captureGithubOAuthToken } from './main/copilot-oauth';
 import * as providers from './main/providers';
-import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel } from './store/migrate';
+import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts } from './store/migrate';
 import * as budget from './budget';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
@@ -107,13 +109,13 @@ function recordDailyUsage(accountId: AccountId, window: QuotaWindow): void {
   if (utilization === null) return;
 
   const today = new Date().toISOString().slice(0, 10);
-  const history = store.get('history.dailyUsage') as DailyUsagePoint[];
+  const history = store.get('history').dailyUsage;
   const idx = history.findIndex((h) => h.date === today && h.accountId === accountId && h.windowId === window.id);
   const entry: DailyUsagePoint = { date: today, accountId, windowId: window.id, used: Math.round(utilization * 10) / 10 };
   if (idx >= 0) history[idx] = entry;
   else history.push(entry);
 
-  const retentionDays = (store.get('history.retentionDays') as number) || 90;
+  const retentionDays = store.get('history').retentionDays;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - retentionDays);
   const pruned = history.filter((h) => new Date(h.date) >= cutoff);
@@ -121,7 +123,7 @@ function recordDailyUsage(accountId: AccountId, window: QuotaWindow): void {
 }
 
 function getDailyHistory(accountId: AccountId, windowId: string, days: number): DailyUsagePoint[] {
-  return (store.get('history.dailyUsage') as DailyUsagePoint[])
+  return store.get('history').dailyUsage
     .filter((h) => h.accountId === accountId && h.windowId === windowId)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-days);
@@ -133,18 +135,11 @@ function getDailyHistory(accountId: AccountId, windowId: string, days: number): 
 // configurabile.
 const RECENT_SAMPLES_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 
-// store.get(...) as RecentUsageSample[] può risultare undefined anche con un
-// default configurato in store/index.ts: electron-store (conf) applica i default
-// con un merge shallow (Object.assign(defaults, fileStore)) — su un'installazione
-// che aveva già un oggetto `history` persistito PRIMA che questo campo esistesse,
-// l'intero `history` del file sovrascrive quello dei default, `recentSamples`
-// incluso, invece di fondersi campo per campo. Fallback esplicito a [] finché
-// il primo store.set qui sotto non "ripara" il file scrivendoci il campo.
 function recordRecentSample(accountId: AccountId, window: QuotaWindow): void {
   const utilization = budget.normalizedUtilization(window);
   if (utilization === null) return;
 
-  const samples = (store.get('history.recentSamples') as RecentUsageSample[] | undefined) ?? [];
+  const samples = store.get('history').recentSamples;
   samples.push({ timestamp: new Date().toISOString(), accountId, windowId: window.id, used: Math.round(utilization * 100) / 100 });
 
   const cutoff = Date.now() - RECENT_SAMPLES_MAX_AGE_MS;
@@ -153,7 +148,7 @@ function recordRecentSample(accountId: AccountId, window: QuotaWindow): void {
 }
 
 function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSample[] {
-  return ((store.get('history.recentSamples') as RecentUsageSample[] | undefined) ?? [])
+  return store.get('history').recentSamples
     .filter((s) => s.accountId === accountId && s.windowId === windowId)
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
@@ -168,8 +163,8 @@ function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSa
 // Finestra di analisi = vista scelta per il grafico (7/30gg, +1 giorno come per i
 // delta giornalieri): insight, resa e grafico guardano lo stesso periodo.
 async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | null> {
-  const windowDays = (store.get('ui.chartRange') === 'month' ? 30 : 7) + 1;
-  const cached = (store.get('localInsightsCache.claudeCode') as ClaudeLocalInsights | null | undefined) ?? null;
+  const windowDays = (store.get('ui').chartRange === 'month' ? 30 : 7) + 1;
+  const cached = store.get('localInsightsCache').claudeCode;
   const cacheAgeMs = cached ? Date.now() - new Date(cached.computedAt).getTime() : Infinity;
   // Cache precedente senza `daily` (prima del punto 4) o su un'altra finestra: ricalcola.
   if (cached && Array.isArray(cached.daily) && cached.windowDays === windowDays && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
@@ -234,7 +229,7 @@ function computeWindowSnapshot(
 ): QuotaWindowSnapshot {
   recordDailyUsage(accountId, window);
   recordRecentSample(accountId, window);
-  const chartDays = store.get('ui.chartRange') === 'month' ? 30 : 7;
+  const chartDays = store.get('ui').chartRange === 'month' ? 30 : 7;
   // chartDays + 1 punti: servono N+1 valori cumulati per N delta giornalieri
   // (grafico consumo/giorno e rating) — prima il rating ne vedeva solo N-1.
   const dailyHistory = getDailyHistory(accountId, window.id, chartDays + 1);
@@ -348,11 +343,10 @@ function computeAccountSnapshot(
   };
 }
 
-// Lettura con fallback: prima della migrazione (store/migrate.ts) `accounts` era
-// un oggetto, e un file corrotto/modificato a mano non deve far crashare il main.
+// Sempre un array valido: lo store è normalizzato all'avvio e ad ogni scrittura
+// da IPC (store/normalize.ts). Copia, perché i chiamanti la modificano.
 function getAccounts(): AccountConfig[] {
-  const raw = store.get('accounts') as unknown;
-  return Array.isArray(raw) ? (raw as AccountConfig[]) : [];
+  return [...store.get('accounts')];
 }
 
 function findAccount(id: AccountId): AccountConfig | undefined {
@@ -362,10 +356,12 @@ function findAccount(id: AccountId): AccountConfig | undefined {
 function updateAccount(id: AccountId, update: (cfg: AccountConfig) => AccountConfig): AccountConfig {
   const accounts = getAccounts();
   const idx = accounts.findIndex((a) => a.id === id);
-  if (idx < 0) throw new Error(`Account non trovato: ${id}`);
-  accounts[idx] = update(accounts[idx]);
+  const current = accounts[idx];
+  if (!current) throw new Error(`Account non trovato: ${id}`);
+  const updated = update(current);
+  accounts[idx] = updated;
   store.set('accounts', accounts);
-  return accounts[idx];
+  return updated;
 }
 
 type StampedUsage = RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string; stale: boolean; lastError?: string };
@@ -399,7 +395,7 @@ async function fetchAccountOrFallback(
     // valido "assorbe" l'errore sotto — senza questa chiamata un format-drift che
     // emerge DOPO il primo fetch riuscito non verrebbe mai rilevato.
     maybeReportFormatDrift(provider, err);
-    const lastGood = store.get(lastGoodKey) as StampedUsage | undefined;
+    const lastGood = store.get('history').lastGood?.[accountId];
     if (!lastGood) throw err; // nessun dato pregresso: propaga, il chiamante decide come mostrarlo
     return { ...lastGood, stale: true, lastError: friendlyErrorMessage(err) };
   }
@@ -421,10 +417,11 @@ async function fetchAccountOrFallback(
 // ---------------------------------------------------------------------------
 function maybeReportFormatDrift(provider: ProviderId, err: unknown): void {
   if (!(err instanceof FormatDriftError)) return;
-  if (store.get('diagnostics.autoReportFormatDrift') === false) return;
+  const diagnostics = store.get('diagnostics');
+  if (!diagnostics.autoReportFormatDrift) return;
 
   const signature = shapeSignature(err.shape);
-  const reported = (store.get('diagnostics.reportedSignatures') as Record<string, string>) || {};
+  const reported = { ...diagnostics.reportedSignatures };
   if (reported[signature]) return; // già segnalato per questa forma: non riaprire
 
   const url = buildFormatDriftIssueUrl({ provider, endpointLabel: err.endpointLabel, shape: err.shape });
@@ -466,7 +463,7 @@ function emptyAccountSnapshot(cfg: AccountConfig, lastError: string): AccountSna
 
 async function buildUsageSnapshot(): Promise<UsageSnapshot> {
   const now = new Date();
-  const workSchedule = store.get('workSchedule') as WorkSchedule;
+  const workSchedule = store.get('workSchedule');
   const snapshot: UsageSnapshot = { generatedAt: now.toISOString(), accounts: [] };
 
   for (const cfg of getAccounts()) {
@@ -494,9 +491,9 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
 // Notifiche soglia (default 80%, configurabile) — una sola volta al giorno
 // ---------------------------------------------------------------------------
 function maybeNotifyThreshold(snapshot: UsageSnapshot): void {
-  const threshold = store.get('ui.notificationThresholdPercent') as number;
+  const threshold = store.get('ui').notificationThresholdPercent;
   const todayKey = new Date().toISOString().slice(0, 10);
-  const notifiedToday = (store.get('meta.notifiedToday') as Record<string, boolean>) || {};
+  const notifiedToday = { ...store.get('meta').notifiedToday };
 
   for (const account of snapshot.accounts) {
     if (!account.criticalWindow) continue;
@@ -551,17 +548,51 @@ function redactSecretsForRenderer(settings: AppSettings): AppSettings {
 // difesa, quel segnaposto sovrascriverebbe silenziosamente sessionKey/token reali
 // nello store. I segreti cambiano SOLO tramite i flussi dedicati (accounts:connect*/
 // accounts:disconnect), mai tramite il salvataggio generico — vedi providers.preserveSecrets.
+// ---------------------------------------------------------------------------
+// Validazione input IPC: i valori arrivano dal renderer, cioè da fuori dal main —
+// i tipi TypeScript lì non garantiscono nulla a runtime. Ogni handler riceve
+// `unknown` e lo valida prima di usarlo.
+// ---------------------------------------------------------------------------
+function requireString(value: unknown, what: string): string {
+  if (typeof value !== 'string' || value.trim() === '') throw new Error(`${what}: valore non valido`);
+  return value;
+}
+
+function requireBoolean(value: unknown, what: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${what}: valore non valido`);
+  return value;
+}
+
+const PROVIDER_IDS: readonly ProviderId[] = ['claude', 'copilot'];
+const WINDOW_STYLES: readonly WindowStyle[] = ['filled', 'filled-dark', 'transparent-digital'];
+
+function requireOneOf<T extends string>(value: unknown, allowed: readonly T[], what: string): T {
+  const match = allowed.find((candidate) => candidate === value);
+  if (match === undefined) throw new Error(`${what}: valore non supportato (${String(value)})`);
+  return match;
+}
+
+// Sezioni che la finestra Impostazioni può scrivere via settings:set: history,
+// meta, cache e simili sono gestite solo dal main (schema validato: backlog Giorno 3).
+const RENDERER_EDITABLE_KEYS = new Set<string>(['accounts', 'workSchedule', 'ui', 'diagnostics', 'updates']);
+
 function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
   // `updates` è stato gestito dal main (esito dei controlli): dal renderer si
   // accetta solo la preferenza autoCheck, altrimenti una bozza aperta prima di un
   // controllo automatico ne sovrascriverebbe l'esito al primo "Salva".
   if (key === 'updates') {
-    const incoming = (typeof value === 'object' && value !== null ? value : {}) as Partial<UpdateSettings>;
+    const incoming = isPlainRecord(value) ? value : {};
     return { ...getUpdateSettings(), autoCheck: incoming.autoCheck !== false };
+  }
+  // Stesso principio per la diagnostica: le firme già segnalate le scrive solo il main.
+  if (key === 'diagnostics') {
+    const incoming = isPlainRecord(value) ? value : {};
+    return { ...store.get('diagnostics'), autoReportFormatDrift: incoming.autoReportFormatDrift !== false };
   }
   if (key !== 'accounts' || !Array.isArray(value)) return value;
   const current = getAccounts();
-  const merged = (value as AccountConfig[])
+  // Validati prima di toccarli: dal renderer arriva un valore qualunque.
+  const merged = normalizeAccounts(value)
     .map((incoming) => providers.preserveSecrets(incoming, current.find((c) => c.id === incoming.id)))
     .filter((a): a is AccountConfig => a !== null);
   // Un account presente nello store ma assente dalla patch non viene rimosso qui:
@@ -579,8 +610,7 @@ function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
 // così la finestra Impostazioni e il tray lo leggono come ogni altra impostazione.
 // ---------------------------------------------------------------------------
 function getUpdateSettings(): UpdateSettings {
-  const defaults: UpdateSettings = { autoCheck: true, lastCheckedAt: null, lastError: null, available: null, notifiedVersion: null };
-  return { ...defaults, ...((store.get('updates') as Partial<UpdateSettings> | undefined) ?? {}) };
+  return store.get('updates');
 }
 
 function openSettingsWindow(): void {
@@ -642,10 +672,16 @@ function broadcastSettings(): void {
 function registerIpcHandlers(): void {
   ipcMain.handle('settings:get', () => redactSecretsForRenderer(store.store));
 
-  ipcMain.handle('settings:set', (_event: IpcMainInvokeEvent, patch: Partial<AppSettings>) => {
+  ipcMain.handle('settings:set', (_event: IpcMainInvokeEvent, patch: unknown) => {
+    if (!isPlainRecord(patch)) throw new Error('Impostazioni: patch non valida');
+    let next: AppSettings = store.store;
     for (const [key, value] of Object.entries(patch)) {
-      store.set(key, preserveRealSecretsOnWrite(key, value));
+      if (!RENDERER_EDITABLE_KEYS.has(key)) throw new Error(`Impostazioni: sezione non modificabile dal renderer: ${key}`);
+      next = { ...next, [key]: preserveRealSecretsOnWrite(key, value) };
     }
+    // Stessa normalizzazione dell'avvio (store/normalize.ts): un valore del tipo
+    // sbagliato o un campo mancante nella patch non arriva mai nello store.
+    store.store = normalizeSettings(next, DEFAULTS);
     const redacted = redactSecretsForRenderer(store.store);
     // Propaga il cambio al widget se già aperto: alcuni campi (es. colore accento)
     // non hanno un IPC dedicato come ui.windowStyle/ui.alwaysOnTop e altrimenti
@@ -662,7 +698,8 @@ function registerIpcHandlers(): void {
     settingsWindow = createSettingsWindow(settingsWindow);
   });
 
-  ipcMain.handle('window:setAlwaysOnTop', (_event: IpcMainInvokeEvent, value: boolean) => {
+  ipcMain.handle('window:setAlwaysOnTop', (_event: IpcMainInvokeEvent, rawValue: unknown) => {
+    const value = requireBoolean(rawValue, 'Sempre in primo piano');
     store.set('ui.alwaysOnTop', value);
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(value, 'floating');
     // Propaga anche alla finestra Impostazioni se aperta (es. attivato dal pin
@@ -674,7 +711,8 @@ function registerIpcHandlers(): void {
     return value;
   });
 
-  ipcMain.handle('window:setStyle', (_event: IpcMainInvokeEvent, style: WindowStyle) => {
+  ipcMain.handle('window:setStyle', (_event: IpcMainInvokeEvent, rawStyle: unknown) => {
+    const style = requireOneOf(rawStyle, WINDOW_STYLES, 'Stile finestra');
     store.set('ui.windowStyle', style);
     const wasVisible = mainWindow ? mainWindow.isVisible() : true;
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
@@ -692,8 +730,8 @@ function registerIpcHandlers(): void {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
   });
 
-  ipcMain.handle('accounts:add', (_event: IpcMainInvokeEvent, provider: ProviderId) => {
-    if (provider !== 'claude' && provider !== 'copilot') throw new Error(`Provider non supportato: ${String(provider)}`);
+  ipcMain.handle('accounts:add', (_event: IpcMainInvokeEvent, rawProvider: unknown) => {
+    const provider = requireOneOf(rawProvider, PROVIDER_IDS, 'Provider');
     const accounts = getAccounts();
     const id = `${provider}-${randomUUID().slice(0, 8)}`;
     accounts.push(defaultAccountFor(provider, id, nextAccountLabel(provider, accounts)));
@@ -702,7 +740,8 @@ function registerIpcHandlers(): void {
     return id;
   });
 
-  ipcMain.handle('accounts:remove', async (_event: IpcMainInvokeEvent, id: AccountId) => {
+  ipcMain.handle('accounts:remove', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
+    const id = requireString(rawId, 'Account');
     const cfg = findAccount(id);
     if (!cfg) return;
     // Disconnect completo prima di togliere la riga: per Claude cancella anche la
@@ -713,7 +752,8 @@ function registerIpcHandlers(): void {
     runDetached('refresh usage', refreshAndBroadcast());
   });
 
-  ipcMain.handle('accounts:connectClaude', async (_event: IpcMainInvokeEvent, id: AccountId) => {
+  ipcMain.handle('accounts:connectClaude', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
+    const id = requireString(rawId, 'Account');
     const cfg = findAccount(id);
     if (!cfg || cfg.provider !== 'claude') throw new Error(`Account Claude non trovato: ${id}`);
     const { sessionKey, capturedAt } = await captureClaudeSession(cfg.partition);
@@ -733,7 +773,9 @@ function registerIpcHandlers(): void {
     return { organizationId };
   });
 
-  ipcMain.handle('accounts:connectCopilot', async (_event: IpcMainInvokeEvent, id: AccountId, token: string) => {
+  ipcMain.handle('accounts:connectCopilot', async (_event: IpcMainInvokeEvent, rawId: unknown, rawToken: unknown) => {
+    const id = requireString(rawId, 'Account');
+    const token = requireString(rawToken, 'Token').trim();
     const username = await copilotService.resolveUsername(token);
     updateAccount(id, (a) => (a.provider === 'copilot'
       ? { ...a, enabled: true, authMethod: 'pat', credentials: { token, username } }
@@ -746,7 +788,13 @@ function registerIpcHandlers(): void {
   // Via sperimentale alternativa al PAT incollato a mano — vedi CLAUDE.md/RESEARCH.md
   // §2.2: ipotesi testata e confutata per il seat aziendale, mantenuta come
   // alternativa al PAT per il piano personale.
-  ipcMain.handle('accounts:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, id: AccountId, payload: { clientId: string; clientSecret: string }) => {
+  ipcMain.handle('accounts:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, rawId: unknown, rawPayload: unknown) => {
+    const id = requireString(rawId, 'Account');
+    const payloadRecord = isPlainRecord(rawPayload) ? rawPayload : {};
+    const payload = {
+      clientId: requireString(payloadRecord.clientId, 'Client ID'),
+      clientSecret: requireString(payloadRecord.clientSecret, 'Client Secret'),
+    };
     const { accessToken } = await captureGithubOAuthToken(payload);
     const username = await copilotService.resolveUsername(accessToken);
     updateAccount(id, (a) => (a.provider === 'copilot'
@@ -772,7 +820,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
   ipcMain.handle('updates:openReleaseNotes', () => openTrustedUpdateUrl((a) => a.releaseUrl));
 
-  ipcMain.handle('accounts:disconnect', async (_event: IpcMainInvokeEvent, id: AccountId) => {
+  ipcMain.handle('accounts:disconnect', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
+    const id = requireString(rawId, 'Account');
     const cfg = findAccount(id);
     if (!cfg) return;
     const cleared = await providers.disconnect(cfg);
@@ -787,7 +836,7 @@ function registerIpcHandlers(): void {
 // dell'account Claude migrato (id 'claude', vedi store/migrate.ts) per non
 // costringere a rifare il login dopo l'aggiornamento.
 async function migrateLegacyClaudeCookies(): Promise<void> {
-  if (store.get('meta.claudeCookiesMigrated') === true) return;
+  if (store.get('meta').claudeCookiesMigrated === true) return;
   const legacy = findAccount('claude');
   try {
     if (legacy?.provider === 'claude') {

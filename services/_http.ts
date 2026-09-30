@@ -22,11 +22,10 @@ export async function fetchJson<T = unknown>(url: string, options: FetchJsonOpti
   try {
     response = await fetch(url, { headers, signal: controller.signal });
   } catch (err) {
-    const error = err as Error;
-    if (error.name === 'AbortError') {
-      throw new Error(`Timeout (${timeoutMs}ms) chiamando ${label}`);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Timeout (${timeoutMs}ms) chiamando ${label}`, { cause: err });
     }
-    throw new Error(`Errore di rete chiamando ${label}: ${error.message}`);
+    throw new Error(`Errore di rete chiamando ${label}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   } finally {
     clearTimeout(timer);
   }
@@ -42,7 +41,7 @@ export async function fetchJson<T = unknown>(url: string, options: FetchJsonOpti
   try {
     return (await response.json()) as T;
   } catch (err) {
-    throw new Error(`Risposta non JSON valida da ${label}: ${(err as Error).message}`);
+    throw new Error(`Risposta non JSON valida da ${label}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
 }
 

@@ -24,6 +24,8 @@ export default tseslint.config(
     rules: {
       // Numeri e booleani nei template string sono voluti (messaggi, etichette UI).
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true, allowBoolean: true }],
+      // Convenzione `_nome` = inutilizzato di proposito (già accettata da tsc).
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       // `test()`/`describe()` di node:test restituiscono una promise gestita dal runner.
       '@typescript-eslint/no-floating-promises': ['error', {
         allowForKnownSafeCalls: [{ from: 'package', package: 'node:test', name: ['test', 'describe', 'it'] }],

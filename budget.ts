@@ -34,9 +34,10 @@ const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
  * "attivo", preservando il comportamento già in uso.
  */
 export function getDayUnit(date: Date, workSchedule: WorkSchedule): number {
-  if (workSchedule?.enabled === false) return 1;
+  if (!workSchedule.enabled) return 1;
   const key = DAY_KEYS[date.getDay()];
-  const status = workSchedule?.days?.[key] ?? 'off';
+  if (!key) return 0;
+  const status = workSchedule.days[key];
   if (status === 'full') return 1;
   if (status === 'half') return 0.5;
   return 0;
@@ -63,7 +64,7 @@ export function workingUnitsBetween(startDate: Date | string, endDate: Date | st
 /** Utilizzo normalizzato a percentuale 0-100, o null se non calcolabile (count senza total). */
 export function normalizedUtilization(win: QuotaWindow): number | null {
   if (win.unit === 'percentage') return win.used;
-  if (win.unit === 'count' && typeof win.total === 'number' && win.total > 0) {
+  if (typeof win.total === 'number' && win.total > 0) {
     return (win.used / win.total) * 100;
   }
   return null;
@@ -71,13 +72,13 @@ export function normalizedUtilization(win: QuotaWindow): number | null {
 
 /** Sceglie la finestra di quota più critica (utilizzo normalizzato più alto). */
 export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | null {
-  if (!Array.isArray(quotaWindows) || quotaWindows.length === 0) return null;
-  const withUtilization = quotaWindows
+  const [first] = quotaWindows;
+  if (!first) return null;
+  const [top] = quotaWindows
     .map((w) => ({ window: w, utilization: normalizedUtilization(w) }))
-    .filter((x): x is { window: QuotaWindow; utilization: number } => x.utilization !== null);
-  if (withUtilization.length === 0) return quotaWindows[0];
-  withUtilization.sort((a, b) => b.utilization - a.utilization);
-  return withUtilization[0].window;
+    .filter((x): x is { window: QuotaWindow; utilization: number } => x.utilization !== null)
+    .sort((a, b) => b.utilization - a.utilization);
+  return top ? top.window : first;
 }
 
 export interface PeriodContext {
@@ -195,7 +196,8 @@ export function instantaneousRate(
   if (relevant.length < 2) return null;
 
   const oldest = relevant[0];
-  const latest = relevant[relevant.length - 1];
+  const latest = relevant.at(-1);
+  if (!oldest || !latest) return null;
   const elapsedHours = (latest.time - oldest.time) / (3600 * 1000);
   if (elapsedHours < 5 / 60) return null;
 
@@ -280,14 +282,16 @@ export function dailyDeltas(
   if (!Array.isArray(dailyHistory)) return [];
   const sorted = [...dailyHistory].sort((a, b) => a.date.localeCompare(b.date));
   const result: DailyDelta[] = [];
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const curr = sorted[i];
-    const rawDelta = curr.used - prev.used;
-    const idealShare = totalPeriodWorkingUnits > 0
-      ? round2(getDayUnit(new Date(curr.date), workSchedule) * (100 / totalPeriodWorkingUnits))
-      : null;
-    result.push({ date: curr.date, delta: rawDelta < 0 ? null : round2(rawDelta), idealShare });
+  let prev: DailyUsagePoint | undefined;
+  for (const curr of sorted) {
+    if (prev) {
+      const rawDelta = curr.used - prev.used;
+      const idealShare = totalPeriodWorkingUnits > 0
+        ? round2(getDayUnit(new Date(curr.date), workSchedule) * (100 / totalPeriodWorkingUnits))
+        : null;
+      result.push({ date: curr.date, delta: rawDelta < 0 ? null : round2(rawDelta), idealShare });
+    }
+    prev = curr;
   }
   return result;
 }
@@ -309,8 +313,7 @@ export function deltaStats(deltas: DailyDelta[]): DeltaStats {
   let streakUnderBudget: number | null = null;
   if (valid.some((d) => d.idealShare !== null)) {
     streakUnderBudget = 0;
-    for (let i = valid.length - 1; i >= 0; i--) {
-      const { delta, idealShare } = valid[i];
+    for (const { delta, idealShare } of [...valid].reverse()) {
       if (idealShare !== null && delta <= idealShare) streakUnderBudget += 1;
       else break;
     }
@@ -376,6 +379,16 @@ function pairDays(localDaily: LocalDailyTokens[], deltas: DailyDelta[]): PairedD
   return paired.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function medianOf(values: number[]): number | null {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const upper = sorted[mid];
+  if (upper === undefined) return null;
+  if (sorted.length % 2) return upper;
+  const lower = sorted[mid - 1];
+  return lower === undefined ? upper : (lower + upper) / 2;
+}
+
 function yieldOf(days: PairedDay[]): number | null {
   const totalDelta = days.reduce((s, d) => s + d.delta, 0);
   if (totalDelta <= 0) return null;
@@ -417,9 +430,8 @@ export function consumptionCause(localDaily: LocalDailyTokens[], deltas: DailyDe
   const paired = pairDays(localDaily, deltas);
   if (paired.length < CAUSE_MIN_DAYS) return null;
 
-  const sortedDeltas = paired.map((d) => d.delta).sort((a, b) => a - b);
-  const mid = Math.floor(sortedDeltas.length / 2);
-  const median = sortedDeltas.length % 2 ? sortedDeltas[mid] : (sortedDeltas[mid - 1] + sortedDeltas[mid]) / 2;
+  const median = medianOf(paired.map((d) => d.delta));
+  if (median === null) return null;
   const high = paired.filter((d) => d.delta > median);
   const low = paired.filter((d) => d.delta <= median);
   if (high.length === 0 || low.length === 0) return null;
@@ -538,8 +550,10 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
     );
   }
 
-  if (candidates.length === 0) return NO_TIP_MESSAGE;
-  return candidates[Math.floor(random() * candidates.length)];
+  // Indice limitato all'ultimo candidato: un random iniettato che restituisce 1
+  // (Math.random() no, ma i test sì) avrebbe prodotto undefined.
+  const index = Math.min(candidates.length - 1, Math.floor(random() * candidates.length));
+  return candidates[index] ?? NO_TIP_MESSAGE;
 }
 
 /**
@@ -549,7 +563,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
  * davvero una ricorrenza più complessa del semplice giorno del mese).
  */
 export function resolveRenewalDate(renewalRule: RenewalRule, referenceDate: Date = new Date()): Date {
-  if (renewalRule?.type === 'dayOfMonth' && typeof renewalRule.day === 'number') {
+  if (renewalRule.type === 'dayOfMonth' && typeof renewalRule.day === 'number') {
     const day = renewalRule.day;
     let candidate = setDate(startOfDay(new Date(referenceDate)), day);
     if (!isBefore(referenceDate, candidate)) {
@@ -557,5 +571,5 @@ export function resolveRenewalDate(renewalRule: RenewalRule, referenceDate: Date
     }
     return candidate;
   }
-  throw new Error(`resolveRenewalDate: renewalRule.type "${renewalRule?.type}" non supportato`);
+  throw new Error(`resolveRenewalDate: renewalRule.type "${renewalRule.type}" non supportato`);
 }

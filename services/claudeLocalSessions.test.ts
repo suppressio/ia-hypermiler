@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { computeClaudeLocalInsights } from './claudeLocalSessions';
 import type { LocalSessionsDeps } from './claudeLocalSessions';
 import type { SDKSessionInfo, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
+import { at } from '../tests/support/at';
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -90,7 +91,7 @@ test('computeClaudeLocalInsights tronca topTools a 5 e ordina per frequenza', as
   const deps = makeDeps([s], { s1: messages });
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result?.topTools.length, 5);
-  assert.equal(result?.topTools[0].name, 'Bash'); // 3 occorrenze, il più frequente
+  assert.equal(at(result?.topTools, 0).name, 'Bash'); // 3 occorrenze, il più frequente
 });
 
 test('computeClaudeLocalInsights salta una sessione illeggibile senza interrompere le altre', async () => {

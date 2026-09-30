@@ -10,6 +10,7 @@ import type {
   CopilotAccountSettings,
   ProviderId,
 } from '../types/index';
+import { isPlainRecord, mergeWithDefaults } from './merge';
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   claude: 'Claude',
@@ -69,25 +70,6 @@ export function nextAccountLabel(provider: ProviderId, existing: AccountConfig[]
   return `${base} ${n}`;
 }
 
-type PlainRecord = Record<string, unknown>;
-
-function isPlainRecord(value: unknown): value is PlainRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-// Merge a un livello sopra i default del provider: lo slot legacy può non avere
-// campi aggiunti dopo il primo rilascio (merge shallow di electron-store, vedi
-// nota in store/index.ts), e i sotto-oggetti annidati vanno fusi a loro volta.
-function mergeOver<T extends object>(defaults: T, legacy: PlainRecord): T {
-  const out: PlainRecord = { ...(defaults as PlainRecord) };
-  for (const [key, value] of Object.entries(legacy)) {
-    if (value === undefined) continue;
-    const base = out[key];
-    out[key] = isPlainRecord(base) && isPlainRecord(value) ? { ...base, ...value } : value;
-  }
-  return out as T;
-}
-
 /**
  * Converte `accounts` in `AccountConfig[]`. Idempotente: un array già migrato
  * torna com'è. Gli account legacy mantengono id `'claude'`/`'copilot'` — gli
@@ -97,7 +79,7 @@ function mergeOver<T extends object>(defaults: T, legacy: PlainRecord): T {
  * un account: la tabella in Impostazioni parte vuota invece che con righe fantasma.
  */
 export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled: boolean): AccountConfig[] {
-  if (Array.isArray(rawAccounts)) return rawAccounts as AccountConfig[];
+  if (Array.isArray(rawAccounts)) return normalizeAccounts(rawAccounts);
   if (!isPlainRecord(rawAccounts)) return [];
 
   const result: AccountConfig[] = [];
@@ -106,7 +88,7 @@ export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled
   if (isPlainRecord(claude)) {
     const session = isPlainRecord(claude.session) ? claude.session : {};
     if (claude.enabled === true || typeof session.sessionKey === 'string') {
-      const migrated = mergeOver(defaultClaudeAccount('claude'), claude);
+      const migrated = mergeWithDefaults(defaultClaudeAccount('claude'), claude) as ClaudeAccountSettings;
       migrated.id = 'claude';
       migrated.provider = 'claude';
       migrated.partition = claudePartitionFor('claude');
@@ -119,7 +101,7 @@ export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled
   if (isPlainRecord(copilot)) {
     const credentials = isPlainRecord(copilot.credentials) ? copilot.credentials : {};
     if (copilot.enabled === true || typeof credentials.token === 'string') {
-      const migrated = mergeOver(defaultCopilotAccount('copilot'), copilot);
+      const migrated = mergeWithDefaults(defaultCopilotAccount('copilot'), copilot) as CopilotAccountSettings;
       migrated.id = 'copilot';
       migrated.provider = 'copilot';
       result.push(migrated);
@@ -142,4 +124,27 @@ export function enforceSingleLocalInsights(accounts: AccountConfig[]): AccountCo
     seen = true;
     return a;
   });
+}
+
+/**
+ * Registro account su disco (già nel formato ad array) → AccountConfig[] validi:
+ * ogni voce è completata con i default del suo provider (campi aggiunti in versioni
+ * successive, tipi sbagliati), le voci senza id o con un provider sconosciuto sono
+ * scartate. `provider`, `id` e (per Claude) `partition` non si possono cambiare dal
+ * contenuto su disco: la partition deriva sempre dall'id.
+ */
+export function normalizeAccounts(rawAccounts: unknown[]): AccountConfig[] {
+  const result: AccountConfig[] = [];
+  for (const raw of rawAccounts) {
+    if (!isPlainRecord(raw) || typeof raw.id !== 'string' || raw.id === '') continue;
+    const id = raw.id;
+    if (raw.provider === 'claude') {
+      const cfg = mergeWithDefaults(defaultClaudeAccount(id), raw) as ClaudeAccountSettings;
+      result.push({ ...cfg, id, provider: 'claude', partition: claudePartitionFor(id) });
+    } else if (raw.provider === 'copilot') {
+      const cfg = mergeWithDefaults(defaultCopilotAccount(id), raw) as CopilotAccountSettings;
+      result.push({ ...cfg, id, provider: 'copilot' });
+    }
+  }
+  return enforceSingleLocalInsights(result);
 }

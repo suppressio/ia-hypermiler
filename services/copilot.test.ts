@@ -5,6 +5,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import * as copilotService from './copilot';
+import { at } from '../tests/support/at';
 
 type FetchMock = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -64,9 +65,9 @@ test('fetchUsage (personale) somma il report in credit e applica manualQuota com
   const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', manualQuota: 300 });
 
   assert.equal(result.quotaWindows.length, 1);
-  assert.equal(result.quotaWindows[0].id, 'ai_credits');
-  assert.equal(result.quotaWindows[0].used, 42);
-  assert.equal(result.quotaWindows[0].total, 300);
+  assert.equal(at(result.quotaWindows, 0).id, 'ai_credits');
+  assert.equal(at(result.quotaWindows, 0).used, 42);
+  assert.equal(at(result.quotaWindows, 0).total, 300);
 });
 
 test('fetchUsage (personale) ripiega su premium_request/usage se ai_credit/usage risponde 404', async () => {
@@ -79,7 +80,7 @@ test('fetchUsage (personale) ripiega su premium_request/usage se ai_credit/usage
 
   const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
 
-  assert.equal(result.quotaWindows[0].used, 30);
+  assert.equal(at(result.quotaWindows, 0).used, 30);
 });
 
 test('fetchUsage (personale) ripiega su copilot_internal/user se anche premium_request/usage risponde 404', async () => {
@@ -101,7 +102,7 @@ test('fetchUsage (personale) ripiega su copilot_internal/user se anche premium_r
   const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
 
   assert.equal(result.planTier, 'individual');
-  assert.equal(result.quotaWindows[0].used, 20); // 100 - 80
+  assert.equal(at(result.quotaWindows, 0).used, 20); // 100 - 80
 });
 
 test('fetchUsage (personale) non ripiega su premium_request/usage per errori diversi da 404', async () => {

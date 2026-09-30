@@ -46,8 +46,7 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
 
   const buildMenu = () => {
     const ui = store.get('ui');
-    // Fallback: `updates` può mancare su uno store scritto prima dell'issue #5.
-    const available = store.get('updates')?.available ?? null;
+    const available = store.get('updates').available;
     return Menu.buildFromTemplate([
       ...(available
         ? [{ label: `Aggiornamento disponibile (${available.version})…`, click: openSettings }, { type: 'separator' as const }]
@@ -59,7 +58,7 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
       {
         label: 'Sempre in primo piano',
         type: 'checkbox',
-        checked: !!ui.alwaysOnTop,
+        checked: ui.alwaysOnTop,
         click: (menuItem: MenuItem) => {
           store.set('ui.alwaysOnTop', menuItem.checked);
           const win = getMainWindow();

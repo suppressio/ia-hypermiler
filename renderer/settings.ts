@@ -39,16 +39,24 @@ function getPath(obj: unknown, path: string): unknown {
 
 function setPath(obj: PlainRecord, path: string, value: unknown): void {
   const keys = path.split('.');
+  const last = keys.pop();
+  if (last === undefined) return;
   let cursor: PlainRecord = obj;
-  for (let i = 0; i < keys.length - 1; i++) {
-    if (!isPlainRecord(cursor[keys[i]])) cursor[keys[i]] = {};
-    cursor = cursor[keys[i]] as PlainRecord;
+  for (const key of keys) {
+    const next = cursor[key];
+    if (isPlainRecord(next)) {
+      cursor = next;
+    } else {
+      const created: PlainRecord = {};
+      cursor[key] = created;
+      cursor = created;
+    }
   }
-  cursor[keys[keys.length - 1]] = value;
+  cursor[last] = value;
 }
 
 function topLevelKey(path: string): string {
-  return path.split('.')[0];
+  return path.split('.')[0] ?? path;
 }
 
 function readFieldValue(el: HTMLInputElement | HTMLSelectElement): unknown {
