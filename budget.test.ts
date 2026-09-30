@@ -330,3 +330,62 @@ test('generateDailyTip sceglie tra i candidati applicabili in base al random ini
   assert.match(first, /%\/h|Rating/);
   assert.match(second, /%\/h|Rating/);
 });
+
+// ---------------------------------------------------------------------------
+// dailyDeltas / deltaStats / windowVerdict — grafico "consumo/giorno vs budget"
+// e lista finestre con verdetto (EVOLUTION.md punto 1)
+// ---------------------------------------------------------------------------
+
+test('dailyDeltas: consumo del giorno = differenza col punto precedente, con quota ideale', () => {
+  const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15), dayPoint('2026-07-15', 17)];
+  assert.deepEqual(budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 20), [
+    { date: '2026-07-14', delta: 5, idealShare: 5 },
+    { date: '2026-07-15', delta: 2, idealShare: 5 },
+  ]);
+});
+
+test('dailyDeltas: reset (delta negativo) → null, giorno non lavorativo → quota ideale 0', () => {
+  const history = [dayPoint('2026-07-17', 20), dayPoint('2026-07-18', 25), dayPoint('2026-07-20', 4)];
+  const result = budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 20);
+  assert.equal(result[0].idealShare, 0); // sabato
+  assert.equal(result[0].delta, 5);
+  assert.equal(result[1].delta, null); // lunedì dopo un reset
+});
+
+test('dailyDeltas: senza pacing (unità totali 0) i delta restano, la quota ideale è null', () => {
+  const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 12)];
+  assert.deepEqual(budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 0), [{ date: '2026-07-14', delta: 2, idealShare: null }]);
+});
+
+test('deltaStats: picco/media sui delta (non sul cumulato) e streak entro la quota ideale', () => {
+  const stats = budget.deltaStats([
+    { date: 'a', delta: 8, idealShare: 5 },
+    { date: 'b', delta: null, idealShare: 5 },
+    { date: 'c', delta: 2, idealShare: 5 },
+    { date: 'd', delta: 4, idealShare: 5 },
+  ]);
+  assert.deepEqual(stats, { peak: 8, avg: 4.67, streakUnderBudget: 2 });
+});
+
+test('deltaStats: nessun dato → tutto null; senza pacing lo streak è null', () => {
+  assert.deepEqual(budget.deltaStats([]), { peak: null, avg: null, streakUnderBudget: null });
+  assert.equal(budget.deltaStats([{ date: 'a', delta: 3, idealShare: null }]).streakUnderBudget, null);
+});
+
+test('windowVerdict: esaurita, a rischio (autonomia o proiezione), in linea, senza pacing', () => {
+  const base = { projectedUsage: 80, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 12 };
+  assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(100) }), { kind: 'exhausted' });
+  assert.deepEqual(
+    budget.windowVerdict({ ...base, window: pctWindow(60), estimatedAutonomyWorkingDays: 3.04 }),
+    { kind: 'at-risk', autonomyWorkingDays: 3 },
+  );
+  assert.deepEqual(
+    budget.windowVerdict({ window: pctWindow(60), projectedUsage: 130.44, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null }),
+    { kind: 'at-risk', projectedUsage: 130.4 },
+  );
+  assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(60) }), { kind: 'on-track' });
+  assert.deepEqual(
+    budget.windowVerdict({ window: pctWindow(60), projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null }),
+    { kind: 'no-pacing' },
+  );
+});

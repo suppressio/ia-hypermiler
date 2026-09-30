@@ -212,7 +212,9 @@ function computeWindowSnapshot(
   recordDailyUsage(accountId, window);
   recordRecentSample(accountId, window);
   const chartDays = store.get('ui.chartRange') === 'month' ? 30 : 7;
-  const dailyHistory = getDailyHistory(accountId, window.id, chartDays);
+  // chartDays + 1 punti: servono N+1 valori cumulati per N delta giornalieri
+  // (grafico consumo/giorno e rating) — prima il rating ne vedeva solo N-1.
+  const dailyHistory = getDailyHistory(accountId, window.id, chartDays + 1);
   const recentSamples = getRecentSamples(accountId, window.id);
 
   const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, now);
@@ -241,10 +243,19 @@ function computeWindowSnapshot(
   const efficiencyRating = ratingAvailable
     ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, chartDays)
     : null;
+  // Stesso gate del rating: su una finestra di poche ore un delta "giornaliero"
+  // attraversa più reset e non misura nulla. Senza pacing i delta restano, ma
+  // senza quota ideale (idealShare null).
+  const dailyDeltasForWindow = window.periodType === 'rolling-hours'
+    ? []
+    : budget.dailyDeltas(dailyHistory, workSchedule, pacingAvailable ? totalPeriodWorkingUnits : 0);
 
   return {
     window,
     dailyHistory,
+    dailyDeltas: dailyDeltasForWindow,
+    deltaStats: budget.deltaStats(dailyDeltasForWindow),
+    verdict: budget.windowVerdict({ window, projectedUsage, workingDaysUntilReset, estimatedAutonomyWorkingDays }),
     efficiencyIndex,
     projectedUsage,
     daysUntilReset,

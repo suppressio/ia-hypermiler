@@ -253,19 +253,39 @@ body.style-transparent-digital .account-tabs button.active {
 }
 .account-tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-/* Seconda riga di tab (finestre di quota dell'account attivo, es. limite standard +
-   credito extra Claude) — stessa interazione delle tab account sopra, solo più
-   compatta e con etichette troncate: alcune finestre hanno label lunghe (es. campi
-   non documentati, vedi services/claude.ts) — il testo completo resta nel title. */
-.window-tabs { margin-top: -4px; }
-.window-tabs button {
+/* Lista finestre di quota dell'account attivo (EVOLUTION.md punto 1): una riga
+   per finestra con mini-barra e verdetto calcolato dall'app, al posto delle tab
+   che affiancavano solo le metriche del provider. Label troncate: alcune finestre
+   hanno nomi lunghi (campi non documentati, vedi services/claude.ts) — il testo
+   completo resta nel title. */
+.window-list { display: flex; flex-direction: column; gap: 3px; margin: -4px 0 10px; }
+.window-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) 48px 38px;
+  grid-template-areas: "dot label bar pct" ". verdict verdict verdict";
+  align-items: center;
+  column-gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  padding: 3px 6px;
   font-size: 11px;
-  padding: 3px 8px;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
 }
+.window-row.active { border-color: var(--accent); }
+.window-row-dot { grid-area: dot; width: 8px; height: 8px; border-radius: 50%; border: 1px solid currentColor; }
+.window-row.active .window-row-dot { background: var(--accent); border-color: var(--accent); }
+.window-row-label { grid-area: label; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.window-row-bar { grid-area: bar; height: 5px; border-radius: 3px; background: color-mix(in srgb, currentColor 15%, transparent); overflow: hidden; }
+.window-row-bar > span { display: block; height: 100%; background: var(--accent); }
+.window-row-pct { grid-area: pct; text-align: right; font-variant-numeric: tabular-nums; }
+.window-row-verdict { grid-area: verdict; opacity: 0.7; font-size: 10px; }
+.window-row.verdict-at-risk .window-row-verdict,
+.window-row.verdict-exhausted .window-row-verdict { color: var(--warning); opacity: 1; }
+.window-row.verdict-exhausted .window-row-bar > span,
+.window-row.verdict-at-risk .window-row-bar > span { background: var(--warning); }
 
 .current-indicator { text-align: center; margin: 8px 0 16px; }
 .current-value { font-size: 42px; font-weight: 700; line-height: 1; }
@@ -282,7 +302,9 @@ body.style-transparent-digital .account-tabs button.active {
 .instant-gauge { width: 100%; height: 20px; }
 
 .chart-section { margin-bottom: 16px; }
-.chart-header { font-size: 12px; opacity: 0.75; margin-bottom: 6px; }
+.chart-header { display: flex; justify-content: space-between; font-size: 12px; opacity: 0.75; margin-bottom: 6px; }
+.chart-ideal { font-size: 11px; }
+.chart-note { font-size: 11px; opacity: 0.7; padding-top: 30px; text-align: center; }
 .chart { width: 100%; height: 90px; }
 
 .metrics-grid {

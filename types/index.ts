@@ -86,6 +86,27 @@ export interface EfficiencyRating {
   avgRatio: number;
 }
 
+/** Consumo di un giorno vs quota ideale — vedi budget.dailyDeltas. */
+export interface DailyDelta {
+  date: string;
+  delta: number | null;
+  idealShare: number | null;
+}
+
+/** Statistiche sul consumo giornaliero — vedi budget.deltaStats. */
+export interface DeltaStats {
+  peak: number | null;
+  avg: number | null;
+  streakUnderBudget: number | null;
+}
+
+/** Verdetto sintetico di una finestra — vedi budget.windowVerdict. */
+export interface WindowVerdict {
+  kind: 'exhausted' | 'at-risk' | 'on-track' | 'no-pacing';
+  autonomyWorkingDays?: number;
+  projectedUsage?: number;
+}
+
 /**
  * Metriche calcolate per UNA finestra di quota (vedi main.ts, computeWindowSnapshot).
  * Un account può avere più finestre attive contemporaneamente (es. Claude: limite
@@ -95,6 +116,10 @@ export interface EfficiencyRating {
 export interface QuotaWindowSnapshot {
   window: QuotaWindow;
   dailyHistory: DailyUsagePoint[];
+  // Consumo giornaliero vs quota ideale (grafico del widget) e relative statistiche.
+  dailyDeltas: DailyDelta[];
+  deltaStats: DeltaStats;
+  verdict: WindowVerdict;
   efficiencyIndex: number | null;
   projectedUsage: number | null;
   daysUntilReset: number | null;

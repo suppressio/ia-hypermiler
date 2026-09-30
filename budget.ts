@@ -8,7 +8,7 @@
 // Tutte le funzioni sono pure (nessun I/O), testabili da terminale/test runner.
 
 import { addDays, differenceInCalendarDays, isBefore, startOfDay, setDate, addMonths } from 'date-fns';
-import type { QuotaWindow, WorkSchedule, RenewalRule, DailyUsagePoint, EfficiencyRating } from './types/index';
+import type { QuotaWindow, WorkSchedule, RenewalRule, DailyUsagePoint, EfficiencyRating, DailyDelta, DeltaStats, WindowVerdict } from './types/index';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
@@ -237,16 +237,8 @@ export function efficiencyRating(
   const sorted = [...dailyHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-(days + 1));
   const ratios: number[] = [];
 
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const curr = sorted[i];
-    const dayUnit = getDayUnit(new Date(curr.date), workSchedule);
-    if (dayUnit <= 0) continue;
-
-    const delta = curr.used - prev.used;
-    if (delta < 0) continue;
-
-    const idealShare = dayUnit * (100 / totalPeriodWorkingUnits);
+  for (const { delta, idealShare } of dailyDeltas(sorted, workSchedule, totalPeriodWorkingUnits)) {
+    if (idealShare === null || idealShare <= 0 || delta === null) continue;
     const ratio = delta === 0 ? EFFICIENCY_RATING_MAX_RATIO : Math.min(EFFICIENCY_RATING_MAX_RATIO, idealShare / delta);
     ratios.push(ratio);
   }
@@ -255,6 +247,94 @@ export function efficiencyRating(
   const avgRatio = ratios.reduce((s, r) => s + r, 0) / ratios.length;
   const stars = avgRatio >= 1.5 ? 5 : avgRatio >= 1.1 ? 4 : avgRatio >= 0.9 ? 3 : avgRatio >= 0.6 ? 2 : 1;
   return { stars, avgRatio: Math.round(avgRatio * 100) / 100 };
+}
+
+/**
+ * Consumo di ogni giorno (differenza con il punto precedente dello storico, in
+ * punti percentuali di quota) affiancato alla quota ideale di quel giorno —
+ * EVOLUTION.md punto 1: il grafico del widget mostra questo, non più la %
+ * cumulata per giorno che ricalcava la dashboard del provider.
+ * - `delta` null: la finestra si è resettata in mezzo (delta negativo), il valore
+ *   non è attribuibile all'uso di quel giorno (stessa regola di instantaneousRate);
+ * - `idealShare` null: pacing non disponibile (periodo di durata ignota,
+ *   totalPeriodWorkingUnits <= 0); 0 in un giorno non lavorativo.
+ * Il primo punto dello storico non ha un precedente e non produce un delta.
+ */
+export function dailyDeltas(
+  dailyHistory: DailyUsagePoint[],
+  workSchedule: WorkSchedule,
+  totalPeriodWorkingUnits: number,
+): DailyDelta[] {
+  if (!Array.isArray(dailyHistory)) return [];
+  const sorted = [...dailyHistory].sort((a, b) => a.date.localeCompare(b.date));
+  const result: DailyDelta[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    const rawDelta = curr.used - prev.used;
+    const idealShare = totalPeriodWorkingUnits > 0
+      ? round2(getDayUnit(new Date(curr.date), workSchedule) * (100 / totalPeriodWorkingUnits))
+      : null;
+    result.push({ date: curr.date, delta: rawDelta < 0 ? null : round2(rawDelta), idealShare });
+  }
+  return result;
+}
+
+/**
+ * Picco/media del consumo giornaliero e streak di giorni consecutivi (dal più
+ * recente) entro la quota ideale — calcolati sui delta di `dailyDeltas`, non sul
+ * valore cumulato: sul cumulato il "picco" coincideva sempre con l'ultimo giorno
+ * e lo streak non aveva significato. I giorni con reset (delta null) sono
+ * ignorati; lo streak è null senza pacing (nessuna quota ideale con cui confrontare).
+ */
+export function deltaStats(deltas: DailyDelta[]): DeltaStats {
+  const valid = deltas.filter((d): d is DailyDelta & { delta: number } => d.delta !== null);
+  if (valid.length === 0) return { peak: null, avg: null, streakUnderBudget: null };
+  const values = valid.map((d) => d.delta);
+  const peak = round2(Math.max(...values));
+  const avg = round2(values.reduce((sum, v) => sum + v, 0) / values.length);
+
+  let streakUnderBudget: number | null = null;
+  if (valid.some((d) => d.idealShare !== null)) {
+    streakUnderBudget = 0;
+    for (let i = valid.length - 1; i >= 0; i--) {
+      const { delta, idealShare } = valid[i];
+      if (idealShare !== null && delta <= idealShare) streakUnderBudget += 1;
+      else break;
+    }
+  }
+  return { peak, avg, streakUnderBudget };
+}
+
+export interface WindowVerdictContext {
+  window: QuotaWindow;
+  projectedUsage: number | null;
+  workingDaysUntilReset: number | null;
+  estimatedAutonomyWorkingDays: number | null;
+}
+
+/**
+ * Verdetto sintetico di una finestra di quota per la lista finestre del widget
+ * (EVOLUTION.md punto 1: al posto delle tab che affiancavano solo le metriche del
+ * provider). In ordine di gravità: esaurita → a rischio (autonomia più corta del
+ * tempo al reset, o proiezione oltre il 100%) → in linea → pacing non disponibile.
+ * Il testo è composto dal renderer (formattazione della data di reset lato UI).
+ */
+export function windowVerdict(ctx: WindowVerdictContext): WindowVerdict {
+  const utilization = normalizedUtilization(ctx.window);
+  if (utilization !== null && utilization >= 100) return { kind: 'exhausted' };
+  if (
+    ctx.estimatedAutonomyWorkingDays !== null &&
+    ctx.workingDaysUntilReset !== null &&
+    ctx.estimatedAutonomyWorkingDays < ctx.workingDaysUntilReset
+  ) {
+    return { kind: 'at-risk', autonomyWorkingDays: round1(ctx.estimatedAutonomyWorkingDays) };
+  }
+  if (ctx.projectedUsage !== null && ctx.projectedUsage > 100) {
+    return { kind: 'at-risk', projectedUsage: round1(ctx.projectedUsage) };
+  }
+  if (ctx.projectedUsage !== null) return { kind: 'on-track' };
+  return { kind: 'no-pacing' };
 }
 
 function round1(value: number): number {

@@ -1,7 +1,7 @@
 // app.ts — logica renderer del widget principale (nessun accesso diretto a Node.js)
 // Legge/scrive solo tramite window.hypermiler esposto da preload.ts.
 
-import type { AccountId, AccountSnapshot, AppSettings, DailyUsagePoint, HypermilerBridge, QuotaWindow, QuotaWindowSnapshot, UsageSnapshot } from './types';
+import type { AccountId, AccountSnapshot, AppSettings, DailyDelta, HypermilerBridge, QuotaWindow, QuotaWindowSnapshot, UsageSnapshot, WindowVerdict } from './types';
 
 declare global {
   interface Window {
@@ -120,53 +120,53 @@ function formatRate(value: number | null | undefined): string {
   return `${Math.round(value * 100) / 100}%/h`;
 }
 
-function computePeakAvg(dailyHistory: DailyUsagePoint[]): { peak: number | null; avg: number | null } {
-  if (!dailyHistory || dailyHistory.length === 0) return { peak: null, avg: null };
-  const values = dailyHistory.map((d) => d.used);
-  const peak = Math.max(...values);
-  const avg = values.reduce((s, v) => s + v, 0) / values.length;
-  return { peak, avg: Math.round(avg * 10) / 10 };
-}
-
-function computeStreak(dailyHistory: DailyUsagePoint[]): number | null {
-  if (!dailyHistory || dailyHistory.length === 0) return null;
-  const values = dailyHistory.map((d) => d.used);
-  const avg = values.reduce((s, v) => s + v, 0) / values.length;
-  let streak = 0;
-  for (let i = values.length - 1; i >= 0; i--) {
-    if (values[i] <= avg) streak += 1;
-    else break;
-  }
-  return streak;
-}
-
-// Riempie i giorni senza dati (0) fino a `days` slot fissi, invece di disegnare
-// solo i punti realmente registrati: con un solo giorno di storico (account appena
-// collegato) un'unica barra a larghezza/altezza piena riempiva tutto il riquadro
-// del grafico, sembrando un rettangolo pieno invece di un grafico (feedback utente:
-// "si vede solo un rettangolone grigio").
-function buildChartSeries(dailyHistory: DailyUsagePoint[], days: number): { date: string; used: number }[] {
-  const byDate = new Map((dailyHistory || []).map((d) => [d.date, d.used]));
-  const series: { date: string; used: number }[] = [];
+// Slot fissi per data (7 o 30), riempiendo i giorni senza dati: con un solo
+// giorno di storico (account appena collegato) un'unica barra a larghezza piena
+// sembrava un rettangolo pieno invece di un grafico (feedback utente).
+function buildChartSeries(deltas: DailyDelta[], days: number): DailyDelta[] {
+  const byDate = new Map((deltas || []).map((d) => [d.date, d]));
+  const series: DailyDelta[] = [];
   const today = new Date();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().slice(0, 10);
-    series.push({ date: dateStr, used: byDate.get(dateStr) ?? 0 });
+    series.push(byDate.get(dateStr) ?? { date: dateStr, delta: null, idealShare: null });
   }
   return series;
 }
 
-function renderChart(dailyHistory: DailyUsagePoint[], days: number): void {
+// Grafico "consumo giornaliero vs budget" (EVOLUTION.md punto 1): ogni barra è il
+// consumo di QUEL giorno (winSnap.dailyDeltas, calcolati in budget.dailyDeltas),
+// non la % cumulata come nella dashboard del provider. Il trattino su ogni slot
+// è la quota ideale del giorno (0 nei giorni non lavorativi, metà in quelli a
+// mezza giornata): le barre che la superano usano --warning. Giorni senza dato o
+// con un reset in mezzo restano una barra minima tenue.
+function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): void {
   const container = document.getElementById('chart') as HTMLDivElement;
+  const idealLabel = document.getElementById('chart-ideal') as HTMLSpanElement;
   container.innerHTML = '';
-  const series = buildChartSeries(dailyHistory, days);
+  idealLabel.textContent = '';
+
+  if (winSnap?.window.periodType === 'rolling-hours') {
+    // Stesso criterio del rating a stelle: su una finestra di poche ore un
+    // consumo "giornaliero" attraversa più reset e non misura nulla.
+    const note = document.createElement('div');
+    note.className = 'chart-note';
+    note.textContent = 'Non applicabile su finestre di poche ore — vedi il consumo istantaneo.';
+    container.appendChild(note);
+    return;
+  }
+
+  const series = buildChartSeries(winSnap?.dailyDeltas ?? [], days);
+  const fullDayIdeal = Math.max(0, ...series.map((d) => d.idealShare ?? 0));
+  if (fullDayIdeal > 0) idealLabel.textContent = `quota ideale ${formatPercent(fullDayIdeal)}/giorno`;
 
   const width = container.clientWidth || 300;
   const height = 90;
-  const max = Math.max(...series.map((d) => d.used), 1);
+  const max = Math.max(0.1, ...series.map((d) => Math.max(d.delta ?? 0, d.idealShare ?? 0)));
   const barWidth = width / series.length;
+  const scale = (value: number) => (value / max) * (height - 4);
 
   const svgNs = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNs, 'svg');
@@ -175,23 +175,36 @@ function renderChart(dailyHistory: DailyUsagePoint[], days: number): void {
   svg.setAttribute('height', String(height));
 
   series.forEach((point, i) => {
-    const barHeight = Math.max(2, (point.used / max) * (height - 4));
+    const hasData = point.delta !== null;
+    const barHeight = Math.max(2, scale(point.delta ?? 0));
+    const overBudget = hasData && point.idealShare !== null && (point.delta as number) > point.idealShare;
     const rect = document.createElementNS(svgNs, 'rect');
     rect.setAttribute('x', String(i * barWidth + 1));
     rect.setAttribute('y', String(height - barHeight));
     rect.setAttribute('width', String(Math.max(1, barWidth - 2)));
     rect.setAttribute('height', String(barHeight));
-    // Colore accento (Impostazioni → Aspetto) invece del colore testo di default:
-    // era usato solo sulla tab account attiva, invisibile con un solo account
-    // collegato — qui invece si vede sempre (feedback utente, scelta esplicita).
-    rect.setAttribute('fill', 'var(--accent)');
-    // Giorni senza dati reali (riempimento) restano visivamente più tenui, per
-    // distinguerli a colpo d'occhio dai giorni con un utilizzo effettivo registrato.
-    rect.setAttribute('opacity', point.used > 0 ? '0.85' : '0.15');
+    rect.setAttribute('fill', overBudget ? 'var(--warning)' : 'var(--accent)');
+    rect.setAttribute('opacity', hasData ? '0.85' : '0.15');
     const title = document.createElementNS(svgNs, 'title');
-    title.textContent = `${point.date}: ${point.used}`;
+    title.textContent = hasData
+      ? `${point.date}: ${formatPercent(point.delta)}${point.idealShare !== null ? ` (ideale ${formatPercent(point.idealShare)})` : ''}`
+      : `${point.date}: nessun dato`;
     rect.appendChild(title);
     svg.appendChild(rect);
+
+    if (point.idealShare !== null && point.idealShare > 0) {
+      const y = height - scale(point.idealShare);
+      const tick = document.createElementNS(svgNs, 'line');
+      tick.setAttribute('x1', String(i * barWidth));
+      tick.setAttribute('x2', String((i + 1) * barWidth));
+      tick.setAttribute('y1', String(y));
+      tick.setAttribute('y2', String(y));
+      tick.setAttribute('stroke', 'currentColor');
+      tick.setAttribute('stroke-width', '1');
+      tick.setAttribute('stroke-dasharray', '3 2');
+      tick.setAttribute('opacity', '0.7');
+      svg.appendChild(tick);
+    }
   });
 
   container.appendChild(svg);
@@ -373,30 +386,65 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
   });
 }
 
-// Seconda riga di tab, sotto quella account Claude/Copilot: quale finestra di quota
-// dell'account attivo guardare (es. Claude: limite standard + credito extra una
-// tantum, entrambi calcolati da main.ts ma appiattiti in passato a una sola finestra
-// "critica" — vedi CLAUDE.md, "Stato avanzamento"). Nascosta se l'account ha una sola
-// finestra (sempre il caso per Copilot oggi).
-function renderWindowTabs(account: AccountSnapshot): void {
-  const nav = document.getElementById('window-tabs') as HTMLElement;
+function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
+  const reset = win.resetsAt ? formatResetMoment(win.resetsAt) : null;
+  switch (verdict.kind) {
+    case 'exhausted': return reset ? `esaurita · rinnovo ${reset}` : 'esaurita';
+    case 'at-risk':
+      if (verdict.autonomyWorkingDays !== undefined) return `a rischio · finisce tra ${formatDays(verdict.autonomyWorkingDays)} lav.`;
+      return `a rischio · proiezione ${formatPercent(verdict.projectedUsage)}`;
+    case 'on-track': return 'in linea';
+    case 'no-pacing': return reset ? `nessun pacing · rinnovo ${reset}` : 'nessun pacing';
+  }
+}
+
+// Lista delle finestre di quota dell'account attivo (EVOLUTION.md punto 1), al
+// posto delle tab che affiancavano solo le metriche esposte dal provider: una riga
+// per finestra con un verdetto calcolato da noi (budget.windowVerdict), la critica
+// per prima. Clic su una riga = dettaglio di quella finestra nel resto del widget.
+// Nascosta se l'account ha una sola finestra.
+function renderWindowList(account: AccountSnapshot): void {
+  const list = document.getElementById('window-list') as HTMLElement;
   if (account.windows.length <= 1) {
-    nav.hidden = true;
+    list.hidden = true;
     return;
   }
-  nav.hidden = false;
-  nav.innerHTML = '';
+  list.hidden = false;
+  list.innerHTML = '';
   const selected = selectWindowSnapshot(account);
-  account.windows.forEach((winSnap) => {
-    const btn = document.createElement('button');
-    btn.textContent = winSnap.window.label;
-    btn.title = winSnap.window.label;
-    btn.className = winSnap.window.id === selected?.window.id ? 'active' : '';
-    btn.addEventListener('click', () => {
+  const criticalId = account.criticalWindow?.id;
+  const ordered = [...account.windows].sort((a, b) => Number(b.window.id === criticalId) - Number(a.window.id === criticalId));
+
+  ordered.forEach((winSnap) => {
+    const utilization = budgetNormalizedUtilization(winSnap.window);
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `window-row verdict-${winSnap.verdict.kind}${winSnap.window.id === selected?.window.id ? ' active' : ''}`;
+    row.title = winSnap.window.label;
+
+    const dot = document.createElement('span');
+    dot.className = 'window-row-dot';
+    const label = document.createElement('span');
+    label.className = 'window-row-label';
+    label.textContent = winSnap.window.label;
+    const bar = document.createElement('span');
+    bar.className = 'window-row-bar';
+    const fill = document.createElement('span');
+    fill.style.width = `${Math.max(0, Math.min(100, utilization ?? 0))}%`;
+    bar.appendChild(fill);
+    const pct = document.createElement('span');
+    pct.className = 'window-row-pct';
+    pct.textContent = formatPercent(utilization);
+    const verdict = document.createElement('span');
+    verdict.className = 'window-row-verdict';
+    verdict.textContent = formatVerdict(winSnap.verdict, winSnap.window);
+
+    row.append(dot, label, bar, pct, verdict);
+    row.addEventListener('click', () => {
       state.activeWindowId = winSnap.window.id;
       if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
     });
-    nav.appendChild(btn);
+    list.appendChild(row);
   });
 }
 
@@ -422,7 +470,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
 
   const account = selectAccount(snapshot);
   if (!account) {
-    document.getElementById('window-tabs')!.hidden = true;
+    document.getElementById('window-list')!.hidden = true;
     document.getElementById('current-value')!.textContent = '--';
     document.getElementById('current-label')!.textContent = 'Nessun account collegato — apri le impostazioni';
     renderInstantGauge(undefined);
@@ -432,7 +480,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     return;
   }
 
-  renderWindowTabs(account);
+  renderWindowList(account);
   const winSnap = selectWindowSnapshot(account);
   const win = winSnap?.window ?? null;
   const utilization = win ? budgetNormalizedUtilization(win) : null;
@@ -466,16 +514,14 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     `${winSnap?.daysUntilReset ?? '--'} (${formatDays(winSnap?.workingDaysUntilReset ?? null)} lav.)`;
   document.getElementById('metric-autonomy')!.textContent = formatDays(winSnap?.estimatedAutonomyWorkingDays ?? null);
 
-  const dailyHistory = winSnap?.dailyHistory ?? [];
-  const { peak, avg } = computePeakAvg(dailyHistory);
-  document.getElementById('metric-peak-avg')!.textContent = peak === null ? '--' : `${peak} / ${avg}`;
+  const stats = winSnap?.deltaStats;
+  document.getElementById('metric-peak-avg')!.textContent =
+    stats?.peak == null ? '--' : `${formatPercent(stats.peak)} / ${formatPercent(stats.avg)}`;
+  document.getElementById('metric-streak')!.textContent =
+    stats?.streakUnderBudget == null ? '--' : `${stats.streakUnderBudget} gg`;
 
-  const streak = computeStreak(dailyHistory);
-  document.getElementById('metric-streak')!.textContent = streak === null ? '--' : `${streak} gg`;
-
-  document.getElementById('chart-title')!.textContent =
-    state.settings?.ui?.chartRange === 'month' ? 'Andamento mensile' : 'Andamento settimanale';
-  renderChart(dailyHistory, chartDays);
+  document.getElementById('chart-title')!.textContent = `Consumo giornaliero vs budget (${chartDays}gg)`;
+  renderChart(winSnap, chartDays);
 
   document.getElementById('tips-text')!.textContent = winSnap?.dailyTip ?? NO_WINDOW_TIP;
 }

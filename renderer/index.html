@@ -29,7 +29,7 @@
 
   <main id="app">
     <nav id="account-tabs" class="account-tabs" hidden></nav>
-    <nav id="window-tabs" class="account-tabs window-tabs" hidden></nav>
+    <div id="window-list" class="window-list" hidden></div>
 
     <section class="current-indicator">
       <div class="current-value" id="current-value">--%</div>
@@ -46,7 +46,8 @@
 
     <section class="chart-section">
       <div class="chart-header">
-        <span id="chart-title">Andamento settimanale</span>
+        <span id="chart-title">Consumo giornaliero vs budget</span>
+        <span id="chart-ideal" class="chart-ideal"></span>
       </div>
       <div id="chart" class="chart"></div>
     </section>
@@ -74,7 +75,7 @@
         <span class="metric-value" id="metric-autonomy">--</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Picco / media</span>
+        <span class="metric-label">Picco / media giornaliera</span>
         <span class="metric-value" id="metric-peak-avg">--</span>
       </div>
       <div class="metric">

@@ -32,9 +32,30 @@ export interface EfficiencyRating {
   avgRatio: number;
 }
 
+export interface DailyDelta {
+  date: string;
+  delta: number | null;
+  idealShare: number | null;
+}
+
+export interface DeltaStats {
+  peak: number | null;
+  avg: number | null;
+  streakUnderBudget: number | null;
+}
+
+export interface WindowVerdict {
+  kind: 'exhausted' | 'at-risk' | 'on-track' | 'no-pacing';
+  autonomyWorkingDays?: number;
+  projectedUsage?: number;
+}
+
 export interface QuotaWindowSnapshot {
   window: QuotaWindow;
   dailyHistory: DailyUsagePoint[];
+  dailyDeltas: DailyDelta[];
+  deltaStats: DeltaStats;
+  verdict: WindowVerdict;
   efficiencyIndex: number | null;
   projectedUsage: number | null;
   daysUntilReset: number | null;
