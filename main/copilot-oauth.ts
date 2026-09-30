@@ -129,8 +129,14 @@ export function captureGithubOAuthToken(config: GithubOAuthConfig): Promise<{ ac
   return new Promise((resolve, reject) => {
     const clientId = config.clientId.trim();
     const clientSecret = config.clientSecret.trim();
-    if (!clientId) return reject(new Error('Copilot OAuth: Client ID mancante'));
-    if (!clientSecret) return reject(new Error('Copilot OAuth: Client Secret mancante'));
+    if (!clientId) {
+      reject(new Error('Copilot OAuth: Client ID mancante'));
+      return;
+    }
+    if (!clientSecret) {
+      reject(new Error('Copilot OAuth: Client Secret mancante'));
+      return;
+    }
 
     const state = randomBytes(16).toString('hex');
     const { codeVerifier, codeChallenge } = createPkcePair();
@@ -197,8 +203,8 @@ export function captureGithubOAuthToken(config: GithubOAuthConfig): Promise<{ ac
     });
 
     server.listen(REDIRECT_PORT, '127.0.0.1', () => {
-      shell.openExternal(authorizationUrl).catch((err: Error) => {
-        finish(reject, new Error(`Impossibile aprire la pagina di accesso GitHub: ${err.message}`));
+      shell.openExternal(authorizationUrl).catch((err: unknown) => {
+        finish(reject, new Error(`Impossibile aprire la pagina di accesso GitHub: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
       });
     });
   });

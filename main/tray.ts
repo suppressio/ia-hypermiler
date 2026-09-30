@@ -67,7 +67,7 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
         },
       },
       { type: 'separator' },
-      { label: 'Esci', click: () => app.quit() },
+      { label: 'Esci', click: () => { app.quit(); } },
     ]);
   };
 
@@ -78,5 +78,5 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
   // comunque il caso, garantendo un comportamento uniforme su tutte le piattaforme.
   tray.on('click', toggleMainWindow);
 
-  return { tray, refreshMenu: () => tray.setContextMenu(buildMenu()) };
+  return { tray, refreshMenu: () => { tray.setContextMenu(buildMenu()); } };
 }

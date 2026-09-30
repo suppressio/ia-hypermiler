@@ -16,7 +16,7 @@ export interface FetchJsonOptions {
 export async function fetchJson<T = unknown>(url: string, options: FetchJsonOptions = {}): Promise<T> {
   const { headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS, label = url } = options;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => { controller.abort(); }, timeoutMs);
 
   let response: Response;
   try {

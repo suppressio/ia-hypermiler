@@ -48,7 +48,10 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
   // senza questo, la skin "pieno" (frame: true) mostrava la barra menu di default
   // di Electron (File/Modifica/Vista/Finestra/Aiuto) sopra al widget (feedback utente).
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(ROOT, 'renderer', 'index.html'));
+  // Un fallimento qui è una finestra bianca: almeno resta traccia nel log.
+  win.loadFile(path.join(ROOT, 'renderer', 'index.html')).catch((err: unknown) => {
+    console.error('[windows] caricamento widget fallito:', err);
+  });
 
   // Persistenza posizione/dimensione (debounce semplice per non scrivere ad ogni pixel)
   let saveBoundsTimer: NodeJS.Timeout | null = null;
@@ -89,7 +92,9 @@ export function createSettingsWindow(existing?: BrowserWindow | null): BrowserWi
   });
 
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(ROOT, 'renderer', 'settings.html'));
+  win.loadFile(path.join(ROOT, 'renderer', 'settings.html')).catch((err: unknown) => {
+    console.error('[windows] caricamento Impostazioni fallito:', err);
+  });
 
   return win;
 }

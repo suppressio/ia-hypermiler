@@ -548,6 +548,13 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   document.getElementById('tips-text')!.textContent = winSnap?.dailyTip ?? NO_WINDOW_TIP;
 }
 
+async function togglePin(): Promise<void> {
+  const next = !(state.settings?.ui.alwaysOnTop ?? false);
+  await window.hypermiler.setAlwaysOnTop(next);
+  if (state.settings) state.settings.ui.alwaysOnTop = next;
+  updatePinButton(next);
+}
+
 async function init(): Promise<void> {
   const settings = await window.hypermiler.getSettings();
   state.settings = settings;
@@ -565,12 +572,7 @@ async function init(): Promise<void> {
   document.getElementById('btn-close')!.addEventListener('click', () => {
     window.hypermiler.closeWindow();
   });
-  document.getElementById('btn-pin')!.addEventListener('click', async () => {
-    const next = !(state.settings?.ui.alwaysOnTop ?? false);
-    await window.hypermiler.setAlwaysOnTop(next);
-    if (state.settings) state.settings.ui.alwaysOnTop = next;
-    updatePinButton(next);
-  });
+  document.getElementById('btn-pin')!.addEventListener('click', () => { runGuarded(togglePin()); });
   document.getElementById('btn-refresh')!.addEventListener('click', () => {
     // requestUsageRefresh() è "fire and forget" (ipcRenderer.send): il risultato
     // arriva comunque via onUsageUpdate qui sotto, che riabilita il pulsante —
@@ -595,4 +597,14 @@ async function init(): Promise<void> {
   window.hypermiler.requestUsageRefresh();
 }
 
-document.addEventListener('DOMContentLoaded', init);
+// Un errore all'avvio o su un pulsante non deve lasciare il widget muto:
+// lo si mostra nell'etichetta sotto il valore principale.
+function runGuarded(task: Promise<unknown>): void {
+  task.catch((err: unknown) => {
+    console.error('[widget]', err);
+    const label = document.getElementById('current-label');
+    if (label) label.textContent = `Errore: ${err instanceof Error ? err.message : String(err)}`;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => { runGuarded(init()); });

@@ -3,7 +3,7 @@
 // del mock del Giorno 1. Se una fetch fallisce, si mostra l'ultimo dato noto con
 // timestamp (mai schermata bianca, vedi CLAUDE.md).
 
-import { app, ipcMain, BrowserWindow, Notification, shell, Menu, screen } from 'electron';
+import { app, dialog, ipcMain, BrowserWindow, Notification, shell, Menu, screen } from 'electron';
 import store from './store/index';
 import { createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
@@ -50,6 +50,16 @@ const UPDATE_FIRST_CHECK_DELAY_MS = 10 * 1000;
 // ad ogni refresh di 30 min — cache con questo intervallo minimo, stesso pattern
 // di advisorCache.
 const LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 ore
+
+// Promise lanciate "in background" (timer, IPC fire-and-forget, dopo una risposta
+// IPC già inviata): mai un rifiuto non gestito, che Node registrerebbe senza contesto
+// o, peggio, lascerebbe l'app in uno stato a metà senza traccia (CLAUDE.md: mai
+// fallimenti silenziosi).
+function runDetached(label: string, task: Promise<unknown>): void {
+  task.catch((err: unknown) => {
+    console.error(`[main] ${label} fallito:`, err);
+  });
+}
 
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -418,8 +428,8 @@ function maybeReportFormatDrift(provider: ProviderId, err: unknown): void {
   if (reported[signature]) return; // già segnalato per questa forma: non riaprire
 
   const url = buildFormatDriftIssueUrl({ provider, endpointLabel: err.endpointLabel, shape: err.shape });
-  shell.openExternal(url).catch((openErr: Error) => {
-    console.error('[main] impossibile aprire la bozza di segnalazione nel browser:', openErr.message);
+  shell.openExternal(url).catch((openErr: unknown) => {
+    console.error('[main] impossibile aprire la bozza di segnalazione nel browser:', openErr);
   });
 
   if (Notification.isSupported()) {
@@ -618,8 +628,8 @@ function startUpdateChecks(): void {
   // "Controlla ora" funziona comunque. `autoCheck` è riletto ad ogni giro, quindi
   // attivarlo/disattivarlo in Impostazioni ha effetto senza riavviare.
   if (!app.isPackaged) return;
-  setTimeout(() => { checkForUpdates('auto'); }, UPDATE_FIRST_CHECK_DELAY_MS);
-  updateTimer = setInterval(() => { checkForUpdates('auto'); }, UPDATE_CHECK_INTERVAL_MS);
+  setTimeout(() => { runDetached('controllo aggiornamenti', checkForUpdates('auto')); }, UPDATE_FIRST_CHECK_DELAY_MS);
+  updateTimer = setInterval(() => { runDetached('controllo aggiornamenti', checkForUpdates('auto')); }, UPDATE_CHECK_INTERVAL_MS);
 }
 
 function broadcastSettings(): void {
@@ -646,7 +656,7 @@ function registerIpcHandlers(): void {
     return redacted;
   });
 
-  ipcMain.on('usage:refreshRequest', () => refreshAndBroadcast());
+  ipcMain.on('usage:refreshRequest', () => { runDetached('refresh usage', refreshAndBroadcast()); });
 
   ipcMain.on('window:openSettings', () => {
     settingsWindow = createSettingsWindow(settingsWindow);
@@ -700,7 +710,7 @@ function registerIpcHandlers(): void {
     await providers.disconnect(cfg);
     store.set('accounts', getAccounts().filter((a) => a.id !== id));
     broadcastSettings();
-    refreshAndBroadcast();
+    runDetached('refresh usage', refreshAndBroadcast());
   });
 
   ipcMain.handle('accounts:connectClaude', async (_event: IpcMainInvokeEvent, id: AccountId) => {
@@ -719,7 +729,7 @@ function registerIpcHandlers(): void {
       ? { ...a, enabled: true, session: { sessionKey, organizationId, capturedAt, expiresAt: null } }
       : a));
     broadcastSettings();
-    refreshAndBroadcast();
+    runDetached('refresh usage', refreshAndBroadcast());
     return { organizationId };
   });
 
@@ -729,7 +739,7 @@ function registerIpcHandlers(): void {
       ? { ...a, enabled: true, authMethod: 'pat', credentials: { token, username } }
       : a));
     broadcastSettings();
-    refreshAndBroadcast();
+    runDetached('refresh usage', refreshAndBroadcast());
     return { username };
   });
 
@@ -743,7 +753,7 @@ function registerIpcHandlers(): void {
       ? { ...a, enabled: true, authMethod: 'oauth', credentials: { token: accessToken, username }, oauthApp: { clientId: payload.clientId } }
       : a));
     broadcastSettings();
-    refreshAndBroadcast();
+    runDetached('refresh usage', refreshAndBroadcast());
     return { username };
   });
 
@@ -768,7 +778,7 @@ function registerIpcHandlers(): void {
     const cleared = await providers.disconnect(cfg);
     updateAccount(id, () => cleared);
     broadcastSettings();
-    refreshAndBroadcast();
+    runDetached('refresh usage', refreshAndBroadcast());
   });
 }
 
@@ -809,7 +819,7 @@ app.whenReady().then(async () => {
   trayHandle = createTray({
     getMainWindow: () => mainWindow,
     openSettings: openSettingsWindow,
-    refreshNow: () => refreshAndBroadcast(),
+    refreshNow: () => { runDetached('refresh usage', refreshAndBroadcast()); },
     store,
   });
 
@@ -818,7 +828,7 @@ app.whenReady().then(async () => {
   // avvio sia dopo un cambio skin che ricrea la finestra) — un secondo trigger qui
   // duplicherebbe la chiamata alle API Claude/Copilot ad ogni apertura del widget.
 
-  refreshTimer = setInterval(refreshAndBroadcast, REFRESH_INTERVAL_MS);
+  refreshTimer = setInterval(() => { runDetached('refresh usage', refreshAndBroadcast()); }, REFRESH_INTERVAL_MS);
   startWindowHoverPolling();
   startUpdateChecks();
 
@@ -827,6 +837,12 @@ app.whenReady().then(async () => {
       mainWindow = createMainWindow(store);
     }
   });
+}).catch((err: unknown) => {
+  // Avvio fallito (finestra, tray, migrazione…): senza questo l'app resterebbe viva
+  // in background senza interfaccia e senza alcun messaggio. Meglio dirlo e uscire.
+  console.error('[main] avvio fallito:', err);
+  dialog.showErrorBox('IA Hypermiler non è riuscita ad avviarsi', err instanceof Error ? err.message : String(err));
+  app.quit();
 });
 
 app.on('window-all-closed', () => {

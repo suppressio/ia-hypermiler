@@ -10,7 +10,7 @@ const bridge: HypermilerBridge = {
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
 
   onUsageUpdate: (callback: (snapshot: UsageSnapshot) => void) => {
-    const listener = (_event: unknown, snapshot: UsageSnapshot) => callback(snapshot);
+    const listener = (_event: unknown, snapshot: UsageSnapshot) => { callback(snapshot); };
     ipcRenderer.on('usage:update', listener);
     return () => ipcRenderer.removeListener('usage:update', listener);
   },
@@ -18,25 +18,25 @@ const bridge: HypermilerBridge = {
   // è già aperto: senza, un campo che non ha un IPC dedicato (a differenza di
   // ui.windowStyle/ui.alwaysOnTop) restava applicato solo al prossimo riavvio.
   onSettingsUpdate: (callback: (settings: AppSettings) => void) => {
-    const listener = (_event: unknown, settings: AppSettings) => callback(settings);
+    const listener = (_event: unknown, settings: AppSettings) => { callback(settings); };
     ipcRenderer.on('settings:update', listener);
     return () => ipcRenderer.removeListener('settings:update', listener);
   },
   // Stato hover finestra calcolato lato main (screen.getCursorScreenPoint), non
   // da eventi mouse DOM: vedi main.ts (startWindowHoverPolling) per il perché.
   onWindowHoverChanged: (callback: (isHovering: boolean) => void) => {
-    const listener = (_event: unknown, isHovering: boolean) => callback(isHovering);
+    const listener = (_event: unknown, isHovering: boolean) => { callback(isHovering); };
     ipcRenderer.on('window:hoverChanged', listener);
     return () => ipcRenderer.removeListener('window:hoverChanged', listener);
   },
-  requestUsageRefresh: () => ipcRenderer.send('usage:refreshRequest'),
+  requestUsageRefresh: () => { ipcRenderer.send('usage:refreshRequest'); },
 
-  openSettingsWindow: () => ipcRenderer.send('window:openSettings'),
+  openSettingsWindow: () => { ipcRenderer.send('window:openSettings'); },
   setAlwaysOnTop: (value) => ipcRenderer.invoke('window:setAlwaysOnTop', value),
   setWindowStyle: (style) => ipcRenderer.invoke('window:setStyle', style),
 
-  minimizeWindow: () => ipcRenderer.send('window:minimize'),
-  closeWindow: () => ipcRenderer.send('window:close'),
+  minimizeWindow: () => { ipcRenderer.send('window:minimize'); },
+  closeWindow: () => { ipcRenderer.send('window:close'); },
 
   // Registro account (issue #4): ogni operazione è per id di account, non per provider.
   addAccount: (provider) => ipcRenderer.invoke('accounts:add', provider),

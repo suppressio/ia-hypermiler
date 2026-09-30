@@ -125,16 +125,19 @@ export async function captureClaudeSession(partition: string): Promise<CapturedC
       }
     };
 
-    authWindow.webContents.on('did-navigate', checkForSessionCookie);
-    authWindow.webContents.on('did-navigate-in-page', checkForSessionCookie);
-    authWindow.webContents.on('did-finish-load', checkForSessionCookie);
+    // checkForSessionCookie gestisce da sé i propri errori (try/catch interno): la
+    // promise non può rifiutare, `void` esplicita che non serve attenderla.
+    const onPageEvent = () => { void checkForSessionCookie(); };
+    authWindow.webContents.on('did-navigate', onPageEvent);
+    authWindow.webContents.on('did-navigate-in-page', onPageEvent);
+    authWindow.webContents.on('did-finish-load', onPageEvent);
 
     authWindow.on('closed', () => {
       finish(reject, new Error('Login Claude annullato: finestra chiusa prima del completamento'));
     });
 
-    authWindow.loadURL(LOGIN_URL).catch((err: Error) => {
-      finish(reject, new Error(`Impossibile aprire la pagina di login Claude: ${err.message}`));
+    authWindow.loadURL(LOGIN_URL).catch((err: unknown) => {
+      finish(reject, new Error(`Impossibile aprire la pagina di login Claude: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
     });
   });
 }

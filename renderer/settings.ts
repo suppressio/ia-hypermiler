@@ -191,7 +191,7 @@ function populateForm(): void {
     if (el instanceof HTMLInputElement && el.type === 'checkbox') el.checked = !!value;
     else el.value = String(value);
   });
-  accounts().forEach((_account, index) => applyAccountDetailState(index));
+  accounts().forEach((_account, index) => { applyAccountDetailState(index); });
   updateWorkScheduleLock();
 }
 
@@ -371,7 +371,7 @@ function renderUpdatesCard(updates: UpdateSettings | undefined): void {
     notes.addEventListener('click', (event) => {
       event.preventDefault();
       // Passa dal main, che apre solo URL del repository del progetto.
-      window.hypermiler.openReleaseNotes();
+      runGuarded(window.hypermiler.openReleaseNotes());
     });
     status.append(notes);
   } else if (updates?.lastError) {
@@ -399,6 +399,24 @@ function showSaveStatus(text: string): void {
   el.textContent = text;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => { el.textContent = ''; }, 2500);
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// Nessuna promise lasciata a sé stessa: un errore (IPC rifiutato, main che lancia)
+// finisce nella barra di stato invece di perdersi nella console — prima un
+// fallimento di "Aggiungi account"/"Salva" non mostrava nulla all'utente.
+function runGuarded(task: Promise<unknown>): void {
+  task.catch((err: unknown) => {
+    console.error('[settings]', err);
+    showSaveStatus(`Operazione non riuscita: ${errorMessage(err)}`);
+  });
+}
+
+function guarded(handler: () => Promise<void>): () => void {
+  return () => { runGuarded(handler()); };
 }
 
 async function persist(key: string): Promise<void> {
@@ -430,19 +448,19 @@ function bindEvents(): void {
   document.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-action]') : null;
     if (!target?.dataset.accountId) return;
-    runAccountAction(target.dataset.action as string, target.dataset.accountId, target);
+    runGuarded(runAccountAction(target.dataset.action as string, target.dataset.accountId, target));
   });
 
-  document.getElementById('btn-add-account')!.addEventListener('click', async () => {
+  document.getElementById('btn-add-account')!.addEventListener('click', guarded(async () => {
     const provider = (document.getElementById('add-account-provider') as HTMLSelectElement).value as ProviderId;
     captureDraftFromForm();
     const id = await window.hypermiler.addAccount(provider);
     expandedAccountId = id;
     newAccountId = id;
     await reloadAfterAccountAction(id);
-  });
+  }));
 
-  document.getElementById('btn-save')!.addEventListener('click', async () => {
+  document.getElementById('btn-save')!.addEventListener('click', guarded(async () => {
     // Rilegge esplicitamente tutti i campi (anche quelli senza un evento 'change'
     // ancora scattato, es. input numerico in focus) e salva tutto in un colpo solo.
     const touchedKeys = captureDraftFromForm();
@@ -473,9 +491,9 @@ function bindEvents(): void {
     savedSettings = structuredClone(settings);
     newAccountId = null;
     showSaveStatus('Impostazioni salvate ✓');
-  });
+  }));
 
-  document.getElementById('btn-check-updates')!.addEventListener('click', async () => {
+  document.getElementById('btn-check-updates')!.addEventListener('click', guarded(async () => {
     const btn = document.getElementById('btn-check-updates') as HTMLButtonElement;
     const status = document.getElementById('updates-status') as HTMLElement;
     btn.disabled = true;
@@ -487,24 +505,24 @@ function bindEvents(): void {
     } finally {
       btn.disabled = false;
     }
-  });
+  }));
 
-  document.getElementById('btn-download-update')!.addEventListener('click', async () => {
+  document.getElementById('btn-download-update')!.addEventListener('click', guarded(async () => {
     try {
       await window.hypermiler.downloadUpdate();
     } catch (err) {
       showSaveStatus(`Download non riuscito: ${(err as Error)?.message || err}`);
     }
-  });
+  }));
 
-  document.getElementById('btn-cancel')!.addEventListener('click', async () => {
+  document.getElementById('btn-cancel')!.addEventListener('click', guarded(async () => {
     // Scarta le modifiche non salvate: ricarica lo stato realmente persistito e
     // ripopola il form da lì.
     settings = await window.hypermiler.getSettings();
     savedSettings = structuredClone(settings);
     populateForm();
     showSaveStatus('Modifiche annullate');
-  });
+  }));
 }
 
 async function init(): Promise<void> {
@@ -525,4 +543,4 @@ async function init(): Promise<void> {
   });
 }
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => { runGuarded(init()); });
