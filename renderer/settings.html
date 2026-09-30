@@ -241,6 +241,25 @@
       </label>
     </section>
 
+    <section class="card" id="updates-card">
+      <h2>Aggiornamenti</h2>
+      <p class="updates-version">Versione installata: <strong id="app-version">—</strong></p>
+      <p class="connection-status" id="updates-status">Nessun controllo eseguito.</p>
+      <div class="field-row connect-row">
+        <button type="button" class="btn-secondary" id="btn-check-updates">Controlla ora</button>
+        <button type="button" class="btn-primary" id="btn-download-update" hidden>Scarica</button>
+      </div>
+      <p class="hint" id="updates-download-hint" hidden></p>
+      <label>
+        <input type="checkbox" data-field="updates.autoCheck" />
+        Controlla automaticamente all'avvio e ogni 24 ore
+      </label>
+      <p class="hint">
+        Legge solo l'elenco delle versioni pubblicate su GitHub (nessun dato personale inviato). Il
+        pacchetto per il tuo sistema si scarica nel browser: chiudi l'app e installalo come la prima volta.
+      </p>
+    </section>
+
     <section class="card">
       <h2>Diagnostica</h2>
       <label>

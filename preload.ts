@@ -45,6 +45,12 @@ const bridge: HypermilerBridge = {
   connectCopilot: (id, token) => ipcRenderer.invoke('accounts:connectCopilot', id, token),
   connectCopilotOAuth: (id, clientId, clientSecret) => ipcRenderer.invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret }),
   disconnectAccount: (id) => ipcRenderer.invoke('accounts:disconnect', id),
+
+  // Aggiornamenti (issue #5): l'URL da aprire lo decide il main, mai il renderer.
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  checkForUpdates: () => ipcRenderer.invoke('updates:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
+  openReleaseNotes: () => ipcRenderer.invoke('updates:openReleaseNotes'),
 };
 
 contextBridge.exposeInMainWorld('hypermiler', bridge);

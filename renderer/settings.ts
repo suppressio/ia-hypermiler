@@ -1,6 +1,6 @@
 // settings.ts — logica finestra impostazioni (nessun accesso diretto a Node.js)
 
-import type { AccountConfig, AccountId, AppSettings, HypermilerBridge, ProviderId } from './types';
+import type { AccountConfig, AccountId, AppSettings, HypermilerBridge, ProviderId, UpdateSettings } from './types';
 
 declare global {
   interface Window {
@@ -354,6 +354,50 @@ function captureDraftFromForm(): Set<string> {
   return touchedKeys;
 }
 
+// Card "Aggiornamenti" (issue #5): stato letto da settings.updates, scritto solo
+// dal main (services/updates.ts). Non fa parte della bozza del form: si aggiorna
+// dal vivo anche quando arriva l'esito di un controllo automatico.
+function renderUpdatesCard(updates: UpdateSettings | undefined): void {
+  const status = document.getElementById('updates-status') as HTMLElement;
+  const download = document.getElementById('btn-download-update') as HTMLButtonElement;
+  const hint = document.getElementById('updates-download-hint') as HTMLElement;
+  const checkedAt = updates?.lastCheckedAt ? new Date(updates.lastCheckedAt).toLocaleString('it-IT') : null;
+  const available = updates?.available ?? null;
+
+  status.classList.remove('connected', 'update-available', 'update-error');
+  if (available) {
+    status.textContent = '';
+    status.classList.add('update-available');
+    status.append(`Disponibile la versione ${available.version} `);
+    const notes = document.createElement('a');
+    notes.href = '#';
+    notes.textContent = '(note di rilascio)';
+    notes.addEventListener('click', (event) => {
+      event.preventDefault();
+      // Passa dal main, che apre solo URL del repository del progetto.
+      window.hypermiler.openReleaseNotes();
+    });
+    status.append(notes);
+  } else if (updates?.lastError) {
+    status.textContent = `Controllo non riuscito: ${updates.lastError}`;
+    status.classList.add('update-error');
+  } else if (checkedAt) {
+    status.textContent = `Sei aggiornato (ultimo controllo: ${checkedAt})`;
+    status.classList.add('connected');
+  } else {
+    status.textContent = 'Nessun controllo eseguito.';
+  }
+
+  download.hidden = !available;
+  hint.hidden = !available;
+  if (available) {
+    download.textContent = `Scarica ${available.version}`;
+    hint.textContent = available.assetName
+      ? `Si scarica ${available.assetName} nel browser: chiudi l'app e installalo.`
+      : 'Nessun pacchetto specifico per questo sistema: si apre la pagina della release.';
+  }
+}
+
 function showSaveStatus(text: string): void {
   const el = document.getElementById('save-status') as HTMLElement;
   el.textContent = text;
@@ -435,6 +479,28 @@ function bindEvents(): void {
     showSaveStatus('Impostazioni salvate ✓');
   });
 
+  document.getElementById('btn-check-updates')!.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-check-updates') as HTMLButtonElement;
+    const status = document.getElementById('updates-status') as HTMLElement;
+    btn.disabled = true;
+    status.textContent = 'Controllo in corso…';
+    try {
+      renderUpdatesCard(await window.hypermiler.checkForUpdates());
+    } catch (err) {
+      status.textContent = `Controllo non riuscito: ${(err as Error)?.message || err}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-download-update')!.addEventListener('click', async () => {
+    try {
+      await window.hypermiler.downloadUpdate();
+    } catch (err) {
+      showSaveStatus(`Download non riuscito: ${(err as Error)?.message || err}`);
+    }
+  });
+
   document.getElementById('btn-cancel')!.addEventListener('click', async () => {
     // Scarta le modifiche non salvate: ricarica lo stato realmente persistito e
     // ripopola il form da lì.
@@ -451,6 +517,16 @@ async function init(): Promise<void> {
   savedSettings = structuredClone(settings);
   populateForm();
   bindEvents();
+  (document.getElementById('app-version') as HTMLElement).textContent = await window.hypermiler.getAppVersion();
+  renderUpdatesCard(settings.updates);
+  // Solo lo stato aggiornamenti (gestito dal main): il resto del form resta in
+  // bozza, un ripopolamento completo scarterebbe le modifiche non salvate.
+  window.hypermiler.onSettingsUpdate((updated) => {
+    if (settings && updated.updates) {
+      settings.updates = { ...updated.updates, autoCheck: settings.updates?.autoCheck ?? updated.updates.autoCheck };
+    }
+    renderUpdatesCard(updated.updates);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);

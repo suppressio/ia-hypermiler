@@ -15,6 +15,8 @@ import * as budget from './budget';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
 import { computeClaudeLocalInsights } from './services/claudeLocalSessions';
+import { fetchLatestUpdate, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
+import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
 import { buildFormatDriftIssueUrl } from './diagnostics/githubIssue';
 import { randomUUID } from 'crypto';
@@ -27,6 +29,7 @@ import type {
   ClaudeLocalInsights,
   DailyUsagePoint,
   ProviderId,
+  UpdateSettings,
   QuotaWindow,
   QuotaWindowSnapshot,
   RawAccountUsage,
@@ -38,6 +41,10 @@ import type {
 } from './types/index';
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minuti, come da CLAUDE.md
+// Controllo nuova versione (issue #5): all'avvio (con un piccolo ritardo, per non
+// sovrapporsi al primo refresh usage) e poi ogni 24 ore.
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const UPDATE_FIRST_CHECK_DELAY_MS = 10 * 1000;
 // Ricalcolo insight locali (services/claudeLocalSessions.ts): più costoso di un
 // refresh usuale (scansione file su disco, non un poll di rete), non serve farlo
 // ad ogni refresh di 30 min — cache con questo intervallo minimo, stesso pattern
@@ -48,6 +55,8 @@ let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let refreshTimer: NodeJS.Timeout | null = null;
 let hoverPollTimer: NodeJS.Timeout | null = null;
+let updateTimer: NodeJS.Timeout | null = null;
+let trayHandle: TrayHandle | null = null;
 let lastHoverState = false;
 
 // ---------------------------------------------------------------------------
@@ -533,6 +542,13 @@ function redactSecretsForRenderer(settings: AppSettings): AppSettings {
 // nello store. I segreti cambiano SOLO tramite i flussi dedicati (accounts:connect*/
 // accounts:disconnect), mai tramite il salvataggio generico — vedi providers.preserveSecrets.
 function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
+  // `updates` è stato gestito dal main (esito dei controlli): dal renderer si
+  // accetta solo la preferenza autoCheck, altrimenti una bozza aperta prima di un
+  // controllo automatico ne sovrascriverebbe l'esito al primo "Salva".
+  if (key === 'updates') {
+    const incoming = (typeof value === 'object' && value !== null ? value : {}) as Partial<UpdateSettings>;
+    return { ...getUpdateSettings(), autoCheck: incoming.autoCheck !== false };
+  }
   if (key !== 'accounts' || !Array.isArray(value)) return value;
   const current = getAccounts();
   const merged = (value as AccountConfig[])
@@ -544,6 +560,66 @@ function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
     if (!merged.some((m) => m.id === cur.id)) merged.push(cur);
   }
   return enforceSingleLocalInsights(merged);
+}
+
+// ---------------------------------------------------------------------------
+// Aggiornamenti (issue #5, services/updates.ts): solo controllo + download nel
+// browser, nessuna installazione automatica (pacchetti non firmati, nessuna
+// dipendenza aggiuntiva — scelta dell'utente). Lo stato vive in store.updates,
+// così la finestra Impostazioni e il tray lo leggono come ogni altra impostazione.
+// ---------------------------------------------------------------------------
+function getUpdateSettings(): UpdateSettings {
+  const defaults: UpdateSettings = { autoCheck: true, lastCheckedAt: null, lastError: null, available: null, notifiedVersion: null };
+  return { ...defaults, ...((store.get('updates') as Partial<UpdateSettings> | undefined) ?? {}) };
+}
+
+function openSettingsWindow(): void {
+  settingsWindow = createSettingsWindow(store, settingsWindow);
+}
+
+async function checkForUpdates(source: 'auto' | 'manual'): Promise<UpdateSettings> {
+  const current = getUpdateSettings();
+  if (source === 'auto' && !current.autoCheck) return current;
+
+  let next: UpdateSettings;
+  try {
+    const available = await fetchLatestUpdate(app.getVersion(), {
+      platform: process.platform,
+      arch: process.arch,
+      isAppImage: !!process.env.APPIMAGE,
+    });
+    next = { ...current, available, lastCheckedAt: new Date().toISOString(), lastError: null };
+  } catch (err) {
+    // Mai bloccante: l'ultimo esito noto (available) resta valido, l'errore si
+    // vede in Impostazioni accanto a "Controlla ora".
+    console.error('[main] controllo aggiornamenti fallito:', (err as Error).message);
+    next = { ...current, lastCheckedAt: new Date().toISOString(), lastError: (err as Error).message };
+  }
+
+  if (next.available && next.available.version !== next.notifiedVersion && Notification.isSupported()) {
+    const notification = new Notification({
+      title: 'IA Hypermiler',
+      body: `È disponibile la versione ${next.available.version}: apri Impostazioni → Aggiornamenti per scaricarla.`,
+    });
+    notification.on('click', openSettingsWindow);
+    notification.show();
+    next.notifiedVersion = next.available.version;
+  }
+
+  store.set('updates', next);
+  broadcastSettings();
+  trayHandle?.refreshMenu();
+  return next;
+}
+
+function startUpdateChecks(): void {
+  // In sviluppo (`npm start`, app non pacchettizzata) niente controllo automatico:
+  // la versione locale non corrisponde a una build installata. Il pulsante
+  // "Controlla ora" funziona comunque. `autoCheck` è riletto ad ogni giro, quindi
+  // attivarlo/disattivarlo in Impostazioni ha effetto senza riavviare.
+  if (!app.isPackaged) return;
+  setTimeout(() => { checkForUpdates('auto'); }, UPDATE_FIRST_CHECK_DELAY_MS);
+  updateTimer = setInterval(() => { checkForUpdates('auto'); }, UPDATE_CHECK_INTERVAL_MS);
 }
 
 function broadcastSettings(): void {
@@ -671,6 +747,21 @@ function registerIpcHandlers(): void {
     return { username };
   });
 
+  ipcMain.handle('app:getVersion', () => app.getVersion());
+
+  ipcMain.handle('updates:check', () => checkForUpdates('manual'));
+
+  // L'URL da aprire viene dallo store (scritto solo da checkForUpdates), mai dal
+  // renderer, ed è comunque limitato al repository del progetto.
+  const openTrustedUpdateUrl = async (pick: (a: NonNullable<UpdateSettings['available']>) => string) => {
+    const available = getUpdateSettings().available;
+    const url = available ? pick(available) : null;
+    if (!url || !url.startsWith(TRUSTED_DOWNLOAD_PREFIX)) throw new Error('Nessun aggiornamento disponibile');
+    await shell.openExternal(url);
+  };
+  ipcMain.handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
+  ipcMain.handle('updates:openReleaseNotes', () => openTrustedUpdateUrl((a) => a.releaseUrl));
+
   ipcMain.handle('accounts:disconnect', async (_event: IpcMainInvokeEvent, id: AccountId) => {
     const cfg = findAccount(id);
     if (!cfg) return;
@@ -715,11 +806,9 @@ app.whenReady().then(async () => {
 
   const win = createMainWindow(store);
   mainWindow = win;
-  createTray({
+  trayHandle = createTray({
     getMainWindow: () => mainWindow,
-    openSettings: () => {
-      settingsWindow = createSettingsWindow(store, settingsWindow);
-    },
+    openSettings: openSettingsWindow,
     refreshNow: () => refreshAndBroadcast(),
     store,
   });
@@ -731,6 +820,7 @@ app.whenReady().then(async () => {
 
   refreshTimer = setInterval(refreshAndBroadcast, REFRESH_INTERVAL_MS);
   startWindowHoverPolling();
+  startUpdateChecks();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -747,4 +837,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   if (refreshTimer) clearInterval(refreshTimer);
   if (hoverPollTimer) clearInterval(hoverPollTimer);
+  if (updateTimer) clearInterval(updateTimer);
 });

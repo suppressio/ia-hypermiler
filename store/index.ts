@@ -77,6 +77,16 @@ export const DEFAULTS: AppSettings = {
   },
 
   localInsightsCache: { claudeCode: null },
+
+  updates: {
+    // Controllo nuova versione all'avvio e ogni 24h (issue #5, services/updates.ts):
+    // solo lettura dell'elenco Release GitHub, nessun download automatico.
+    autoCheck: true,
+    lastCheckedAt: null,
+    lastError: null,
+    available: null,
+    notifiedVersion: null,
+  },
 };
 
 const store = new Store<AppSettings>({

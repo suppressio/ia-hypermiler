@@ -187,6 +187,13 @@ Riquadro metriche:
 
 ---
 
+## 4b. Aggiornamenti dell'app (issue #5)
+
+- **Cosa fa:** all'avvio (dopo ~10s, solo app pacchettizzata) e ogni 24h, `services/updates.ts` legge l'elenco delle Release GitHub del progetto e confronta la versione più alta (semver con pre-release, bozze escluse) con `app.getVersion()`. Se è più recente: notifica di sistema una sola volta per versione (`updates.notifiedVersion`), voce nel menu tray e card "Aggiornamenti" in Impostazioni con "Scarica X" (apre nel browser il pacchetto per l'OS in uso) e "Controlla ora". Disattivabile (`updates.autoCheck`).
+- **Endpoint:** `GET https://api.github.com/repos/suppressio/ia-hypermiler/releases` (API REST ufficiale, anonima, 60 richieste/h per IP: ampio margine). **Non** `/releases/latest`, che esclude le pre-release — e tutte le release del progetto lo sono (`releaseType: "prerelease"`). Nessun dato dell'utente nella richiesta.
+- **Scelta del pacchetto:** `.exe` su Windows, `.dmg` della stessa architettura su macOS (la CI produce solo arm64: su un Mac Intel si apre la pagina della release), `.AppImage` se l'app gira come AppImage (`process.env.APPIMAGE`) altrimenti `.deb` su Linux.
+- **Perché niente installazione automatica (electron-updater):** scelta dell'utente — nessuna dipendenza nuova, e con pacchetti non firmati l'aggiornamento in-app non funzionerebbe comunque su macOS. L'URL aperto viene sempre dallo store (scritto dal main) e deve iniziare per `https://github.com/suppressio/ia-hypermiler/`, mai da un valore passato dal renderer.
+
 ## 5. Evoluzioni future (non implementate ora, solo predisposte)
 
 **Integrazione con strumenti grafici esterni (Rainmeter, KDE Plasma, ecc.):**

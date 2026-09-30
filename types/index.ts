@@ -297,6 +297,25 @@ export interface DiagnosticsSettings {
   reportedSignatures: Record<string, string>; // firma -> timestamp ISO di prima segnalazione
 }
 
+/** Nuova versione disponibile — vedi services/updates.ts (issue #5). */
+export interface UpdateInfo {
+  version: string;
+  publishedAt: string | null;
+  releaseUrl: string;
+  // Pacchetto per l'OS in uso; se nessuno è adatto (es. Mac Intel), la pagina della release.
+  downloadUrl: string;
+  assetName: string | null;
+}
+
+export interface UpdateSettings {
+  autoCheck: boolean;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  available: UpdateInfo | null;
+  // Versione già notificata con una notifica di sistema: non ripetere ad ogni controllo.
+  notifiedVersion: string | null;
+}
+
 export interface AppSettings {
   // Registro di N account (issue #4) — prima due slot fissi `{ claude, copilot }`,
   // convertiti all'avvio da store/migrate.ts.
@@ -312,6 +331,7 @@ export interface AppSettings {
     claudeCookiesMigrated?: boolean;
   };
   diagnostics: DiagnosticsSettings;
+  updates: UpdateSettings;
   // Cache gestita dall'app (non impostazione utente), stesso pattern di advisorCache:
   // evita di riscandire tutte le sessioni Claude Code locali ad ogni refresh di 30 min
   // — vedi main.ts LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
@@ -357,4 +377,8 @@ export interface HypermilerBridge {
   connectCopilot(id: AccountId, token: string): Promise<{ username: string }>;
   connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string): Promise<{ username: string }>;
   disconnectAccount(id: AccountId): Promise<void>;
+  getAppVersion(): Promise<string>;
+  checkForUpdates(): Promise<UpdateSettings>;
+  downloadUpdate(): Promise<void>;
+  openReleaseNotes(): Promise<void>;
 }

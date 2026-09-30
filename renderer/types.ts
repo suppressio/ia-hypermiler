@@ -162,8 +162,28 @@ export interface CopilotAccountConfig extends AccountConfigBase {
 
 export type AccountConfig = ClaudeAccountConfig | CopilotAccountConfig;
 
+/** Nuova versione disponibile — vedi services/updates.ts (issue #5). */
+export interface UpdateInfo {
+  version: string;
+  publishedAt: string | null;
+  releaseUrl: string;
+  // Pacchetto per l'OS in uso; se nessuno è adatto (es. Mac Intel), la pagina della release.
+  downloadUrl: string;
+  assetName: string | null;
+}
+
+export interface UpdateSettings {
+  autoCheck: boolean;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  available: UpdateInfo | null;
+  // Versione già notificata con una notifica di sistema: non ripetere ad ogni controllo.
+  notifiedVersion: string | null;
+}
+
 export interface AppSettings {
   accounts: AccountConfig[];
+  updates?: UpdateSettings;
   ui: {
     windowStyle: 'filled' | 'filled-dark' | 'transparent-digital';
     alwaysOnTop: boolean;
@@ -191,4 +211,8 @@ export interface HypermilerBridge {
   connectCopilot(id: AccountId, token: string): Promise<{ username: string }>;
   connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string): Promise<{ username: string }>;
   disconnectAccount(id: AccountId): Promise<void>;
+  getAppVersion(): Promise<string>;
+  checkForUpdates(): Promise<UpdateSettings>;
+  downloadUpdate(): Promise<void>;
+  openReleaseNotes(): Promise<void>;
 }

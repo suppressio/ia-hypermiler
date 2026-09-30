@@ -202,3 +202,11 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
 }
 .account-detail label { margin-bottom: 6px; }
 .add-account-row { gap: 8px; margin-bottom: 4px; }
+
+/* Card Aggiornamenti (issue #5). */
+.updates-version { font-size: 12px; margin: 0 0 6px; }
+#updates-status { display: block; margin: 0 0 8px; }
+.connection-status.update-available { color: #1d4ed8; font-weight: 600; }
+.connection-status.update-error { color: #b91c1c; }
+#updates-card .btn-primary { font-size: 12px; padding: 6px 14px; }
+#updates-card .connect-row { margin-bottom: 8px; }

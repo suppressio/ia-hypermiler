@@ -15,7 +15,14 @@ export interface CreateTrayDeps {
 }
 
 /** Crea l'icona di tray con menu contestuale. */
-export function createTray({ getMainWindow, openSettings, refreshNow, store }: CreateTrayDeps): Tray {
+export interface TrayHandle {
+  tray: Tray;
+  // Ricostruisce il menu (es. dopo un controllo aggiornamenti): Electron non
+  // aggiorna da solo un context menu già impostato.
+  refreshMenu: () => void;
+}
+
+export function createTray({ getMainWindow, openSettings, refreshNow, store }: CreateTrayDeps): TrayHandle {
   // Se l'icona custom non esiste ancora (asset da fornire in Sessione 2 avanzata),
   // usiamo un'icona vuota di fallback: Electron non crasha, ma va sostituita
   // prima della build finale con un asset reale multi-piattaforma.
@@ -39,7 +46,12 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
 
   const buildMenu = () => {
     const ui = store.get('ui');
+    // Fallback: `updates` può mancare su uno store scritto prima dell'issue #5.
+    const available = store.get('updates')?.available ?? null;
     return Menu.buildFromTemplate([
+      ...(available
+        ? [{ label: `Aggiornamento disponibile (${available.version})…`, click: openSettings }, { type: 'separator' as const }]
+        : []),
       { label: 'Mostra/Nascondi', click: toggleMainWindow },
       { label: 'Impostazioni…', click: openSettings },
       { label: 'Aggiorna ora', click: refreshNow },
@@ -66,5 +78,5 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
   // comunque il caso, garantendo un comportamento uniforme su tutte le piattaforme.
   tray.on('click', toggleMainWindow);
 
-  return tray;
+  return { tray, refreshMenu: () => tray.setContextMenu(buildMenu()) };
 }
