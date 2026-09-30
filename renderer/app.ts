@@ -12,14 +12,15 @@ declare global {
 interface RendererState {
   settings: AppSettings | null;
   latestSnapshot: UsageSnapshot | null;
-  activeAccount: AccountId;
+  // null = nessuna scelta esplicita: si mostra il primo account dello snapshot.
+  activeAccount: AccountId | null;
   activeWindowId: string | null;
 }
 
 const state: RendererState = {
   settings: null,
   latestSnapshot: null,
-  activeAccount: 'claude',
+  activeAccount: null,
   activeWindowId: null,
 };
 
@@ -312,10 +313,11 @@ function renderEfficiencyRating(winSnap: QuotaWindowSnapshot | undefined, chartD
 // CLAUDE.md/RESEARCH.md §5) — sottosezione dentro la <details> "Consiglio del
 // giorno" (index.html), mostrata solo se abilitati e disponibili: a differenza
 // del consiglio (sempre presente), qui l'intero blocco può restare nascosto.
-// Solo per Claude: Copilot non ha una sorgente locale equivalente.
+// Presente solo sull'account Claude a cui l'utente ha attribuito le sessioni
+// locali (flag per account in Impostazioni): Copilot non ha una sorgente equivalente.
 function renderLocalInsights(account: AccountSnapshot | undefined): void {
   const details = document.getElementById('local-insights') as HTMLDivElement;
-  const insights = account?.accountId === 'claude' ? account.localInsights : null;
+  const insights = account?.localInsights ?? null;
   if (!insights) {
     details.hidden = true;
     return;
@@ -338,20 +340,30 @@ function renderLocalInsights(account: AccountSnapshot | undefined): void {
   });
 }
 
+// Un account per tab, nell'ordine della tabella in Impostazioni (issue #4: N
+// account, anche due dello stesso provider — da qui l'etichetta dell'account, non
+// il nome del provider).
+function selectAccount(snapshot: UsageSnapshot): AccountSnapshot | undefined {
+  const accounts = snapshot.accounts ?? [];
+  return accounts.find((a) => a.accountId === state.activeAccount) ?? accounts[0];
+}
+
 function renderAccountTabs(snapshot: UsageSnapshot): void {
   const nav = document.getElementById('account-tabs') as HTMLElement;
-  const available = (['claude', 'copilot'] as AccountId[]).filter((id) => snapshot[id]);
+  const available = snapshot.accounts ?? [];
   if (available.length <= 1) {
     nav.hidden = true;
-    if (available.length === 1) state.activeAccount = available[0];
     return;
   }
+  const activeId = selectAccount(snapshot)?.accountId;
   nav.hidden = false;
   nav.innerHTML = '';
-  available.forEach((id) => {
+  available.forEach((account) => {
+    const id = account.accountId;
     const btn = document.createElement('button');
-    btn.textContent = id === 'claude' ? 'Claude' : 'Copilot';
-    btn.className = id === state.activeAccount ? 'active' : '';
+    btn.textContent = account.label;
+    btn.title = account.label;
+    btn.className = id === activeId ? 'active' : '';
     btn.addEventListener('click', () => {
       state.activeAccount = id;
       state.activeWindowId = null;
@@ -408,7 +420,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   // rating a stelle — coerenza tra indicatori, vedi renderEfficiencyRating.
   const chartDays = state.settings?.ui?.chartRange === 'month' ? 30 : 7;
 
-  const account: AccountSnapshot | undefined = snapshot[state.activeAccount] || snapshot.claude || snapshot.copilot;
+  const account = selectAccount(snapshot);
   if (!account) {
     document.getElementById('window-tabs')!.hidden = true;
     document.getElementById('current-value')!.textContent = '--';

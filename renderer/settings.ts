@@ -1,6 +1,6 @@
 // settings.ts — logica finestra impostazioni (nessun accesso diretto a Node.js)
 
-import type { AppSettings, HypermilerBridge } from './types';
+import type { AccountConfig, AccountId, AppSettings, HypermilerBridge, ProviderId } from './types';
 
 declare global {
   interface Window {
@@ -19,6 +19,10 @@ let settings: AppSettings | null = null;
 // ricreare la finestra ad ogni Salva se lo stile non è stato toccato).
 let savedSettings: AppSettings | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+// Account con il pannello di dettaglio aperto nella tabella (uno alla volta).
+let expandedAccountId: AccountId | null = null;
+
+const PROVIDER_LABELS: Record<ProviderId, string> = { claude: 'Claude', copilot: 'GitHub Copilot' };
 
 type PlainRecord = Record<string, unknown>;
 
@@ -75,18 +79,107 @@ function fieldElements(): (HTMLInputElement | HTMLSelectElement)[] {
   return Array.from(document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-field]'));
 }
 
+function accounts(): AccountConfig[] {
+  return Array.isArray(settings?.accounts) ? settings.accounts : [];
+}
+
+function isAccountConnected(account: AccountConfig): boolean {
+  return account.provider === 'claude' ? !!account.session?.sessionKey : !!account.credentials?.username;
+}
+
+function connectionLabel(account: AccountConfig): string {
+  if (!isAccountConnected(account)) return 'Non connesso';
+  return account.provider === 'copilot' && account.credentials.username
+    ? `Connesso come ${account.credentials.username}`
+    : 'Connesso';
+}
+
+function actionButton(label: string, action: string, id: AccountId, disabled = false): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-secondary btn-small';
+  btn.textContent = label;
+  btn.dataset.action = action;
+  btn.dataset.accountId = id;
+  btn.disabled = disabled;
+  return btn;
+}
+
+// Tabella account (issue #4): una riga per account + riga di dettaglio espandibile,
+// clonata dal template del provider. I campi del dettaglio diventano
+// data-field="accounts.<indice>.<campo>": getPath/setPath funzionano già su indici
+// di array, quindi bozza/Salva/Annulla restano quelli generici del resto del form.
+function renderAccountsTable(): void {
+  const tbody = document.getElementById('accounts-tbody') as HTMLTableSectionElement;
+  tbody.innerHTML = '';
+  (document.getElementById('accounts-empty') as HTMLElement).hidden = accounts().length > 0;
+
+  accounts().forEach((account, index) => {
+    const row = document.createElement('tr');
+    row.dataset.accountId = account.id;
+
+    const nameCell = document.createElement('td');
+    nameCell.textContent = account.label;
+    const providerCell = document.createElement('td');
+    providerCell.textContent = PROVIDER_LABELS[account.provider];
+    const statusCell = document.createElement('td');
+    const status = document.createElement('span');
+    status.className = 'connection-status';
+    status.dataset.role = 'row-status';
+    status.textContent = connectionLabel(account);
+    status.classList.toggle('connected', isAccountConnected(account));
+    statusCell.appendChild(status);
+
+    const enabledCell = document.createElement('td');
+    const enabled = document.createElement('input');
+    enabled.type = 'checkbox';
+    enabled.dataset.field = `accounts.${index}.enabled`;
+    enabled.setAttribute('aria-label', `Account ${account.label} attivo`);
+    enabledCell.appendChild(enabled);
+
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'account-actions';
+    actionsCell.appendChild(actionButton(expandedAccountId === account.id ? 'Chiudi' : 'Configura', 'toggle-detail', account.id));
+    if (isAccountConnected(account)) {
+      actionsCell.appendChild(actionButton('Disconnetti', 'disconnect', account.id));
+    } else if (account.provider === 'claude') {
+      actionsCell.appendChild(actionButton('Connetti…', 'connect-claude', account.id));
+    }
+    actionsCell.appendChild(actionButton('Rimuovi', 'remove', account.id));
+
+    row.append(nameCell, providerCell, statusCell, enabledCell, actionsCell);
+    tbody.appendChild(row);
+
+    if (expandedAccountId === account.id) {
+      const detailRow = document.createElement('tr');
+      detailRow.className = 'account-detail-row';
+      detailRow.dataset.accountId = account.id;
+      const cell = document.createElement('td');
+      cell.colSpan = 5;
+      const tpl = document.getElementById(`tpl-detail-${account.provider}`) as HTMLTemplateElement;
+      const detail = tpl.content.firstElementChild!.cloneNode(true) as HTMLElement;
+      detail.dataset.accountId = account.id;
+      detail.querySelectorAll<HTMLElement>('[data-account-field]').forEach((el) => {
+        el.dataset.field = `accounts.${index}.${el.dataset.accountField}`;
+      });
+      detail.querySelectorAll<HTMLElement>('[data-action]').forEach((el) => { el.dataset.accountId = account.id; });
+      cell.appendChild(detail);
+      detailRow.appendChild(cell);
+      tbody.appendChild(detailRow);
+    }
+  });
+}
+
 function populateForm(): void {
+  renderAccountsTable();
   fieldElements().forEach((el) => {
     const value = getPath(settings, el.dataset.field as string);
     if (value === undefined || value === null) return;
     if (el instanceof HTMLInputElement && el.type === 'checkbox') el.checked = !!value;
     else el.value = String(value);
   });
-  updateCopilotWarningVisibility();
-  updateCopilotAuthMethodVisibility();
-  updateCopilotEnabledLock();
+  accounts().forEach((_account, index) => applyAccountDetailState(index));
   updateWorkScheduleLock();
-  updateConnectionStatuses();
 }
 
 // Quando il calendario di lavoro è disattivato (account personale, nessun
@@ -105,51 +198,146 @@ function updateWorkScheduleLock(): void {
   if (hoursInput) hoursInput.disabled = !enabled;
 }
 
-function updateCopilotWarningVisibility(): void {
-  const warning = document.getElementById('copilot-org-warning') as HTMLElement;
-  const scope = getPath(settings, 'accounts.copilot.accountScope');
-  warning.hidden = scope !== 'organization';
+function accountIndexOf(id: AccountId): number {
+  return accounts().findIndex((a) => a.id === id);
 }
 
-// Con un seat aziendale non c'è nessuna via self-service affidabile per il consumo
-// Copilot (ricerca confermata, vedi RESEARCH.md §2.2/§2.3): blocchiamo la possibilità
-// di abilitare l'account solo in quel caso, lasciando il piano personale (PAT) intatto.
-function updateCopilotEnabledLock(): void {
-  const isOrg = getPath(settings, 'accounts.copilot.accountScope') === 'organization';
-  const checkbox = document.querySelector<HTMLInputElement>('[data-field="accounts.copilot.enabled"]')!;
-  const infoIcon = document.getElementById('copilot-enabled-info') as HTMLElement;
-  checkbox.disabled = isOrg;
-  infoIcon.hidden = !isOrg;
-  if (isOrg && checkbox.checked) {
-    checkbox.checked = false;
-    setPath(settings as PlainRecord, 'accounts.copilot.enabled', false);
+function detailElement(id: AccountId): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`.account-detail[data-account-id="${CSS.escape(id)}"]`);
+}
+
+// Stato dinamico della riga/dettaglio di un account Copilot:
+// - seat aziendale → nessuna via self-service affidabile per il consumo (RESEARCH.md
+//   §2.2/§2.3): checkbox "Attivo" bloccata e forzata a false, avviso visibile;
+// - PAT/OAuth condividono lo stesso slot di credenziali: un solo pannello visibile.
+function applyAccountDetailState(index: number): void {
+  const account = accounts()[index];
+  if (!account || account.provider !== 'copilot') return;
+  const isOrg = account.accountScope === 'organization';
+  const enabled = document.querySelector<HTMLInputElement>(`[data-field="accounts.${index}.enabled"]`);
+  if (enabled) {
+    enabled.disabled = isOrg;
+    enabled.title = isOrg ? 'Seat aziendale: monitoraggio non disponibile (vedi Configura)' : '';
+    if (isOrg && enabled.checked) {
+      enabled.checked = false;
+      setPath(settings as PlainRecord, `accounts.${index}.enabled`, false);
+    }
+  }
+  const detail = detailElement(account.id);
+  if (!detail) return;
+  (detail.querySelector('[data-role="org-warning"]') as HTMLElement).hidden = !isOrg;
+  (detail.querySelector('[data-role="pat-panel"]') as HTMLElement).hidden = account.authMethod === 'oauth';
+  (detail.querySelector('[data-role="oauth-panel"]') as HTMLElement).hidden = account.authMethod !== 'oauth';
+}
+
+// Le sessioni Claude Code locali non dicono a quale account appartengono: il flag
+// può stare su un solo account Claude alla volta (lo stesso vincolo è riapplicato
+// lato main, enforceSingleLocalInsights in store/migrate.ts).
+function enforceSingleLocalInsightsDraft(keepIndex: number): void {
+  accounts().forEach((account, index) => {
+    if (index === keepIndex || account.provider !== 'claude' || !account.localInsights) return;
+    account.localInsights = false;
+    const el = document.querySelector<HTMLInputElement>(`[data-field="accounts.${index}.localInsights"]`);
+    if (el) el.checked = false;
+  });
+}
+
+// Dopo un'azione eseguita dal main (connetti/disconnetti/aggiungi/rimuovi) serve
+// lo stato reale dello store per l'account toccato — ma le modifiche in bozza non
+// ancora salvate sugli ALTRI account e sulle altre sezioni non vanno perse (prima
+// si ricaricava tutto il form da capo, scartandole).
+async function reloadAfterAccountAction(actedOn: AccountId | null): Promise<void> {
+  const fresh = await window.hypermiler.getSettings();
+  const draft = settings;
+  savedSettings = structuredClone(fresh);
+  if (draft) {
+    const draftAccounts = new Map(accounts().map((a) => [a.id, a]));
+    fresh.accounts = fresh.accounts.map((a) => (a.id !== actedOn && draftAccounts.has(a.id) ? draftAccounts.get(a.id)! : a));
+    for (const [key, value] of Object.entries(draft)) {
+      if (key !== 'accounts') (fresh as PlainRecord)[key] = value;
+    }
+  }
+  settings = fresh;
+  populateForm();
+}
+
+function setDetailStatus(id: AccountId, text: string): void {
+  const el = detailElement(id)?.querySelector<HTMLElement>('[data-role="detail-status"]');
+  if (el) el.textContent = text;
+  const rowStatus = document.querySelector<HTMLElement>(`tr[data-account-id="${CSS.escape(id)}"] [data-role="row-status"]`);
+  if (rowStatus) rowStatus.textContent = text;
+}
+
+async function runAccountAction(action: string, id: AccountId, button: HTMLButtonElement): Promise<void> {
+  const account = accounts().find((a) => a.id === id);
+  if (!account) return;
+
+  if (action === 'toggle-detail') {
+    expandedAccountId = expandedAccountId === id ? null : id;
+    captureDraftFromForm();
+    populateForm();
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    if (action === 'connect-claude') {
+      setDetailStatus(id, 'Login in corso… (completa nella finestra che si è aperta)');
+      const result = await window.hypermiler.connectClaude(id);
+      await reloadAfterAccountAction(id);
+      showSaveStatus(result?.organizationId ? `${account.label} connesso` : `${account.label} connesso (organizzazione non rilevata)`);
+    } else if (action === 'connect-copilot-pat') {
+      const input = detailElement(id)?.querySelector<HTMLInputElement>('[data-role="token-input"]');
+      const token = input?.value.trim() ?? '';
+      if (!token) {
+        setDetailStatus(id, 'Incolla un token prima di salvare');
+        return;
+      }
+      setDetailStatus(id, 'Verifica token…');
+      const result = await window.hypermiler.connectCopilot(id, token);
+      await reloadAfterAccountAction(id);
+      showSaveStatus(`${account.label} connesso come ${result.username}`);
+    } else if (action === 'connect-copilot-oauth') {
+      const detail = detailElement(id);
+      const clientId = detail?.querySelector<HTMLInputElement>('[data-role="oauth-client-id"]')?.value.trim() ?? '';
+      const clientSecret = detail?.querySelector<HTMLInputElement>('[data-role="oauth-secret-input"]')?.value.trim() ?? '';
+      if (!clientId || !clientSecret) {
+        setDetailStatus(id, 'Inserisci Client ID e Client Secret prima di connetterti');
+        return;
+      }
+      setDetailStatus(id, "Apri il browser e autorizza l'accesso…");
+      const result = await window.hypermiler.connectCopilotOAuth(id, clientId, clientSecret);
+      await reloadAfterAccountAction(id);
+      showSaveStatus(`${account.label} connesso (OAuth) come ${result.username}`);
+    } else if (action === 'disconnect') {
+      await window.hypermiler.disconnectAccount(id);
+      await reloadAfterAccountAction(id);
+      showSaveStatus(`${account.label} disconnesso`);
+    } else if (action === 'remove') {
+      if (!window.confirm(`Rimuovere l'account "${account.label}"? La sessione salvata verrà cancellata.`)) return;
+      await window.hypermiler.removeAccount(id);
+      if (expandedAccountId === id) expandedAccountId = null;
+      await reloadAfterAccountAction(id);
+      showSaveStatus(`${account.label} rimosso`);
+    }
+  } catch (err) {
+    setDetailStatus(id, `Operazione non riuscita: ${(err as Error)?.message || err}`);
+  } finally {
+    if (button.isConnected) button.disabled = false;
   }
 }
 
-// I due pannelli (PAT/OAuth) condividono lo stesso slot di credenziali
-// (accounts.copilot.credentials): mostrarli entrambi contemporaneamente dava
-// l'impressione di due connessioni indipendenti (feedback utente). Solo uno alla
-// volta, in base al metodo selezionato — stesso pattern di updateCopilotWarningVisibility.
-function updateCopilotAuthMethodVisibility(): void {
-  const method = getPath(settings, 'accounts.copilot.authMethod');
-  const patPanel = document.getElementById('copilot-pat-panel') as HTMLElement;
-  const oauthPanel = document.getElementById('copilot-oauth-panel') as HTMLElement;
-  patPanel.hidden = method === 'oauth';
-  oauthPanel.hidden = method !== 'oauth';
-}
-
-function updateConnectionStatuses(): void {
-  const claudeStatus = document.getElementById('claude-connection-status') as HTMLElement;
-  const hasClaudeSession = !!getPath(settings, 'accounts.claude.session.sessionKey');
-  claudeStatus.textContent = hasClaudeSession ? 'Connesso' : 'Non connesso';
-  claudeStatus.classList.toggle('connected', hasClaudeSession);
-  (document.getElementById('btn-disconnect-claude') as HTMLButtonElement).disabled = !hasClaudeSession;
-
-  const copilotStatus = document.getElementById('copilot-connection-status') as HTMLElement;
-  const copilotUsername = getPath(settings, 'accounts.copilot.credentials.username') as string | null;
-  copilotStatus.textContent = copilotUsername ? `Connesso come ${copilotUsername}` : 'Non connesso';
-  copilotStatus.classList.toggle('connected', !!copilotUsername);
-  (document.getElementById('btn-disconnect-copilot') as HTMLButtonElement).disabled = !copilotUsername;
+// Rilegge nella bozza tutti i campi attualmente nel DOM: serve prima di ridisegnare
+// la tabella (apri/chiudi dettaglio), altrimenti un valore digitato ma non ancora
+// "change" (input in focus) andrebbe perso.
+function captureDraftFromForm(): Set<string> {
+  const touchedKeys = new Set<string>();
+  fieldElements().forEach((el) => {
+    const field = el.dataset.field as string;
+    setPath(settings as PlainRecord, field, readFieldValue(el));
+    touchedKeys.add(topLevelKey(field));
+  });
+  return touchedKeys;
 }
 
 function showSaveStatus(text: string): void {
@@ -164,33 +352,45 @@ async function persist(key: string): Promise<void> {
 }
 
 function bindEvents(): void {
-  fieldElements().forEach((el) => {
-    el.addEventListener('change', () => {
-      const field = el.dataset.field as string;
-      const value = readFieldValue(el);
-      setPath(settings as PlainRecord, field, value);
-      if (field === 'accounts.copilot.accountScope') {
-        updateCopilotWarningVisibility();
-        updateCopilotEnabledLock();
-      }
-      if (field === 'accounts.copilot.authMethod') updateCopilotAuthMethodVisibility();
-      if (field === 'workSchedule.enabled') updateWorkScheduleLock();
-      // Nessun salvataggio né effetto collaterale qui: la modifica resta "in
-      // bozza" nel form finché l'utente non preme "Salva" (o "Annulla" per
-      // scartarla) — prima si salvava ad ogni campo, un comportamento discordante
-      // col pulsante "Salva impostazioni" già presente (feedback utente).
-    });
+  // Delegato su document: righe e dettagli della tabella account vengono ricreati
+  // ad ogni populateForm(), listener per-elemento andrebbero persi.
+  document.addEventListener('change', (event) => {
+    const el = event.target;
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement) || !el.dataset.field) return;
+    const field = el.dataset.field;
+    const value = readFieldValue(el);
+    setPath(settings as PlainRecord, field, value);
+    const accountMatch = /^accounts\.(\d+)\.(.+)$/.exec(field);
+    if (accountMatch) {
+      const index = Number(accountMatch[1]);
+      if (accountMatch[2] === 'localInsights' && value === true) enforceSingleLocalInsightsDraft(index);
+      applyAccountDetailState(index);
+    }
+    if (field === 'workSchedule.enabled') updateWorkScheduleLock();
+    // Nessun salvataggio né effetto collaterale qui: la modifica resta "in
+    // bozza" nel form finché l'utente non preme "Salva" (o "Annulla" per
+    // scartarla) — prima si salvava ad ogni campo, un comportamento discordante
+    // col pulsante "Salva impostazioni" già presente (feedback utente).
+  });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-action]') : null;
+    if (!target?.dataset.accountId) return;
+    runAccountAction(target.dataset.action as string, target.dataset.accountId, target);
+  });
+
+  document.getElementById('btn-add-account')!.addEventListener('click', async () => {
+    const provider = (document.getElementById('add-account-provider') as HTMLSelectElement).value as ProviderId;
+    captureDraftFromForm();
+    const id = await window.hypermiler.addAccount(provider);
+    expandedAccountId = id;
+    await reloadAfterAccountAction(id);
   });
 
   document.getElementById('btn-save')!.addEventListener('click', async () => {
     // Rilegge esplicitamente tutti i campi (anche quelli senza un evento 'change'
     // ancora scattato, es. input numerico in focus) e salva tutto in un colpo solo.
-    const touchedKeys = new Set<string>();
-    fieldElements().forEach((el) => {
-      const field = el.dataset.field as string;
-      setPath(settings as PlainRecord, field, readFieldValue(el));
-      touchedKeys.add(topLevelKey(field));
-    });
+    const touchedKeys = captureDraftFromForm();
     for (const key of touchedKeys) {
       await persist(key);
     }
@@ -226,116 +426,6 @@ function bindEvents(): void {
     savedSettings = structuredClone(settings);
     populateForm();
     showSaveStatus('Modifiche annullate');
-  });
-
-  document.getElementById('btn-connect-claude')!.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-connect-claude') as HTMLButtonElement;
-    const status = document.getElementById('claude-connection-status') as HTMLElement;
-    btn.disabled = true;
-    status.textContent = 'Login in corso… (completa nella finestra che si è aperta)';
-    try {
-      const result = await window.hypermiler.connectClaude();
-      settings = await window.hypermiler.getSettings();
-      savedSettings = structuredClone(settings);
-      // connectClaude() abilita anche accounts.claude.enabled lato main (main.ts,
-      // handler auth:connectClaude): senza rileggere l'intero form, la checkbox
-      // "Account collegato/abilitato" restava visibilmente disallineata (spuntata
-      // no) rispetto allo stato "Connesso" appena mostrato.
-      populateForm();
-      showSaveStatus(result?.organizationId ? 'Claude connesso' : 'Claude connesso (organizzazione non rilevata)');
-    } catch (err) {
-      status.textContent = `Connessione non riuscita: ${(err as Error)?.message || err}`;
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  document.getElementById('btn-connect-copilot')!.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-connect-copilot') as HTMLButtonElement;
-    const status = document.getElementById('copilot-connection-status') as HTMLElement;
-    const input = document.getElementById('copilot-token-input') as HTMLInputElement;
-    const token = input.value.trim();
-    if (!token) {
-      status.textContent = 'Incolla un token prima di salvare';
-      return;
-    }
-    btn.disabled = true;
-    status.textContent = 'Verifica token…';
-    try {
-      const result = await window.hypermiler.connectCopilot(token);
-      input.value = '';
-      settings = await window.hypermiler.getSettings();
-      savedSettings = structuredClone(settings);
-      populateForm();
-      showSaveStatus(`Copilot connesso come ${result.username}`);
-    } catch (err) {
-      status.textContent = `Token non valido: ${(err as Error)?.message || err}`;
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  document.getElementById('btn-connect-copilot-oauth')!.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-connect-copilot-oauth') as HTMLButtonElement;
-    // Riusa lo stesso indicatore di stato del flusso PAT: rappresentano la stessa
-    // connessione (accounts.copilot.credentials), solo ottenuta in due modi diversi.
-    const status = document.getElementById('copilot-connection-status') as HTMLElement;
-    const clientIdInput = document.querySelector<HTMLInputElement>('[data-field="accounts.copilot.oauthApp.clientId"]');
-    const secretInput = document.getElementById('copilot-oauth-secret-input') as HTMLInputElement;
-    const clientId = clientIdInput?.value.trim() ?? '';
-    const clientSecret = secretInput.value.trim();
-    if (!clientId || !clientSecret) {
-      status.textContent = 'Inserisci Client ID e Client Secret prima di connetterti';
-      return;
-    }
-    btn.disabled = true;
-    status.textContent = "Apri il browser e autorizza l'accesso…";
-    try {
-      const result = await window.hypermiler.connectCopilotOAuth(clientId, clientSecret);
-      secretInput.value = '';
-      settings = await window.hypermiler.getSettings();
-      savedSettings = structuredClone(settings);
-      populateForm();
-      showSaveStatus(`Copilot connesso (OAuth) come ${result.username}`);
-    } catch (err) {
-      status.textContent = `Accesso OAuth non riuscito: ${(err as Error)?.message || err}`;
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  document.getElementById('btn-disconnect-claude')!.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-disconnect-claude') as HTMLButtonElement;
-    const status = document.getElementById('claude-connection-status') as HTMLElement;
-    btn.disabled = true;
-    try {
-      await window.hypermiler.disconnectClaude();
-      settings = await window.hypermiler.getSettings();
-      savedSettings = structuredClone(settings);
-      // populateForm() ricalcola anche lo stato disabled del pulsante (ora "non
-      // connesso" → disabilitato): nessun riabilitazione qui nel percorso di successo.
-      populateForm();
-      showSaveStatus('Claude disconnesso');
-    } catch (err) {
-      status.textContent = `Disconnessione non riuscita: ${(err as Error)?.message || err}`;
-      btn.disabled = false;
-    }
-  });
-
-  document.getElementById('btn-disconnect-copilot')!.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-disconnect-copilot') as HTMLButtonElement;
-    const status = document.getElementById('copilot-connection-status') as HTMLElement;
-    btn.disabled = true;
-    try {
-      await window.hypermiler.disconnectCopilot();
-      settings = await window.hypermiler.getSettings();
-      savedSettings = structuredClone(settings);
-      populateForm();
-      showSaveStatus('Copilot disconnesso');
-    } catch (err) {
-      status.textContent = `Disconnessione non riuscita: ${(err as Error)?.message || err}`;
-      btn.disabled = false;
-    }
   });
 }
 

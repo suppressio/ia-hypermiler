@@ -74,8 +74,9 @@ export function createSettingsWindow(store: Store<AppSettings>, existing?: Brows
   }
 
   const win = new BrowserWindow({
-    width: 480,
-    height: 620,
+    // Più larga di prima per la tabella account (issue #4).
+    width: 620,
+    height: 680,
     resizable: true,
     frame: true,
     transparent: false,

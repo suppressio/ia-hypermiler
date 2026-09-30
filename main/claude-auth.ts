@@ -3,6 +3,12 @@
 // a mano. Funziona sia con login classico (email/password, Google) sia con SSO
 // aziendale: in entrambi i casi, al termine del login claude.ai deposita lo stesso
 // cookie di sessione (`sessionKey`), che qui intercettiamo.
+//
+// Ogni account Claude ha una propria partition Electron (`persist:account-<id>`,
+// vedi store/migrate.ts): i cookie di due account non si mescolano, e un
+// "Disconnetti" può cancellarli davvero (clearClaudePartition). Prima tutto
+// viveva in session.defaultSession — il login successivo a un disconnect
+// ritrovava il vecchio cookie e riprendeva la stessa sessione (issue #4).
 
 import { BrowserWindow, session } from 'electron';
 
@@ -26,22 +32,63 @@ export interface CapturedClaudeSession {
  * Letto fresco ad ogni chiamata (non persistito): cf_clearance ha una durata
  * limitata e viene rinnovato da Cloudflare mentre l'utente resta loggato.
  */
-export async function buildClaudeCookieHeader(): Promise<string> {
-  const cookies = await session.defaultSession.cookies.get({ url: 'https://claude.ai' });
+export async function buildClaudeCookieHeader(partition: string): Promise<string> {
+  const cookies = await session.fromPartition(partition).cookies.get({ url: 'https://claude.ai' });
   return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 }
 
+/** Cancella cookie e storage della partition dell'account (disconnect/rimozione, e prima di un nuovo login). */
+export async function clearClaudePartition(partition: string): Promise<void> {
+  await session.fromPartition(partition).clearStorageData();
+}
+
 /**
- * Apre una finestra di login verso claude.ai e risolve con il cookie di sessione
- * non appena l'utente completa l'accesso (con qualunque metodo).
+ * Copia una tantum i cookie claude.ai da session.defaultSession (dove vivevano
+ * prima delle partition per account) nella partition dell'account Claude
+ * migrato, poi li rimuove da defaultSession. Evita di dover rifare il login dopo
+ * l'aggiornamento; se fallisce, basta riconnettere l'account da Impostazioni.
  */
-export function captureClaudeSession(): Promise<CapturedClaudeSession> {
+export async function migrateDefaultSessionCookies(targetPartition: string): Promise<number> {
+  const source = session.defaultSession;
+  const target = session.fromPartition(targetPartition);
+  const cookies = await source.cookies.get({ url: 'https://claude.ai' });
+  for (const c of cookies) {
+    const host = (c.domain ?? 'claude.ai').replace(/^\./, '');
+    await target.cookies.set({
+      url: `https://${host}${c.path ?? '/'}`,
+      name: c.name,
+      value: c.value,
+      // Un cookie host-only non deve diventare di dominio: passiamo `domain` solo se lo era.
+      domain: c.hostOnly ? undefined : c.domain,
+      path: c.path,
+      secure: c.secure,
+      httpOnly: c.httpOnly,
+      expirationDate: c.expirationDate,
+      sameSite: c.sameSite,
+    });
+  }
+  for (const c of cookies) {
+    const host = (c.domain ?? 'claude.ai').replace(/^\./, '');
+    await source.cookies.remove(`https://${host}${c.path ?? '/'}`, c.name);
+  }
+  return cookies.length;
+}
+
+/**
+ * Apre una finestra di login verso claude.ai, nella partition dell'account, e
+ * risolve con il cookie di sessione non appena l'utente completa l'accesso (con
+ * qualunque metodo). La partition viene svuotata prima: si parte sempre da un
+ * login pulito, mai da una sessione residua.
+ */
+export async function captureClaudeSession(partition: string): Promise<CapturedClaudeSession> {
+  await clearClaudePartition(partition);
   return new Promise((resolve, reject) => {
     const authWindow = new BrowserWindow({
       width: 480,
       height: 720,
       title: 'Accedi a Claude',
       webPreferences: {
+        partition,
         nodeIntegration: false,
         contextIsolation: true,
         // Nessun preload: questa finestra carica solo claude.ai, nessun bisogno di
@@ -50,7 +97,7 @@ export function captureClaudeSession(): Promise<CapturedClaudeSession> {
     });
 
     let settled = false;
-    const ses = authWindow.webContents.session ?? session.defaultSession;
+    const ses = authWindow.webContents.session;
 
     const finish = <T>(fn: (value: T) => void, value: T) => {
       if (settled) return;

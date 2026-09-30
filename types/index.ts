@@ -2,7 +2,11 @@
 // Solo dichiarazioni di tipo: nessun codice a runtime, quindi sicuro da importare
 // (con `import type`) da entrambi i contesti senza alcun accoppiamento reale.
 
-export type AccountId = 'claude' | 'copilot';
+// Id di un'ISTANZA di account (es. 'claude', 'copilot' per gli account migrati
+// dallo schema a due slot, un id generato per quelli aggiunti dopo) — non più il
+// nome del provider: con N account (issue #4) due account Claude hanno id diversi.
+export type AccountId = string;
+export type ProviderId = 'claude' | 'copilot';
 export type AccountScope = 'personal' | 'organization';
 export type DayStatus = 'full' | 'half' | 'off';
 export type WindowStyle = 'filled' | 'filled-dark' | 'transparent-digital';
@@ -136,9 +140,11 @@ export interface ClaudeLocalInsights {
 /** Snapshot arricchito inviato al renderer via IPC (vedi main.ts). */
 export interface AccountSnapshot extends RawAccountUsage {
   accountId: AccountId;
+  provider: ProviderId;
+  label: string;
   windows: QuotaWindowSnapshot[];
-  // Presente solo per accountId === 'claude', solo se l'utente ha abilitato
-  // localInsights.claudeCode nelle Impostazioni — vedi main.ts/computeLocalInsightsIfNeeded.
+  // Presente solo sull'account Claude con `localInsights: true` nelle Impostazioni
+  // (al massimo uno) — vedi main.ts/computeLocalInsightsIfNeeded.
   localInsights?: ClaudeLocalInsights | null;
   // Campi derivati dalla finestra più critica (budget.pickCriticalWindow), mantenuti per
   // compatibilità (notifica soglia 80%, vista di default nel widget) — vedi anche
@@ -157,13 +163,26 @@ export interface AccountSnapshot extends RawAccountUsage {
 
 export interface UsageSnapshot {
   generatedAt: string;
-  claude?: AccountSnapshot;
-  copilot?: AccountSnapshot;
+  // Un elemento per account abilitato e connesso, nello stesso ordine di
+  // AppSettings.accounts.
+  accounts: AccountSnapshot[];
 }
 
-export interface ClaudeAccountSettings {
+/**
+ * Parte comune a ogni account, indipendente dal provider (issue #4): la parte
+ * specifica vive nelle interfacce che la estendono, discriminate su `provider`.
+ */
+export interface AccountConfigBase {
+  id: AccountId;
+  provider: ProviderId;
+  label: string;
   enabled: boolean;
   accountScope: AccountScope;
+  subscription: { renewalRule: RenewalRule };
+}
+
+export interface ClaudeAccountSettings extends AccountConfigBase {
+  provider: 'claude';
   authMethod: 'password' | 'google' | 'sso';
   session: {
     sessionKey: string | null;
@@ -172,12 +191,17 @@ export interface ClaudeAccountSettings {
     expiresAt: string | null;
   };
   planTier: 'free' | 'pro' | 'max_5x' | 'max_20x' | 'team' | 'enterprise';
-  subscription: { renewalRule: RenewalRule };
+  // Partition Electron dedicata (`persist:account-<id>`): cookie claude.ai isolati
+  // per account. Prima tutti vivevano in session.defaultSession — un "Disconnetti"
+  // non li cancellava e il login successivo riprendeva la stessa sessione (issue #4).
+  partition: string;
+  // Sessioni Claude Code di QUESTA macchina attribuite a questo account (opt-in,
+  // al massimo un account Claude alla volta) — vedi services/claudeLocalSessions.ts.
+  localInsights: boolean;
 }
 
-export interface CopilotAccountSettings {
-  enabled: boolean;
-  accountScope: AccountScope;
+export interface CopilotAccountSettings extends AccountConfigBase {
+  provider: 'copilot';
   // Sceglie quale pannello di connessione mostrare in Impostazioni (PAT vs OAuth) e viene
   // aggiornato automaticamente dal metodo usato per l'ultima connessione riuscita — vedi
   // renderer/settings.ts (updateCopilotAuthMethodVisibility) e main.ts (auth:connectCopilot*).
@@ -188,9 +212,10 @@ export interface CopilotAccountSettings {
   oauthApp: { clientId: string | null };
   manualQuota: number;
   planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise';
-  subscription: { renewalRule: RenewalRule };
   experimentalWarningAcknowledged: boolean;
 }
+
+export type AccountConfig = ClaudeAccountSettings | CopilotAccountSettings;
 
 export interface UiSettings {
   windowStyle: WindowStyle;
@@ -207,10 +232,8 @@ export interface HistorySettings {
   // Buffer di campioni ravvicinati (append-only, pruning per età non per giorni)
   // usato solo dal gauge di consumo istantaneo — vedi RecentUsageSample sopra.
   recentSamples: RecentUsageSample[];
-  lastGood?: {
-    claude?: RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string };
-    copilot?: RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string };
-  };
+  // Chiave = AccountId.
+  lastGood?: Record<AccountId, RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string }>;
 }
 
 /**
@@ -224,27 +247,21 @@ export interface DiagnosticsSettings {
   reportedSignatures: Record<string, string>; // firma -> timestamp ISO di prima segnalazione
 }
 
-/**
- * Sorgenti locali opzionali per insight comportamentali (vedi RESEARCH.md §5,
- * services/claudeLocalSessions.ts) — opt-in, default OFF: legge sessioni Claude
- * Code su questa macchina, mai un dato dell'account claude.ai.
- */
-export interface LocalInsightsSettings {
-  claudeCode: { enabled: boolean };
-}
-
 export interface AppSettings {
-  accounts: {
-    claude: ClaudeAccountSettings;
-    copilot: CopilotAccountSettings;
-  };
+  // Registro di N account (issue #4) — prima due slot fissi `{ claude, copilot }`,
+  // convertiti all'avvio da store/migrate.ts.
+  accounts: AccountConfig[];
   workSchedule: WorkSchedule;
   ui: UiSettings;
   history: HistorySettings;
   advisorCache: { generatedAt: string | null; adviceText: string | null };
-  meta: { notifiedToday: Record<string, boolean> };
+  meta: {
+    notifiedToday: Record<string, boolean>;
+    // Copia una tantum dei cookie claude.ai da session.defaultSession alla
+    // partition dell'account Claude migrato (vedi main.ts, migrateLegacyClaudeCookies).
+    claudeCookiesMigrated?: boolean;
+  };
   diagnostics: DiagnosticsSettings;
-  localInsights: LocalInsightsSettings;
   // Cache gestita dall'app (non impostazione utente), stesso pattern di advisorCache:
   // evita di riscandire tutte le sessioni Claude Code locali ad ogni refresh di 30 min
   // — vedi main.ts LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
@@ -284,9 +301,10 @@ export interface HypermilerBridge {
   setWindowStyle(style: WindowStyle): Promise<WindowStyle>;
   minimizeWindow(): void;
   closeWindow(): void;
-  connectClaude(): Promise<{ organizationId: string | null }>;
-  connectCopilot(token: string): Promise<{ username: string }>;
-  connectCopilotOAuth(clientId: string, clientSecret: string): Promise<{ username: string }>;
-  disconnectClaude(): Promise<void>;
-  disconnectCopilot(): Promise<void>;
+  addAccount(provider: ProviderId): Promise<AccountId>;
+  removeAccount(id: AccountId): Promise<void>;
+  connectClaude(id: AccountId): Promise<{ organizationId: string | null }>;
+  connectCopilot(id: AccountId, token: string): Promise<{ username: string }>;
+  connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string): Promise<{ username: string }>;
+  disconnectAccount(id: AccountId): Promise<void>;
 }

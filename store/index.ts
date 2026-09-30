@@ -19,45 +19,13 @@
 
 import Store from 'electron-store';
 import type { AppSettings } from '../types/index';
+import { migrateAccounts } from './migrate';
 
 export const DEFAULTS: AppSettings = {
-  accounts: {
-    claude: {
-      enabled: false,
-      accountScope: 'personal',
-      authMethod: 'password',
-      session: {
-        sessionKey: null,
-        organizationId: null,
-        capturedAt: null,
-        expiresAt: null,
-      },
-      planTier: 'pro',
-      subscription: {
-        renewalRule: { type: 'dayOfMonth', day: 1 },
-      },
-    },
-    copilot: {
-      enabled: false,
-      accountScope: 'personal',
-      authMethod: 'pat',
-      credentials: {
-        token: null,
-        username: null,
-      },
-      oauthApp: {
-        clientId: null,
-      },
-      // L'API di billing Copilot non espone la quota totale del piano: valore
-      // configurato manualmente (vedi ARCHITECTURE.md §0 e RESEARCH.md v3 §3).
-      manualQuota: 300,
-      planTier: 'individual',
-      subscription: {
-        renewalRule: { type: 'dayOfMonth', day: 1 },
-      },
-      experimentalWarningAcknowledged: false,
-    },
-  },
+  // Registro account (issue #4): parte vuoto, gli account si aggiungono dalla
+  // tabella in Impostazioni. Uno store legacy `{ claude, copilot }` viene
+  // convertito qui sotto da migrateAccounts() — vedi store/migrate.ts.
+  accounts: [],
 
   workSchedule: {
     // Default true: preserva il comportamento già in uso (pacing sui giorni
@@ -108,13 +76,6 @@ export const DEFAULTS: AppSettings = {
     reportedSignatures: {},
   },
 
-  localInsights: {
-    // Opt-in esplicito: legge sessioni Claude Code locali su questa macchina
-    // (solo conteggi token/nomi di tool, mai il contenuto dei messaggi) — vedi
-    // RESEARCH.md §5, services/claudeLocalSessions.ts.
-    claudeCode: { enabled: false },
-  },
-
   localInsightsCache: { claudeCode: null },
 };
 
@@ -123,5 +84,20 @@ const store = new Store<AppSettings>({
   encryptionKey: 'dev-only-placeholder-change-before-release',
   defaults: DEFAULTS,
 });
+
+// Migrazione schema account: da `{ claude, copilot }` (due slot fissi) ad
+// `AccountConfig[]` (issue #4). Eseguita una sola volta: dopo la prima scrittura
+// `accounts` è un array e migrateAccounts() non fa più nulla. Il vecchio flag
+// globale `localInsights.claudeCode.enabled` passa all'account Claude migrato
+// (ora è per-account) e la chiave radice viene rimossa.
+// Letture su chiavi non più presenti in AppSettings: via una vista non tipizzata
+// dello stesso store, invece di allargare AppSettings con campi legacy.
+const untyped = store as unknown as Store<Record<string, unknown>>;
+const rawAccounts = untyped.get('accounts');
+if (!Array.isArray(rawAccounts)) {
+  const legacyLocalInsights = untyped.get('localInsights.claudeCode.enabled') === true;
+  store.set('accounts', migrateAccounts(rawAccounts, legacyLocalInsights));
+  untyped.delete('localInsights');
+}
 
 export default store;

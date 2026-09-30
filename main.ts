@@ -7,21 +7,26 @@ import { app, ipcMain, BrowserWindow, Notification, shell, Menu, screen } from '
 import store from './store/index';
 import { createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
-import { captureClaudeSession, buildClaudeCookieHeader } from './main/claude-auth';
+import { captureClaudeSession, buildClaudeCookieHeader, migrateDefaultSessionCookies } from './main/claude-auth';
 import { captureGithubOAuthToken } from './main/copilot-oauth';
+import * as providers from './main/providers';
+import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel } from './store/migrate';
 import * as budget from './budget';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
 import { computeClaudeLocalInsights } from './services/claudeLocalSessions';
 import { FormatDriftError, shapeSignature } from './services/_shape';
 import { buildFormatDriftIssueUrl } from './diagnostics/githubIssue';
+import { randomUUID } from 'crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import type {
+  AccountConfig,
   AccountId,
   AccountSnapshot,
   AppSettings,
   ClaudeLocalInsights,
   DailyUsagePoint,
+  ProviderId,
   QuotaWindow,
   QuotaWindowSnapshot,
   RawAccountUsage,
@@ -137,13 +142,12 @@ function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSa
 
 // ---------------------------------------------------------------------------
 // Insight locali da sessioni Claude Code (services/claudeLocalSessions.ts, vedi
-// RESEARCH.md §5): opt-in (localInsights.claudeCode.enabled, default false),
+// RESEARCH.md §5): opt-in per account (ClaudeAccountSettings.localInsights, al
+// massimo un account Claude — il chiamante decide per quale),
 // cachati perché più costosi di un refresh usuale (scansione file su disco, non
 // un poll di rete) — ricalcolati al massimo ogni LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
 // ---------------------------------------------------------------------------
 async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | null> {
-  if (store.get('localInsights.claudeCode.enabled') !== true) return null;
-
   const cached = (store.get('localInsightsCache.claudeCode') as ClaudeLocalInsights | null | undefined) ?? null;
   const cacheAgeMs = cached ? Date.now() - new Date(cached.computedAt).getTime() : Infinity;
   if (cached && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
@@ -265,17 +269,20 @@ function computeWindowSnapshot(
 
 function computeAccountSnapshot(
   raw: RawAccountUsage & { accountId: AccountId; lastUpdatedAt?: string; stale?: boolean; lastError?: string },
-  subscription: { renewalRule: RenewalRule },
+  cfg: AccountConfig,
   workSchedule: WorkSchedule,
   now: Date,
 ): AccountSnapshot {
-  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(raw.accountId, w, subscription, workSchedule, now));
+  const subscription = cfg.subscription;
+  const identity = { accountId: cfg.id, provider: cfg.provider, label: cfg.label };
+  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(cfg.id, w, subscription, workSchedule, now));
   const criticalWindow = budget.pickCriticalWindow(raw.quotaWindows);
   const criticalSnapshot = criticalWindow ? windows.find((w) => w.window.id === criticalWindow.id) : undefined;
 
   if (!criticalWindow || !criticalSnapshot) {
     return {
       ...raw,
+      ...identity,
       windows,
       criticalWindow: null,
       dailyHistory: [],
@@ -289,6 +296,7 @@ function computeAccountSnapshot(
 
   return {
     ...raw,
+    ...identity,
     windows,
     criticalWindow,
     dailyHistory: criticalSnapshot.dailyHistory,
@@ -300,11 +308,24 @@ function computeAccountSnapshot(
   };
 }
 
-function isClaudeConnected(accounts: AppSettings['accounts']): boolean {
-  return accounts.claude.enabled === true && !!accounts.claude.session?.sessionKey;
+// Lettura con fallback: prima della migrazione (store/migrate.ts) `accounts` era
+// un oggetto, e un file corrotto/modificato a mano non deve far crashare il main.
+function getAccounts(): AccountConfig[] {
+  const raw = store.get('accounts') as unknown;
+  return Array.isArray(raw) ? (raw as AccountConfig[]) : [];
 }
-function isCopilotConnected(accounts: AppSettings['accounts']): boolean {
-  return accounts.copilot.enabled === true && !!accounts.copilot.credentials?.token;
+
+function findAccount(id: AccountId): AccountConfig | undefined {
+  return getAccounts().find((a) => a.id === id);
+}
+
+function updateAccount(id: AccountId, update: (cfg: AccountConfig) => AccountConfig): AccountConfig {
+  const accounts = getAccounts();
+  const idx = accounts.findIndex((a) => a.id === id);
+  if (idx < 0) throw new Error(`Account non trovato: ${id}`);
+  accounts[idx] = update(accounts[idx]);
+  store.set('accounts', accounts);
+  return accounts[idx];
 }
 
 type StampedUsage = RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string; stale: boolean; lastError?: string };
@@ -322,6 +343,7 @@ function friendlyErrorMessage(err: unknown): string {
 
 async function fetchAccountOrFallback(
   accountId: AccountId,
+  provider: ProviderId,
   fetchFn: () => Promise<RawAccountUsage>,
   lastGoodKey: string,
 ): Promise<StampedUsage> {
@@ -336,7 +358,7 @@ async function fetchAccountOrFallback(
     // Segnalato qui (non solo nel chiamante) perché un fallback su dato pregresso
     // valido "assorbe" l'errore sotto — senza questa chiamata un format-drift che
     // emerge DOPO il primo fetch riuscito non verrebbe mai rilevato.
-    maybeReportFormatDrift(accountId, err);
+    maybeReportFormatDrift(provider, err);
     const lastGood = store.get(lastGoodKey) as StampedUsage | undefined;
     if (!lastGood) throw err; // nessun dato pregresso: propaga, il chiamante decide come mostrarlo
     return { ...lastGood, stale: true, lastError: friendlyErrorMessage(err) };
@@ -357,7 +379,7 @@ async function fetchAccountOrFallback(
 // l'utente deve rivedere e confermare manualmente. Deduplicata per firma della
 // struttura: non riapre la stessa bozza ad ogni refresh (ogni 30 minuti).
 // ---------------------------------------------------------------------------
-function maybeReportFormatDrift(accountId: AccountId, err: unknown): void {
+function maybeReportFormatDrift(provider: ProviderId, err: unknown): void {
   if (!(err instanceof FormatDriftError)) return;
   if (store.get('diagnostics.autoReportFormatDrift') === false) return;
 
@@ -365,7 +387,7 @@ function maybeReportFormatDrift(accountId: AccountId, err: unknown): void {
   const reported = (store.get('diagnostics.reportedSignatures') as Record<string, string>) || {};
   if (reported[signature]) return; // già segnalato per questa forma: non riaprire
 
-  const url = buildFormatDriftIssueUrl({ accountId, endpointLabel: err.endpointLabel, shape: err.shape });
+  const url = buildFormatDriftIssueUrl({ provider, endpointLabel: err.endpointLabel, shape: err.shape });
   shell.openExternal(url).catch((openErr: Error) => {
     console.error('[main] impossibile aprire la bozza di segnalazione nel browser:', openErr.message);
   });
@@ -373,7 +395,7 @@ function maybeReportFormatDrift(accountId: AccountId, err: unknown): void {
   if (Notification.isSupported()) {
     new Notification({
       title: 'IA Hypermiler',
-      body: `Il formato della risposta ${accountId === 'claude' ? 'Claude' : 'Copilot'} sembra cambiato: ho aperto una bozza di segnalazione nel browser (da confermare tu).`,
+      body: `Il formato della risposta ${providers.providerDisplayName(provider)} sembra cambiato: ho aperto una bozza di segnalazione nel browser (da confermare tu).`,
     }).show();
   }
 
@@ -381,10 +403,12 @@ function maybeReportFormatDrift(accountId: AccountId, err: unknown): void {
   store.set('diagnostics.reportedSignatures', reported);
 }
 
-function emptyAccountSnapshot(accountId: AccountId, planTier: string | null, lastError: string): AccountSnapshot {
+function emptyAccountSnapshot(cfg: AccountConfig, lastError: string): AccountSnapshot {
   return {
-    accountId,
-    planTier,
+    accountId: cfg.id,
+    provider: cfg.provider,
+    label: cfg.label,
+    planTier: cfg.planTier,
     subscriptionRenewsAt: null,
     quotaWindows: [],
     windows: [],
@@ -403,52 +427,26 @@ function emptyAccountSnapshot(accountId: AccountId, planTier: string | null, las
 async function buildUsageSnapshot(): Promise<UsageSnapshot> {
   const now = new Date();
   const workSchedule = store.get('workSchedule') as WorkSchedule;
-  const accounts = store.get('accounts') as AppSettings['accounts'];
-  const snapshot: UsageSnapshot = { generatedAt: now.toISOString() };
+  const snapshot: UsageSnapshot = { generatedAt: now.toISOString(), accounts: [] };
 
-  if (isClaudeConnected(accounts)) {
+  for (const cfg of getAccounts()) {
+    if (!cfg.enabled || !providers.isConnected(cfg)) continue;
+    let account: AccountSnapshot;
     try {
-      const raw = await fetchAccountOrFallback(
-        'claude',
-        async () => claudeService.fetchUsage({
-          sessionKey: accounts.claude.session.sessionKey as string,
-          organizationId: accounts.claude.session.organizationId,
-          planTier: accounts.claude.planTier,
-          // Letto fresco ad ogni refresh (non persistito): vedi buildClaudeCookieHeader.
-          cookieHeader: await buildClaudeCookieHeader(),
-        }),
-        'history.lastGood.claude',
-      );
-      snapshot.claude = computeAccountSnapshot(raw, accounts.claude.subscription, workSchedule, now);
+      const raw = await fetchAccountOrFallback(cfg.id, cfg.provider, () => providers.fetchUsage(cfg), `history.lastGood.${cfg.id}`);
+      account = computeAccountSnapshot(raw, cfg, workSchedule, now);
     } catch (err) {
       const message = friendlyErrorMessage(err);
-      console.error('[main] Claude non disponibile e nessun dato pregresso:', message);
-      snapshot.claude = emptyAccountSnapshot('claude', accounts.claude.planTier, message);
+      console.error(`[main] ${cfg.label} non disponibile e nessun dato pregresso:`, message);
+      account = emptyAccountSnapshot(cfg, message);
     }
-    // Sorgente locale indipendente dal fetch dell'account: la calcoliamo anche se
-    // claude.ai non ha risposto (snapshot.claude è comunque valorizzato sopra, sia
-    // sul percorso riuscito sia su quello di fallback).
-    snapshot.claude.localInsights = await computeLocalInsightsIfNeeded();
-  }
-
-  if (isCopilotConnected(accounts)) {
-    try {
-      const raw = await fetchAccountOrFallback(
-        'copilot',
-        () => copilotService.fetchUsage({
-          token: accounts.copilot.credentials.token as string,
-          accountScope: accounts.copilot.accountScope,
-          manualQuota: accounts.copilot.manualQuota,
-        }),
-        'history.lastGood.copilot',
-      );
-      if (!raw.planTier) raw.planTier = accounts.copilot.planTier;
-      snapshot.copilot = computeAccountSnapshot(raw, accounts.copilot.subscription, workSchedule, now);
-    } catch (err) {
-      const message = friendlyErrorMessage(err);
-      console.error('[main] Copilot non disponibile e nessun dato pregresso:', message);
-      snapshot.copilot = emptyAccountSnapshot('copilot', accounts.copilot.planTier, message);
+    // Sorgente locale indipendente dal fetch dell'account: calcolata anche se il
+    // provider non ha risposto (account è valorizzato sia sul percorso riuscito
+    // sia su quello di fallback).
+    if (cfg.provider === 'claude' && cfg.localInsights) {
+      account.localInsights = await computeLocalInsightsIfNeeded();
     }
+    snapshot.accounts.push(account);
   }
 
   return snapshot;
@@ -462,19 +460,18 @@ function maybeNotifyThreshold(snapshot: UsageSnapshot): void {
   const todayKey = new Date().toISOString().slice(0, 10);
   const notifiedToday = (store.get('meta.notifiedToday') as Record<string, boolean>) || {};
 
-  for (const accountId of ['claude', 'copilot'] as AccountId[]) {
-    const account = snapshot[accountId];
-    if (!account?.criticalWindow) continue;
+  for (const account of snapshot.accounts) {
+    if (!account.criticalWindow) continue;
     const utilization = budget.normalizedUtilization(account.criticalWindow);
     if (utilization === null || utilization < threshold) continue;
 
-    const flagKey = `${accountId}:${todayKey}`;
+    const flagKey = `${account.accountId}:${todayKey}`;
     if (notifiedToday[flagKey]) continue;
 
     if (Notification.isSupported()) {
       new Notification({
         title: 'IA Hypermiler',
-        body: `${accountId === 'claude' ? 'Claude' : 'Copilot'}: hai superato l'${threshold}% del budget (${account.criticalWindow.label}).`,
+        body: `${account.label}: hai superato l'${threshold}% del budget (${account.criticalWindow.label}).`,
       }).show();
     }
     notifiedToday[flagKey] = true;
@@ -506,49 +503,35 @@ async function refreshAndBroadcast(): Promise<void> {
 // (usato da renderer/settings.ts per lo stato "Connesso"/"Non connesso") senza mai
 // esporre il valore reale.
 function redactSecretsForRenderer(settings: AppSettings): AppSettings {
-  return {
-    ...settings,
-    accounts: {
-      ...settings.accounts,
-      claude: {
-        ...settings.accounts.claude,
-        session: {
-          ...settings.accounts.claude.session,
-          sessionKey: settings.accounts.claude.session.sessionKey ? '••••••••' : null,
-        },
-      },
-      copilot: {
-        ...settings.accounts.copilot,
-        credentials: {
-          ...settings.accounts.copilot.credentials,
-          token: settings.accounts.copilot.credentials.token ? '••••••••' : null,
-        },
-      },
-    },
-  };
+  const accounts = Array.isArray(settings.accounts) ? settings.accounts : [];
+  return { ...settings, accounts: accounts.map(providers.redactSecrets) };
 }
 
 // Il renderer riceve sempre la versione con segnaposto (mai il valore reale): se
 // salva le impostazioni dopo aver modificato un ALTRO campo (es. planTier), rimanda
-// indietro l'intero oggetto `accounts` così com'è, segnaposto incluso. Senza questa
+// indietro l'intero array `accounts` così com'è, segnaposto incluso. Senza questa
 // difesa, quel segnaposto sovrascriverebbe silenziosamente sessionKey/token reali
-// nello store. sessionKey e token cambiano SOLO tramite i flussi dedicati
-// (auth:connectClaude/auth:connectCopilot), mai tramite il salvataggio generico.
+// nello store. I segreti cambiano SOLO tramite i flussi dedicati (accounts:connect*/
+// accounts:disconnect), mai tramite il salvataggio generico — vedi providers.preserveSecrets.
 function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
-  if (key !== 'accounts' || typeof value !== 'object' || value === null) return value;
-  const incoming = value as AppSettings['accounts'];
-  const current = store.get('accounts') as AppSettings['accounts'];
-  return {
-    ...incoming,
-    claude: {
-      ...incoming.claude,
-      session: { ...incoming.claude.session, sessionKey: current.claude.session.sessionKey },
-    },
-    copilot: {
-      ...incoming.copilot,
-      credentials: { ...incoming.copilot.credentials, token: current.copilot.credentials.token },
-    },
-  };
+  if (key !== 'accounts' || !Array.isArray(value)) return value;
+  const current = getAccounts();
+  const merged = (value as AccountConfig[])
+    .map((incoming) => providers.preserveSecrets(incoming, current.find((c) => c.id === incoming.id)))
+    .filter((a): a is AccountConfig => a !== null);
+  // Un account presente nello store ma assente dalla patch non viene rimosso qui:
+  // la rimozione passa solo da accounts:remove (che pulisce anche la partition).
+  for (const cur of current) {
+    if (!merged.some((m) => m.id === cur.id)) merged.push(cur);
+  }
+  return enforceSingleLocalInsights(merged);
+}
+
+function broadcastSettings(): void {
+  const redacted = redactSecretsForRenderer(store.store);
+  for (const win of [mainWindow, settingsWindow]) {
+    if (win && !win.isDestroyed()) win.webContents.send('settings:update', redacted);
+  }
 }
 
 function registerIpcHandlers(): void {
@@ -604,63 +587,104 @@ function registerIpcHandlers(): void {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
   });
 
-  ipcMain.handle('auth:connectClaude', async () => {
-    const { sessionKey, capturedAt } = await captureClaudeSession();
+  ipcMain.handle('accounts:add', (_event: IpcMainInvokeEvent, provider: ProviderId) => {
+    if (provider !== 'claude' && provider !== 'copilot') throw new Error(`Provider non supportato: ${String(provider)}`);
+    const accounts = getAccounts();
+    const id = `${provider}-${randomUUID().slice(0, 8)}`;
+    accounts.push(defaultAccountFor(provider, id, nextAccountLabel(provider, accounts)));
+    store.set('accounts', accounts);
+    broadcastSettings();
+    return id;
+  });
+
+  ipcMain.handle('accounts:remove', async (_event: IpcMainInvokeEvent, id: AccountId) => {
+    const cfg = findAccount(id);
+    if (!cfg) return;
+    // Disconnect completo prima di togliere la riga: per Claude cancella anche la
+    // partition, altrimenti i cookie resterebbero su disco senza più un proprietario.
+    await providers.disconnect(cfg);
+    store.set('accounts', getAccounts().filter((a) => a.id !== id));
+    broadcastSettings();
+    refreshAndBroadcast();
+  });
+
+  ipcMain.handle('accounts:connectClaude', async (_event: IpcMainInvokeEvent, id: AccountId) => {
+    const cfg = findAccount(id);
+    if (!cfg || cfg.provider !== 'claude') throw new Error(`Account Claude non trovato: ${id}`);
+    const { sessionKey, capturedAt } = await captureClaudeSession(cfg.partition);
     let organizationId: string | null = null;
     try {
-      const cookieHeader = await buildClaudeCookieHeader();
+      const cookieHeader = await buildClaudeCookieHeader(cfg.partition);
       const orgs = await claudeService.listOrganizations(sessionKey, cookieHeader);
       organizationId = orgs[0]?.id ?? null;
     } catch (err) {
       console.error('[main] impossibile risolvere organizationId Claude:', (err as Error).message);
     }
-    store.set('accounts.claude.session', { sessionKey, organizationId, capturedAt, expiresAt: null });
-    store.set('accounts.claude.enabled', true);
+    updateAccount(id, (a) => (a.provider === 'claude'
+      ? { ...a, enabled: true, session: { sessionKey, organizationId, capturedAt, expiresAt: null } }
+      : a));
+    broadcastSettings();
     refreshAndBroadcast();
     return { organizationId };
   });
 
-  ipcMain.handle('auth:connectCopilot', async (_event: IpcMainInvokeEvent, token: string) => {
+  ipcMain.handle('accounts:connectCopilot', async (_event: IpcMainInvokeEvent, id: AccountId, token: string) => {
     const username = await copilotService.resolveUsername(token);
-    store.set('accounts.copilot.credentials', { token, username });
-    store.set('accounts.copilot.authMethod', 'pat');
-    store.set('accounts.copilot.enabled', true);
+    updateAccount(id, (a) => (a.provider === 'copilot'
+      ? { ...a, enabled: true, authMethod: 'pat', credentials: { token, username } }
+      : a));
+    broadcastSettings();
     refreshAndBroadcast();
     return { username };
   });
 
   // Via sperimentale alternativa al PAT incollato a mano — vedi CLAUDE.md/RESEARCH.md
-  // §2.2: ipotesi da verificare, non confermata, che un token OAuth App riceva da
-  // copilot_internal/user una risposta con quota_snapshots dove un PAT non la riceve più.
-  ipcMain.handle('auth:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, payload: { clientId: string; clientSecret: string }) => {
+  // §2.2: ipotesi testata e confutata per il seat aziendale, mantenuta come
+  // alternativa al PAT per il piano personale.
+  ipcMain.handle('accounts:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, id: AccountId, payload: { clientId: string; clientSecret: string }) => {
     const { accessToken } = await captureGithubOAuthToken(payload);
     const username = await copilotService.resolveUsername(accessToken);
-    store.set('accounts.copilot.credentials', { token: accessToken, username });
-    store.set('accounts.copilot.oauthApp.clientId', payload.clientId);
-    store.set('accounts.copilot.authMethod', 'oauth');
-    store.set('accounts.copilot.enabled', true);
+    updateAccount(id, (a) => (a.provider === 'copilot'
+      ? { ...a, enabled: true, authMethod: 'oauth', credentials: { token: accessToken, username }, oauthApp: { clientId: payload.clientId } }
+      : a));
+    broadcastSettings();
     refreshAndBroadcast();
     return { username };
   });
 
-  ipcMain.handle('auth:disconnectClaude', async () => {
-    store.set('accounts.claude.session', { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null });
-    store.set('accounts.claude.enabled', false);
+  ipcMain.handle('accounts:disconnect', async (_event: IpcMainInvokeEvent, id: AccountId) => {
+    const cfg = findAccount(id);
+    if (!cfg) return;
+    const cleared = await providers.disconnect(cfg);
+    updateAccount(id, () => cleared);
+    broadcastSettings();
     refreshAndBroadcast();
   });
+}
 
-  ipcMain.handle('auth:disconnectCopilot', async () => {
-    // oauthApp.clientId non viene cancellato: non è un segreto, resta comodo per riconnettersi.
-    store.set('accounts.copilot.credentials', { token: null, username: null });
-    store.set('accounts.copilot.enabled', false);
-    refreshAndBroadcast();
-  });
+// Prima delle partition per account (issue #4) i cookie claude.ai vivevano in
+// session.defaultSession: una sola volta, li spostiamo nella partition
+// dell'account Claude migrato (id 'claude', vedi store/migrate.ts) per non
+// costringere a rifare il login dopo l'aggiornamento.
+async function migrateLegacyClaudeCookies(): Promise<void> {
+  if (store.get('meta.claudeCookiesMigrated') === true) return;
+  const legacy = findAccount('claude');
+  try {
+    if (legacy?.provider === 'claude') {
+      const moved = await migrateDefaultSessionCookies(legacy.partition);
+      console.log(`[main] migrati ${moved} cookie claude.ai nella partition dell'account '${legacy.label}'`);
+    }
+    store.set('meta.claudeCookiesMigrated', true);
+  } catch (err) {
+    // Non bloccante: l'account risulterà "sessione non valida" e basterà riconnetterlo.
+    console.error('[main] migrazione cookie Claude fallita:', (err as Error).message);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Ciclo di vita app
 // ---------------------------------------------------------------------------
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // È un widget, non un'app documentale: la barra menu di default di Electron
   // (File/Modifica/Vista/Finestra/Aiuto) non serve e appesantiva la skin "pieno"
   // (feedback utente — vedi anche setMenuBarVisibility(false) su ogni finestra
@@ -668,6 +692,7 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
 
   registerIpcHandlers();
+  await migrateLegacyClaudeCookies();
 
   const win = createMainWindow(store);
   mainWindow = win;

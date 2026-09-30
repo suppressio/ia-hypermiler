@@ -9,169 +9,188 @@
   <main id="settings-app">
     <h1>Impostazioni</h1>
 
-    <section class="card" data-account="claude">
-      <h2>Claude</h2>
-      <label><input type="checkbox" data-field="accounts.claude.enabled" /> Account collegato/abilitato</label>
-
-      <div class="field-row">
-        <label>Ambito account
-          <select data-field="accounts.claude.accountScope">
-            <option value="personal">Personale</option>
-            <option value="organization">Aziendale (seat organizzazione)</option>
-          </select>
-        </label>
-        <label>Metodo di login
-          <select data-field="accounts.claude.authMethod">
-            <option value="password">Email e password</option>
-            <option value="google">Google</option>
-            <option value="sso">SSO aziendale</option>
-          </select>
-        </label>
+    <section class="card">
+      <h2>Account</h2>
+      <table class="accounts-table">
+        <thead>
+          <tr><th>Nome</th><th>Provider</th><th>Stato</th><th>Attivo</th><th></th></tr>
+        </thead>
+        <tbody id="accounts-tbody">
+          <!-- generato da settings.js (renderAccountsTable) -->
+        </tbody>
+      </table>
+      <p class="hint" id="accounts-empty" hidden>Nessun account: aggiungine uno qui sotto.</p>
+      <div class="field-row add-account-row">
+        <select id="add-account-provider" aria-label="Provider del nuovo account">
+          <option value="claude">Claude</option>
+          <option value="copilot">GitHub Copilot</option>
+        </select>
+        <button type="button" class="btn-secondary" id="btn-add-account">Aggiungi account</button>
       </div>
-
-      <div class="field-row">
-        <label>Piano
-          <select data-field="accounts.claude.planTier">
-            <option value="free">Free</option>
-            <option value="pro">Pro</option>
-            <option value="max_5x">Max 5x</option>
-            <option value="max_20x">Max 20x</option>
-            <option value="team">Team</option>
-            <option value="enterprise">Enterprise</option>
-          </select>
-        </label>
-        <label>Giorno di rinnovo (del mese)
-          <input type="number" min="1" max="31" data-field="accounts.claude.subscription.renewalRule.day" />
-        </label>
-      </div>
-
-      <div class="field-row connect-row">
-        <button type="button" class="btn-secondary" id="btn-connect-claude">Connetti…</button>
-        <button type="button" class="btn-secondary" id="btn-disconnect-claude">Disconnetti</button>
-        <span class="connection-status" id="claude-connection-status">Non connesso</span>
-      </div>
-      <p class="hint">Si apre una finestra di login claude.ai (funziona anche con SSO aziendale): nessun cookie da incollare a mano.</p>
+      <p class="hint">
+        Puoi collegare più account, anche dello stesso provider (es. due account Claude):
+        ognuno ha la propria sessione, isolata dalle altre. "Disconnetti" cancella davvero la
+        sessione salvata — il login successivo riparte da zero.
+      </p>
     </section>
 
-    <section class="card" data-account="copilot">
-      <h2>GitHub Copilot</h2>
-      <label>
-        <input type="checkbox" data-field="accounts.copilot.enabled" /> Account collegato/abilitato
-        <button type="button" class="info-icon" id="copilot-enabled-info" aria-label="Perché è disabilitato" hidden>
-          ⓘ
-          <span class="tooltip" role="tooltip">
-            Con un seat aziendale non esiste una via self-service affidabile per il consumo
-            Copilot: l'endpoint interno usato da VS Code non espone più dati di quota, e l'API
-            ufficiale (AI Credits) richiede permessi da amministratore. Vedi RESEARCH.md §2.2/§2.3.
-            Il monitoraggio resta disponibile con un piano personale.
-          </span>
-        </button>
-      </label>
+    <!--
+      Pannelli di dettaglio per provider (issue #4: parte comune + parte specifica).
+      Clonati da settings.ts per ogni account: ogni [data-account-field] diventa
+      data-field="accounts.<indice>.<campo>", riusando il salvataggio generico del form.
+    -->
+    <template id="tpl-detail-claude">
+      <div class="account-detail">
+        <div class="field-row">
+          <label>Nome account
+            <input type="text" data-account-field="label" />
+          </label>
+          <label>Ambito account
+            <select data-account-field="accountScope">
+              <option value="personal">Personale</option>
+              <option value="organization">Aziendale (seat organizzazione)</option>
+            </select>
+          </label>
+        </div>
+        <div class="field-row">
+          <label>Metodo di login
+            <select data-account-field="authMethod">
+              <option value="password">Email e password</option>
+              <option value="google">Google</option>
+              <option value="sso">SSO aziendale</option>
+            </select>
+          </label>
+          <label>Piano
+            <select data-account-field="planTier">
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+              <option value="max_5x">Max 5x</option>
+              <option value="max_20x">Max 20x</option>
+              <option value="team">Team</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </label>
+        </div>
+        <label>Giorno di rinnovo (del mese)
+          <input type="number" min="1" max="31" data-account-field="subscription.renewalRule.day" />
+        </label>
+        <label>
+          <input type="checkbox" data-account-field="localInsights" data-local-insights />
+          Attribuisci a questo account le sessioni Claude Code di questa macchina (insight locali, sperimentale)
+        </label>
+        <p class="hint">
+          Legge le sessioni Claude Code locali (CLI ed estensione VS Code — stessa sorgente) per
+          mostrare quanto del tuo utilizzo avviene a contesto molto ampio o in sessioni molto lunghe,
+          quali tool/server MCP usi di più e quanti token produci per ogni punto di quota. Legge solo
+          conteggi di token e nomi di tool — mai il contenuto dei messaggi. Le sessioni locali non
+          dicono a quale account appartengono: attivalo su un solo account Claude, quello che usi
+          con Claude Code. Le sessioni più vecchie di circa 30 giorni non sono più disponibili.
+        </p>
+        <p class="hint">Il login si apre in una finestra claude.ai dedicata a questo account (funziona anche con SSO aziendale): nessun cookie da incollare a mano.</p>
+      </div>
+    </template>
 
-      <div class="field-row">
-        <label>Ambito account
-          <select data-field="accounts.copilot.accountScope">
-            <option value="personal">Personale</option>
-            <option value="organization">Aziendale (seat organizzazione)</option>
-          </select>
+    <template id="tpl-detail-copilot">
+      <div class="account-detail">
+        <div class="field-row">
+          <label>Nome account
+            <input type="text" data-account-field="label" />
+          </label>
+          <label>Ambito account
+            <select data-account-field="accountScope">
+              <option value="personal">Personale</option>
+              <option value="organization">Aziendale (seat organizzazione)</option>
+            </select>
+          </label>
+        </div>
+        <p class="warning" data-role="org-warning" hidden>
+          Con un seat aziendale non esiste una via self-service affidabile per il consumo Copilot:
+          l'endpoint interno usato da VS Code non espone più dati di quota, e l'API ufficiale (AI
+          Credits) richiede permessi da amministratore (vedi RESEARCH.md §2.2/§2.3). L'account resta
+          disattivato; il monitoraggio è disponibile con un piano personale.
+        </p>
+        <div class="field-row">
+          <label>Piano
+            <select data-account-field="planTier">
+              <option value="free">Free</option>
+              <option value="individual">Individual (Pro)</option>
+              <option value="pro_plus">Pro+</option>
+              <option value="business">Business</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </label>
+          <label>Giorno di rinnovo (del mese)
+            <input type="number" min="1" max="31" data-account-field="subscription.renewalRule.day" />
+          </label>
+        </div>
+        <label>Quota mensile richieste premium (non esposta dall'API, inseriscila da contratto/piano)
+          <input type="number" min="0" data-account-field="manualQuota" />
         </label>
         <label>Metodo di autenticazione
-          <select data-field="accounts.copilot.authMethod">
+          <select data-account-field="authMethod">
             <option value="pat">Personal Access Token</option>
             <option value="oauth">GitHub OAuth (sperimentale)</option>
           </select>
         </label>
-      </div>
 
-      <div class="field-row">
-        <label>Piano
-          <select data-field="accounts.copilot.planTier">
-            <option value="free">Free</option>
-            <option value="individual">Individual (Pro)</option>
-            <option value="pro_plus">Pro+</option>
-            <option value="business">Business</option>
-            <option value="enterprise">Enterprise</option>
-          </select>
-        </label>
-        <label>Giorno di rinnovo (del mese)
-          <input type="number" min="1" max="31" data-field="accounts.copilot.subscription.renewalRule.day" />
-        </label>
-      </div>
-
-      <label>Quota mensile richieste premium (non esposta dall'API, inseriscila da contratto/piano)
-        <input type="number" min="0" data-field="accounts.copilot.manualQuota" />
-      </label>
-
-      <p class="warning" id="copilot-org-warning" hidden>
-        Con un seat aziendale non esiste un endpoint ufficiale self-service (vedi RESEARCH.md):
-        il dato Copilot sarà mostrato come funzionalità sperimentale/best-effort.
-      </p>
-      <label class="hint">
-        <input type="checkbox" data-field="accounts.copilot.experimentalWarningAcknowledged" />
-        Ho capito che il monitoraggio Copilot aziendale è sperimentale
-      </label>
-
-      <div id="copilot-pat-panel">
-        <label>
-          <span class="label-row">
-            Personal Access Token
-            <button type="button" class="info-icon" aria-label="Come ottenere un token">
-              ⓘ
-              <span class="tooltip" role="tooltip">
-                <strong>Fine-grained:</strong> github.com → Settings → Developer settings →
-                Personal access tokens → Fine-grained tokens → Generate new token → in
-                "Account permissions" assegna "Plan: Read-only".<br />
-                <strong>Classic:</strong> Developer settings → Personal access tokens
-                (classic) → Generate new token — nessuno scope aggiuntivo richiesto per
-                leggere il proprio consumo personale.
-              </span>
-            </button>
-          </span>
-          <input type="password" id="copilot-token-input" placeholder="github_pat_… oppure ghp_…" />
-        </label>
-        <div class="field-row connect-row">
-          <button type="button" class="btn-secondary" id="btn-connect-copilot">Salva token</button>
-        </div>
-        <p class="hint">Il token viene salvato cifrato e non passa mai in chiaro nel renderer dopo il salvataggio.</p>
-      </div>
-
-      <div id="copilot-oauth-panel">
-        <label>
-          <span class="label-row">
-            Accesso via GitHub OAuth
-            <button type="button" class="info-icon" aria-label="Come configurare l'accesso OAuth">
-              ⓘ
-              <span class="tooltip" role="tooltip">
-                Crea una GitHub OAuth App su github.com → Settings → Developer settings →
-                OAuth Apps → New OAuth App. Homepage URL: qualsiasi. Authorization callback
-                URL: <strong>http://127.0.0.1:8123/callback</strong>. Incolla qui il Client
-                ID (si salva) e il Client Secret (mai salvato, solo per questo accesso).
-              </span>
-            </button>
-          </span>
-        </label>
-        <p class="warning">
-          Sperimentale — non è confermato che restituisca più dati di un Personal Access
-          Token per un seat aziendale. Vedi RESEARCH.md §2.2.
-        </p>
-        <div class="field-row">
-          <label>Client ID
-            <input type="text" data-field="accounts.copilot.oauthApp.clientId" placeholder="Iv1.xxxxxxxxxxxxxxxx" />
+        <div data-role="pat-panel">
+          <label>
+            <span class="label-row">
+              Personal Access Token
+              <button type="button" class="info-icon" aria-label="Come ottenere un token">
+                ⓘ
+                <span class="tooltip" role="tooltip">
+                  <strong>Fine-grained:</strong> github.com → Settings → Developer settings →
+                  Personal access tokens → Fine-grained tokens → Generate new token → in
+                  "Account permissions" assegna "Plan: Read-only".<br />
+                  <strong>Classic:</strong> Developer settings → Personal access tokens
+                  (classic) → Generate new token — nessuno scope aggiuntivo richiesto per
+                  leggere il proprio consumo personale.
+                </span>
+              </button>
+            </span>
+            <input type="password" data-role="token-input" placeholder="github_pat_… oppure ghp_…" />
           </label>
-          <label>Client Secret
-            <input type="password" id="copilot-oauth-secret-input" placeholder="mai salvato su disco" />
-          </label>
+          <div class="field-row connect-row">
+            <button type="button" class="btn-secondary" data-action="connect-copilot-pat">Salva token</button>
+          </div>
+          <p class="hint">Il token viene salvato cifrato e non passa mai in chiaro nel renderer dopo il salvataggio.</p>
         </div>
-        <div class="field-row connect-row">
-          <button type="button" class="btn-secondary" id="btn-connect-copilot-oauth">Connetti con GitHub (OAuth)</button>
-        </div>
-      </div>
 
-      <div class="field-row connect-row">
-        <span class="connection-status" id="copilot-connection-status">Non connesso</span>
-        <button type="button" class="btn-secondary" id="btn-disconnect-copilot">Disconnetti</button>
+        <div data-role="oauth-panel">
+          <label>
+            <span class="label-row">
+              Accesso via GitHub OAuth
+              <button type="button" class="info-icon" aria-label="Come configurare l'accesso OAuth">
+                ⓘ
+                <span class="tooltip" role="tooltip">
+                  Crea una GitHub OAuth App su github.com → Settings → Developer settings →
+                  OAuth Apps → New OAuth App. Homepage URL: qualsiasi. Authorization callback
+                  URL: <strong>http://127.0.0.1:8123/callback</strong>. Incolla qui il Client
+                  ID (si salva) e il Client Secret (mai salvato, solo per questo accesso).
+                </span>
+              </button>
+            </span>
+          </label>
+          <p class="warning">
+            Sperimentale — non è confermato che restituisca più dati di un Personal Access
+            Token per un seat aziendale. Vedi RESEARCH.md §2.2.
+          </p>
+          <div class="field-row">
+            <label>Client ID
+              <input type="text" data-account-field="oauthApp.clientId" data-role="oauth-client-id" placeholder="Iv1.xxxxxxxxxxxxxxxx" />
+            </label>
+            <label>Client Secret
+              <input type="password" data-role="oauth-secret-input" placeholder="mai salvato su disco" />
+            </label>
+          </div>
+          <div class="field-row connect-row">
+            <button type="button" class="btn-secondary" data-action="connect-copilot-oauth">Connetti con GitHub (OAuth)</button>
+          </div>
+        </div>
+        <p class="hint" data-role="detail-status"></p>
       </div>
-    </section>
+    </template>
 
     <section class="card">
       <h2>Calendario di lavoro</h2>
@@ -220,22 +239,6 @@
       <label>Soglia di allarme (%)
         <input type="number" min="1" max="100" data-field="ui.notificationThresholdPercent" />
       </label>
-    </section>
-
-    <section class="card">
-      <h2>Insight locali (sperimentale)</h2>
-      <label>
-        <input type="checkbox" data-field="localInsights.claudeCode.enabled" />
-        Claude Code su questa macchina
-      </label>
-      <p class="hint">
-        Legge le sessioni Claude Code locali (CLI ed estensione VS Code — stessa sorgente) per
-        mostrare, oltre alla quota, quanto del tuo utilizzo avviene a contesto molto ampio o in
-        sessioni molto lunghe, e quali tool/server MCP usi di più. Legge solo conteggi di token e
-        nomi di tool — mai il contenuto dei messaggi. Copre solo Claude Code su questa macchina, non
-        claude.ai via browser; le sessioni più vecchie di circa 30 giorni non sono più disponibili
-        (cancellate automaticamente da Claude Code).
-      </p>
     </section>
 
     <section class="card">

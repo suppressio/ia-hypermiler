@@ -38,11 +38,13 @@ const bridge: HypermilerBridge = {
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   closeWindow: () => ipcRenderer.send('window:close'),
 
-  connectClaude: () => ipcRenderer.invoke('auth:connectClaude'),
-  connectCopilot: (token) => ipcRenderer.invoke('auth:connectCopilot', token),
-  connectCopilotOAuth: (clientId, clientSecret) => ipcRenderer.invoke('auth:connectCopilotOAuth', { clientId, clientSecret }),
-  disconnectClaude: () => ipcRenderer.invoke('auth:disconnectClaude'),
-  disconnectCopilot: () => ipcRenderer.invoke('auth:disconnectCopilot'),
+  // Registro account (issue #4): ogni operazione è per id di account, non per provider.
+  addAccount: (provider) => ipcRenderer.invoke('accounts:add', provider),
+  removeAccount: (id) => ipcRenderer.invoke('accounts:remove', id),
+  connectClaude: (id) => ipcRenderer.invoke('accounts:connectClaude', id),
+  connectCopilot: (id, token) => ipcRenderer.invoke('accounts:connectCopilot', id, token),
+  connectCopilotOAuth: (id, clientId, clientSecret) => ipcRenderer.invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret }),
+  disconnectAccount: (id) => ipcRenderer.invoke('accounts:disconnect', id),
 };
 
 contextBridge.exposeInMainWorld('hypermiler', bridge);

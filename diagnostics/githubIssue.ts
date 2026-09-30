@@ -8,19 +8,19 @@
 // esplicita per non pubblicare mai dati reali senza un click umano di conferma
 // (vedi CLAUDE.md).
 
-import type { AccountId } from '../types/index';
+import type { ProviderId } from '../types/index';
 
 const REPO_OWNER = 'suppressio';
 const REPO_NAME = 'ia-hypermiler';
 
 export interface FormatDriftIssueParams {
-  accountId: AccountId;
+  provider: ProviderId;
   endpointLabel: string;
   shape: unknown;
 }
 
-export function buildFormatDriftIssueUrl({ accountId, endpointLabel, shape }: FormatDriftIssueParams): string {
-  const serviceName = accountId === 'claude' ? 'Claude' : 'Copilot';
+export function buildFormatDriftIssueUrl({ provider, endpointLabel, shape }: FormatDriftIssueParams): string {
+  const serviceName = provider === 'claude' ? 'Claude' : 'Copilot';
   const title = `Formato risposta cambiato: ${serviceName} (${endpointLabel})`;
 
   const body = [
@@ -36,7 +36,7 @@ export function buildFormatDriftIssueUrl({ accountId, endpointLabel, shape }: Fo
     JSON.stringify(shape, null, 2),
     '```',
     '',
-    `Formato precedentemente atteso: vedi \`RESEARCH.md\` e \`services/${accountId}.ts\`.`,
+    `Formato precedentemente atteso: vedi \`RESEARCH.md\` e \`services/${provider}.ts\`.`,
     '',
     '_Bozza generata automaticamente — rivedi il contenuto prima di inviare._',
   ].join('\n');

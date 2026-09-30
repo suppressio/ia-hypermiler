@@ -6,7 +6,8 @@
 // file fuori da rootDir e a fallire l'emit (TS6059). Se cambi le interfacce in
 // ../types/index.ts, aggiorna anche questo file.
 
-export type AccountId = 'claude' | 'copilot';
+export type AccountId = string;
+export type ProviderId = 'claude' | 'copilot';
 
 export interface QuotaWindow {
   id: string;
@@ -64,6 +65,8 @@ export interface AccountSnapshot {
   subscriptionRenewsAt: string | null;
   quotaWindows: QuotaWindow[];
   accountId: AccountId;
+  provider: ProviderId;
+  label: string;
   windows: QuotaWindowSnapshot[];
   criticalWindow: QuotaWindow | null;
   dailyHistory: DailyUsagePoint[];
@@ -80,15 +83,41 @@ export interface AccountSnapshot {
 
 export interface UsageSnapshot {
   generatedAt: string;
-  claude?: AccountSnapshot;
-  copilot?: AccountSnapshot;
+  accounts: AccountSnapshot[];
 }
 
+interface AccountConfigBase {
+  id: AccountId;
+  provider: ProviderId;
+  label: string;
+  enabled: boolean;
+  accountScope: 'personal' | 'organization';
+  subscription: { renewalRule: { type: 'dayOfMonth' | 'rrule'; day?: number } };
+}
+
+export interface ClaudeAccountConfig extends AccountConfigBase {
+  provider: 'claude';
+  authMethod: 'password' | 'google' | 'sso';
+  planTier: string;
+  // sessionKey arriva sempre redatto (segnaposto) dal main: indica solo "connesso sì/no".
+  session: { sessionKey: string | null; organizationId: string | null };
+  localInsights: boolean;
+}
+
+export interface CopilotAccountConfig extends AccountConfigBase {
+  provider: 'copilot';
+  authMethod: 'pat' | 'oauth';
+  planTier: string;
+  credentials: { username: string | null };
+  oauthApp: { clientId: string | null };
+  manualQuota: number;
+  experimentalWarningAcknowledged: boolean;
+}
+
+export type AccountConfig = ClaudeAccountConfig | CopilotAccountConfig;
+
 export interface AppSettings {
-  accounts: {
-    claude: { enabled: boolean; accountScope: 'personal' | 'organization'; session: { sessionKey: string | null } };
-    copilot: { enabled: boolean; accountScope: 'personal' | 'organization'; authMethod: 'pat' | 'oauth'; credentials: { username: string | null }; oauthApp: { clientId: string | null } };
-  };
+  accounts: AccountConfig[];
   ui: {
     windowStyle: 'filled' | 'filled-dark' | 'transparent-digital';
     alwaysOnTop: boolean;
@@ -110,9 +139,10 @@ export interface HypermilerBridge {
   setWindowStyle(style: 'filled' | 'filled-dark' | 'transparent-digital'): Promise<string>;
   minimizeWindow(): void;
   closeWindow(): void;
-  connectClaude(): Promise<{ organizationId: string | null }>;
-  connectCopilot(token: string): Promise<{ username: string }>;
-  connectCopilotOAuth(clientId: string, clientSecret: string): Promise<{ username: string }>;
-  disconnectClaude(): Promise<void>;
-  disconnectCopilot(): Promise<void>;
+  addAccount(provider: ProviderId): Promise<AccountId>;
+  removeAccount(id: AccountId): Promise<void>;
+  connectClaude(id: AccountId): Promise<{ organizationId: string | null }>;
+  connectCopilot(id: AccountId, token: string): Promise<{ username: string }>;
+  connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string): Promise<{ username: string }>;
+  disconnectAccount(id: AccountId): Promise<void>;
 }
