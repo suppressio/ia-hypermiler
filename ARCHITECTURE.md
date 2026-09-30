@@ -45,10 +45,23 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
 
 ```js
 {
-  accounts: {
-    claude: {
-      enabled: boolean,
-      accountScope: 'personal' | 'organization',   // determina solo messaggi/aspettative in UI, non il meccanismo di accesso (vedi RESEARCH.md)
+  // Registro di N account indipendenti dal provider (issue #4, EVOLUTION.md punto 3):
+  // parte comune + parte specifica, unione discriminata su `provider`. Fino a v0.1.2 erano
+  // due slot fissi { claude, copilot }: convertiti una volta all'avvio da store/migrate.ts,
+  // mantenendo gli id 'claude'/'copilot' (così history.* resta valido senza riscritture).
+  // La parte specifica per provider lato main vive in main/providers.ts.
+  accounts: Array<{
+    // --- comune ---
+    id: string,                // 'claude'/'copilot' se migrato, altrimenti '<provider>-<uuid8>'
+    provider: 'claude' | 'copilot',
+    label: string,             // nome mostrato in tabella e nelle tab del widget ("Claude", "Claude 2"…)
+    enabled: boolean,
+    accountScope: 'personal' | 'organization',
+    subscription: {
+      renewalRule: { type: 'dayOfMonth', day: number } | { type: 'rrule', rrule: string },
+    },
+  } & (
+    { // --- provider: 'claude' ---
       authMethod: 'password' | 'google' | 'sso',
       session: {
         sessionKey: string,        // cifrato
@@ -57,24 +70,18 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
         expiresAt: string | null,  // stimata ~30gg, da ri-validare
       },
       planTier: 'free' | 'pro' | 'max_5x' | 'max_20x' | 'team' | 'enterprise',
-      subscription: {
-        renewalRule: { type: 'dayOfMonth', day: number } | { type: 'rrule', rrule: string },
-      },
-    },
-    copilot: {
-      enabled: boolean,
-      accountScope: 'personal' | 'organization',   // qui SÌ cambia il meccanismo: personale = API ufficiale, org-managed = endpoint interno best-effort
-      authMethod: 'pat' | 'oauth',  // sceglie quale pannello di connessione mostrare in Impostazioni; funzionale (a differenza dell'omonimo campo Claude sopra), aggiornato automaticamente dall'ultima connessione riuscita
-      credentials: { token: string, username: string | null },  // token cifrato (PAT o, in via sperimentale, un access token OAuth App — vedi main/copilot-oauth.ts)
-      oauthApp: { clientId: string | null },  // client ID di una GitHub OAuth App registrata dall'utente; non è un segreto, il client secret non viene mai persistito
+      partition: string,         // 'persist:account-<id>': cookie claude.ai isolati per account,
+                                 // cancellati da Disconnetti/Rimuovi e prima di ogni login (issue #4)
+      localInsights: boolean,    // sessioni Claude Code locali attribuite a questo account (max 1)
+    } | { // --- provider: 'copilot' ---
+      authMethod: 'pat' | 'oauth',  // sceglie quale pannello di connessione mostrare; aggiornato dall'ultima connessione riuscita
+      credentials: { token: string, username: string | null },  // token cifrato (PAT o access token OAuth App — vedi main/copilot-oauth.ts)
+      oauthApp: { clientId: string | null },  // non è un segreto; il client secret non viene mai persistito
       manualQuota: number, // l'API di billing non espone il totale del piano: valore inserito dall'utente
       planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise',
-      subscription: {
-        renewalRule: { type: 'dayOfMonth', day: number } | { type: 'rrule', rrule: string },
-      },
-      experimentalWarningAcknowledged: boolean, // per il caso seat aziendale via endpoint interno
-    },
-  },
+      experimentalWarningAcknowledged: boolean,
+    }
+  )>,
 
   workSchedule: {
     enabled: boolean, // se false, ogni giorno vale come giornata piena (pacing non legato a giorni/ore specifici — es. account personale)
@@ -104,18 +111,22 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
 
   history: {
     // append-only, un record per giorno per finestra di quota; retention configurabile (default 90gg) per non far crescere il file all'infinito
-    dailyUsage: Array<{ date: string, accountId: 'claude' | 'copilot', windowId: string, used: number }>,
+    dailyUsage: Array<{ date: string, accountId: string, windowId: string, used: number }>,
+    lastGood: Record<accountId, RawAccountUsage>, // ultimo dato riuscito per account (fallback)
   },
 
   advisorCache: { generatedAt: string, adviceText: string },
 
-  meta: { notifiedToday: Record<string, boolean> }, // flag anti-doppia-notifica per servizio/finestra
+  meta: {
+    notifiedToday: Record<string, boolean>, // flag anti-doppia-notifica per account/giorno
+    claudeCookiesMigrated?: boolean,         // copia una tantum dei cookie da defaultSession alla partition del Claude migrato
+  },
 }
 ```
 
 Sezioni del pannello impostazioni (finestra separata `renderer/settings.html`, aperta dal tray o da un'icona ingranaggio nel widget):
 
-1. **Account e sessioni** — per Claude e Copilot: stato connessione, metodo (password/SSO/PAT/OAuth device), pulsante "Connetti/Riconnetti" che apre una `BrowserWindow` di login per Claude o il device-flow per Copilot, data di scadenza sessione stimata, toggle "seat aziendale" con avviso automatico se attivo su Copilot ("funzionalità sperimentale, può interrompersi senza preavviso").
+1. **Account e sessioni** — *(aggiornato, issue #4)* una **tabella** di account (Nome | Provider | Stato | Attivo | azioni Configura/Connetti/Disconnetti/Rimuovi) con "Aggiungi account"; "Configura" apre sotto la riga il pannello del provider (campi comuni + specifici). Descrizione originale: per Claude e Copilot: stato connessione, metodo (password/SSO/PAT/OAuth device), pulsante "Connetti/Riconnetti" che apre una `BrowserWindow` di login per Claude o il device-flow per Copilot, data di scadenza sessione stimata, toggle "seat aziendale" con avviso automatico se attivo su Copilot ("funzionalità sperimentale, può interrompersi senza preavviso").
 2. **Piano e rinnovo** — tipo piano, giorno di rinnovo abbonamento (selettore semplice "giorno del mese"; dietro le quinte salvato come RRULE minimale `FREQ=MONTHLY;BYMONTHDAY=n` così in futuro si possono aggiungere ricorrenze diverse senza cambiare schema).
 3. **Calendario di lavoro** — 7 toggle giorno con 3 stati (pieno/mezza/riposo) + switch opzionale per ore lavorative (inizio/fine). Usato per calcolare budget e proiezioni su "giorni/ore lavorative rimanenti", non su giorni di calendario.
 4. **Aspetto** — stile finestra (le tre skin descritte sotto), always-on-top, colore accento, intervallo grafico (settimana/mese) di default.
@@ -147,6 +158,10 @@ Corpo centrale — numero grande "current usage": la finestra di quota più crit
 
 Sotto, un grafico a barre/linea dei **picchi giornalieri**, selezionabile settimana/mese, con overlay della linea di budget ideale (pacing lineare) per vedere a colpo d'occhio se si è sopra o sotto.
 
+*(Implementato così dopo EVOLUTION.md punto 1 — prima il grafico mostrava la % cumulata per giorno, un calco della dashboard del provider.)* Ogni barra è il **consumo di quel giorno** (`budget.dailyDeltas`: differenza col giorno precedente, reset esclusi), con un trattino per la quota ideale del giorno (0 nei giorni non lavorativi); barre oltre la quota in `--warning`. Non mostrato per finestre `rolling-hours`. Se l'account ha più finestre di quota, sopra al valore corrente c'è una **lista con verdetto** calcolato dall'app (`budget.windowVerdict`: esaurita / a rischio / in linea / nessun pacing), la critica per prima, al posto delle tab che affiancavano solo le metriche del provider.
+
+**Valore per token** *(EVOLUTION.md punto 4, solo account Claude con insight locali)*: "Resa" = token di output delle sessioni Claude Code locali per 1% di quota consumata (`budget.tokenYield`, con trend), e un consiglio causale su contesto ampio (`budget.consumptionCause`) mostrato **solo** se il segnale è netto. Limite dichiarato: l'SDK non espone l'orario dei singoli messaggi, ogni sessione è attribuita al giorno di ultima modifica.
+
 Riquadro metriche:
 
 - **Token (o % quota)/giorno lavorativo corrente** — richiesto
@@ -156,7 +171,7 @@ Riquadro metriche:
 - **Previsionale** — richiesto: proiezione dell'utilizzo a fine periodo, estrapolando il ritmo medio reale sulle unità lavorative rimanenti.
 - **Giorni alla scadenza** — richiesto: sia giorni di calendario sia giorni **lavorativi** rimanenti (spesso più utile).
 - **Giorni di autonomia stimati** *(aggiunta)* — a quanti giorni lavorativi si esaurirà la quota mantenendo il ritmo attuale, utile quando è < giorni alla scadenza (segnale di rischio più diretto del solo indice di efficienza).
-- **Picco massimo vs media giornaliera** *(aggiunta)* — per capire se i problemi sono concentrati in giornate anomale o distribuiti.
+- **Picco massimo vs media giornaliera** *(aggiunta; calcolato sui delta giornalieri, `budget.deltaStats`)* — per capire se i problemi sono concentrati in giornate anomale o distribuiti.
 - **Streak sotto budget** *(aggiunta)* — giorni lavorativi consecutivi entro il budget ideale, per rinforzo positivo leggero (in linea con "sobria", quindi solo un numero, non badge/gamification vistosa).
 - **Vista combinata multi-servizio** *(aggiunta, se entrambi Claude e Copilot attivi)* — un indicatore di "salute generale" che aggrega le percentuali delle finestre più critiche dei due servizi, utile per uno sguardo d'insieme prima di aprire il dettaglio.
 - **Tips/consigli del giorno** — richiesto: pannello alimentato da `agents/advisor.ts` (Claude Sonnet, cache 24h come da `CLAUDE.md`), che ora riceverà come contesto anche calendario di lavoro ed efficienza calcolata, non solo `dailyHistory` grezzo.

@@ -65,7 +65,18 @@ Queste assunzioni correggono/restringono lo scope rispetto a una prima lettura p
 
 ---
 
+## Stato (aggiornato 2026-09-30)
+
+Scelta dell'utente: evolvere l'app "man mano con l'uso", **senza stravolgerne l'architettura** — quindi i punti 1, 3 e 4, fattibili dentro la struttura attuale (Electron + main.ts + IPC + store). Il 2a (estrazione del core) non è stato fatto: il punto 3 è stato realizzato senza di esso, a costo contenuto. Sequenza eseguita: issue #3 → punto 3 → punto 1 → punto 4, un commit per fase.
+
+| # | Stato | Cosa è stato fatto |
+|---|---|---|
+| **1** | ✅ fatto | Grafico "consumo giornaliero vs budget" (delta per giorno + quota ideale, `budget.dailyDeltas`) al posto della % cumulata; lista finestre con verdetto calcolato dall'app (`budget.windowVerdict`) al posto delle tab; picco/media e streak calcolati sui delta (sul cumulato erano di fatto sbagliati). |
+| **3** | ✅ fatto (con issue #4) | Registro di N account indipendenti dal provider (`AccountConfig[]`, parte comune + parte specifica), `main/providers.ts` per ciò che dipende dal provider, tabella account in Impostazioni, migrazione automatica dallo schema a due slot (`store/migrate.ts`). Una partition Electron per ogni account Claude: risolve il bug del logout che non cancellava la sessione. Aggiungere un provider nuovo (es. OpenAI) = un service con `fetchUsage` + un ramo per ogni funzione di `main/providers.ts` + un template di dettaglio in `settings.html`. |
+| **4** | ✅ fatto (prima versione) | "Resa" (token di output per 1% di quota, con trend) e consiglio causale su contesto ampio, mostrato solo con segnale netto. Resta la **tensione** annotata sopra: esiste solo per Claude (unica sorgente locale). Limite noto: una sessione è attribuita al giorno della sua ultima modifica (l'SDK non espone l'orario dei messaggi). |
+| 2a/2b/2c, 5 | ⏸ non affrontati | Come da sequenza suggerita; il punto 5 resta da **misurare** prima di qualunque intervento. |
+
 ## Domande aperte / prossimo passo
 
-- Da dove si parte concretamente: punto 1 (costo/beneficio migliore) o prima misurare il punto 5 (unico dato oggettivo mancante)?
-- Nessuna decisione presa in questa sessione — nessun codice toccato.
+- Verificare con l'uso reale se le soglie di `consumptionCause` (≥5 giorni, ≥1.5×, ≥20 punti) sono troppo severe (la frase non compare mai) o troppo lasche.
+- Misurare il punto 5 (RAM/CPU in modalità solo-tray) prima di decidere se affrontare 2a/5.
