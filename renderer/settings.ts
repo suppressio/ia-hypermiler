@@ -21,6 +21,9 @@ let savedSettings: AppSettings | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 // Account con il pannello di dettaglio aperto nella tabella (uno alla volta).
 let expandedAccountId: AccountId | null = null;
+// Account appena creato con "Aggiungi account" e non ancora salvato: stesso form
+// di dettaglio, cambia solo il titolo ("Nuovo account …" invece di "Configura …").
+let newAccountId: AccountId | null = null;
 
 const PROVIDER_LABELS: Record<ProviderId, string> = { claude: 'Claude', copilot: 'GitHub Copilot' };
 
@@ -115,8 +118,12 @@ function renderAccountsTable(): void {
   (document.getElementById('accounts-empty') as HTMLElement).hidden = accounts().length > 0;
 
   accounts().forEach((account, index) => {
+    const isExpanded = expandedAccountId === account.id;
     const row = document.createElement('tr');
     row.dataset.accountId = account.id;
+    // Zebra calcolata qui e non con :nth-child: le righe di dettaglio aperte
+    // sfaserebbero l'alternanza.
+    row.className = `account-row${index % 2 ? ' zebra' : ''}${isExpanded ? ' expanded' : ''}`;
 
     const nameCell = document.createElement('td');
     nameCell.textContent = account.label;
@@ -159,6 +166,12 @@ function renderAccountsTable(): void {
       const tpl = document.getElementById(`tpl-detail-${account.provider}`) as HTMLTemplateElement;
       const detail = tpl.content.firstElementChild!.cloneNode(true) as HTMLElement;
       detail.dataset.accountId = account.id;
+      const title = document.createElement('h3');
+      title.className = 'account-detail-title';
+      title.textContent = account.id === newAccountId
+        ? `Nuovo account ${PROVIDER_LABELS[account.provider]}`
+        : `Configura «${account.label}»`;
+      detail.prepend(title);
       detail.querySelectorAll<HTMLElement>('[data-account-field]').forEach((el) => {
         el.dataset.field = `accounts.${index}.${el.dataset.accountField}`;
       });
@@ -274,6 +287,7 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
 
   if (action === 'toggle-detail') {
     expandedAccountId = expandedAccountId === id ? null : id;
+    if (expandedAccountId === null) newAccountId = null;
     captureDraftFromForm();
     populateForm();
     return;
@@ -384,6 +398,7 @@ function bindEvents(): void {
     captureDraftFromForm();
     const id = await window.hypermiler.addAccount(provider);
     expandedAccountId = id;
+    newAccountId = id;
     await reloadAfterAccountAction(id);
   });
 
@@ -416,6 +431,7 @@ function bindEvents(): void {
     }
 
     savedSettings = structuredClone(settings);
+    newAccountId = null;
     showSaveStatus('Impostazioni salvate ✓');
   });
 
