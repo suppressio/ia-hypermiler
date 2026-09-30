@@ -59,11 +59,12 @@ export async function migrateDefaultSessionCookies(targetPartition: string): Pro
       name: c.name,
       value: c.value,
       // Un cookie host-only non deve diventare di dominio: passiamo `domain` solo se lo era.
-      domain: c.hostOnly ? undefined : c.domain,
-      path: c.path,
-      secure: c.secure,
-      httpOnly: c.httpOnly,
-      expirationDate: c.expirationDate,
+      // Campi opzionali copiati solo se presenti (exactOptionalPropertyTypes).
+      ...(!c.hostOnly && c.domain !== undefined ? { domain: c.domain } : {}),
+      ...(c.path !== undefined ? { path: c.path } : {}),
+      ...(c.secure !== undefined ? { secure: c.secure } : {}),
+      ...(c.httpOnly !== undefined ? { httpOnly: c.httpOnly } : {}),
+      ...(c.expirationDate !== undefined ? { expirationDate: c.expirationDate } : {}),
       sameSite: c.sameSite,
     });
   }

@@ -36,7 +36,7 @@ test('listOrganizations su account reale ritorna almeno un\'organizzazione', { s
 });
 
 test('fetchUsage su account reale ritorna finestre di quota valide', { skip: skipReason }, async () => {
-  const result = await claudeService.fetchUsage({ sessionKey: sessionKey as string, organizationId });
+  const result = await claudeService.fetchUsage({ sessionKey: sessionKey as string, organizationId: organizationId ?? null });
 
   assert.ok(Array.isArray(result.quotaWindows));
   assert.ok(result.quotaWindows.length > 0, 'RESEARCH.md prevedeva almeno una finestra (five_hour/seven_day/seven_day_opus): formato endpoint forse cambiato');

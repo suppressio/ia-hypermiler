@@ -52,7 +52,8 @@ export const DEFAULTS: AppSettings = {
     windowStyle: 'filled',
     alwaysOnTop: false,
     accentColor: '#2563eb',
-    bounds: { x: undefined, y: undefined, width: 360, height: 480 },
+    // x/y assenti finché l'utente non sposta la finestra (vedi main/windows.ts).
+    bounds: { width: 360, height: 480 },
     chartRange: 'week',
     notificationThresholdPercent: 80,
   },

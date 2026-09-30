@@ -11,6 +11,9 @@
     "build": "npm run build:main && npm run build:renderer && npm run copy-assets",
     "start": "npm run build && electron .",
     "test": "npm run build && cd dist && node --env-file-if-exists=../.env.test --test",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "coverage": "npm run build && cd dist && node --test --experimental-test-coverage --test-coverage-exclude=\"**/*.test.js\" --test-coverage-exclude=\"tests/**\"",
     "package": "npm run build && electron-builder"
   },
   "author": "Daniele 'suppressio' <82306300+suppressio@users.noreply.github.com>",
@@ -23,10 +26,13 @@
     "electron-store": "^8.2.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.0.0",
     "electron": "^31.0.0",
     "electron-builder": "^24.13.0",
-    "typescript": "^5.6.0"
+    "eslint": "^10.11.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.71.0"
   },
   "build": {
     "appId": "com.suppressio.ia-hypermiler",

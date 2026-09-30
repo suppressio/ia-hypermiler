@@ -12,6 +12,6 @@ export interface AdvisorContext {
   workSchedule: WorkSchedule;
 }
 
-export async function getAdvice(context: AdvisorContext): Promise<string> {
+export async function getAdvice(_context: AdvisorContext): Promise<string> {
   throw new Error('getAdvice non ancora implementato — vedi Giorno 2, Sessione 2');
 }

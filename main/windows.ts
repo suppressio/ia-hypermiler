@@ -19,8 +19,8 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
   const win = new BrowserWindow({
     width: ui.bounds?.width ?? 360,
     height: ui.bounds?.height ?? 480,
-    x: ui.bounds?.x,
-    y: ui.bounds?.y,
+    // Posizione solo se mai salvata: senza, Electron centra la finestra.
+    ...(ui.bounds?.x !== undefined && ui.bounds?.y !== undefined ? { x: ui.bounds.x, y: ui.bounds.y } : {}),
     minWidth: 260,
     minHeight: 320,
     // Sempre senza cornice nativa, in entrambe le skin (feedback utente — con
@@ -67,7 +67,7 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
 }
 
 /** Crea (o riporta in primo piano) la finestra impostazioni. */
-export function createSettingsWindow(store: Store<AppSettings>, existing?: BrowserWindow | null): BrowserWindow {
+export function createSettingsWindow(existing?: BrowserWindow | null): BrowserWindow {
   if (existing && !existing.isDestroyed()) {
     existing.focus();
     return existing;

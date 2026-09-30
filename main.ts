@@ -574,7 +574,7 @@ function getUpdateSettings(): UpdateSettings {
 }
 
 function openSettingsWindow(): void {
-  settingsWindow = createSettingsWindow(store, settingsWindow);
+  settingsWindow = createSettingsWindow(settingsWindow);
 }
 
 async function checkForUpdates(source: 'auto' | 'manual'): Promise<UpdateSettings> {
@@ -649,7 +649,7 @@ function registerIpcHandlers(): void {
   ipcMain.on('usage:refreshRequest', () => refreshAndBroadcast());
 
   ipcMain.on('window:openSettings', () => {
-    settingsWindow = createSettingsWindow(store, settingsWindow);
+    settingsWindow = createSettingsWindow(settingsWindow);
   });
 
   ipcMain.handle('window:setAlwaysOnTop', (_event: IpcMainInvokeEvent, value: boolean) => {

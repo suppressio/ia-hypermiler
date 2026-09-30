@@ -211,10 +211,6 @@ function updateWorkScheduleLock(): void {
   if (hoursInput) hoursInput.disabled = !enabled;
 }
 
-function accountIndexOf(id: AccountId): number {
-  return accounts().findIndex((a) => a.id === id);
-}
-
 function detailElement(id: AccountId): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.account-detail[data-account-id="${CSS.escape(id)}"]`);
 }

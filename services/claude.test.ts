@@ -2,7 +2,7 @@
 // Nessuna chiamata di rete reale: verifichiamo solo parsing, mapping e gestione errori.
 // I test di integrazione con un account reale sono in tests/integration/claude.integration.test.ts.
 
-import { test, beforeEach, afterEach } from 'node:test';
+import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import * as claudeService from './claude';
 

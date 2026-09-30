@@ -118,7 +118,7 @@ async function fetchBillingUsageReport(username: string, token: string, year: nu
   }
 }
 
-async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; manualQuota?: number | null; now: Date }): Promise<RawAccountUsage> {
+async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; manualQuota: number | null | undefined; now: Date }): Promise<RawAccountUsage> {
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
   const username = await resolveUsername(token);
@@ -218,7 +218,7 @@ async function fetchCopilotInternalUsage(token: string, context: string): Promis
   };
 }
 
-async function fetchOrgManagedUsage({ token }: { token: string; manualQuota?: number | null; now: Date }): Promise<RawAccountUsage> {
+async function fetchOrgManagedUsage({ token }: { token: string }): Promise<RawAccountUsage> {
   return fetchCopilotInternalUsage(token, 'seat aziendale');
 }
 
@@ -230,7 +230,7 @@ export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAc
 
   const now = new Date();
   if (accountScope === 'organization') {
-    return fetchOrgManagedUsage({ token, manualQuota, now });
+    return fetchOrgManagedUsage({ token });
   }
   return fetchPersonalUsage({ token, manualQuota, now });
 }
