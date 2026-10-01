@@ -50,6 +50,15 @@ export interface WindowVerdict {
   projectedUsage?: number;
 }
 
+/**
+ * Daily tip as data (see budget.generateDailyTip): a message key plus the
+ * numbers it states; the renderer renders it in the active language.
+ */
+export interface DailyTip {
+  key: 'none' | 'autonomy' | 'instantRate' | 'rating' | 'nearReset' | 'nearResetToday' | 'projected' | 'cause';
+  params: Record<string, number>;
+}
+
 export interface QuotaWindowSnapshot {
   window: QuotaWindow;
   dailyHistory: DailyUsagePoint[];
@@ -64,7 +73,7 @@ export interface QuotaWindowSnapshot {
   instantRate: number | null;
   sustainableRate: number | null;
   efficiencyRating: EfficiencyRating | null;
-  dailyTip: string;
+  dailyTip: DailyTip;
   // Solo per l'account Claude con insight locali attivi (null altrimenti).
   tokenYield: TokenYield | null;
 }
@@ -185,6 +194,7 @@ export interface AppSettings {
   accounts: AccountConfig[];
   updates?: UpdateSettings;
   ui: {
+    language: 'auto' | 'en' | 'it';
     windowStyle: 'filled' | 'filled-dark' | 'transparent-digital';
     alwaysOnTop: boolean;
     chartRange: 'week' | 'month';

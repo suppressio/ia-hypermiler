@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>IA Hypermiler</title>
@@ -8,12 +8,12 @@
 <body class="style-filled">
   <div id="titlebar" class="titlebar">
     <div class="titlebar-controls-left">
-      <button id="btn-pin" title="Sempre in primo piano" aria-label="Sempre in primo piano" aria-pressed="false">
+      <button id="btn-pin" title="Always on top" aria-label="Always on top" data-i18n-title="widget.pin" data-i18n-aria-label="widget.pin" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6zm0 8.5A2.5 2.5 0 1 1 12 5.5a2.5 2.5 0 0 1 0 5z" />
         </svg>
       </button>
-      <button id="btn-refresh" title="Aggiorna ora" aria-label="Aggiorna ora">
+      <button id="btn-refresh" title="Refresh now" aria-label="Refresh now" data-i18n-title="widget.refresh" data-i18n-aria-label="widget.refresh">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4a8 8 0 1 0 7.74 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
         </svg>
@@ -21,9 +21,9 @@
     </div>
     <div class="titlebar-drag"></div>
     <div class="titlebar-controls">
-      <button id="btn-settings" title="Impostazioni" aria-label="Impostazioni">⚙</button>
-      <button id="btn-minimize" title="Riduci a icona" aria-label="Riduci a icona">–</button>
-      <button id="btn-close" title="Nascondi" aria-label="Nascondi">×</button>
+      <button id="btn-settings" title="Settings" aria-label="Settings" data-i18n-title="widget.settings" data-i18n-aria-label="widget.settings">⚙</button>
+      <button id="btn-minimize" title="Minimize" aria-label="Minimize" data-i18n-title="widget.minimize" data-i18n-aria-label="widget.minimize">–</button>
+      <button id="btn-close" title="Hide" aria-label="Hide" data-i18n-title="widget.hide" data-i18n-aria-label="widget.hide">×</button>
     </div>
   </div>
 
@@ -33,12 +33,12 @@
 
     <section class="current-indicator">
       <div class="current-value" id="current-value">--%</div>
-      <div class="current-label" id="current-label">In attesa di dati…</div>
+      <div class="current-label" id="current-label" data-i18n="widget.waiting">Waiting for data…</div>
     </section>
 
     <section class="instant-gauge-section">
       <div class="gauge-header">
-        <span>Consumo istantaneo</span>
+        <span data-i18n="widget.gauge.title">Instant consumption</span>
         <span id="gauge-label">--</span>
       </div>
       <div id="instant-gauge" class="instant-gauge"></div>
@@ -46,7 +46,7 @@
 
     <section class="chart-section">
       <div class="chart-header">
-        <span id="chart-title">Consumo giornaliero vs budget</span>
+        <span id="chart-title">Daily consumption vs budget</span>
         <span id="chart-ideal" class="chart-ideal"></span>
       </div>
       <div id="chart" class="chart"></div>
@@ -54,58 +54,58 @@
 
     <section class="metrics-grid" id="metrics-grid">
       <div class="metric metric-efficiency-block">
-        <span class="metric-label">Indice efficienza</span>
+        <span class="metric-label" data-i18n="widget.metric.efficiency">Efficiency index</span>
         <span class="metric-value" id="metric-efficiency">--</span>
         <span class="metric-hint" id="metric-efficiency-hint"></span>
         <div class="efficiency-rating" id="efficiency-rating">
-          <div class="efficiency-rating-stars" id="efficiency-rating-stars" aria-label="Rating efficienza"></div>
+          <div class="efficiency-rating-stars" id="efficiency-rating-stars" aria-label="Efficiency rating" data-i18n-aria-label="widget.rating.aria"></div>
           <span class="efficiency-rating-label" id="efficiency-rating-label"></span>
         </div>
       </div>
       <div class="metric">
-        <span class="metric-label">Previsionale</span>
+        <span class="metric-label" data-i18n="widget.metric.projected">Projection</span>
         <span class="metric-value" id="metric-projected">--%</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Giorni a scadenza</span>
+        <span class="metric-label" data-i18n="widget.metric.daysLeft">Days to reset</span>
         <span class="metric-value" id="metric-days-left">--</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Autonomia stimata</span>
+        <span class="metric-label" data-i18n="widget.metric.autonomy">Estimated autonomy</span>
         <span class="metric-value" id="metric-autonomy">--</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Picco / media giornaliera</span>
+        <span class="metric-label" data-i18n="widget.metric.peakAvg">Daily peak / average</span>
         <span class="metric-value" id="metric-peak-avg">--</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Streak sotto budget</span>
+        <span class="metric-label" data-i18n="widget.metric.streak">Streak under budget</span>
         <span class="metric-value" id="metric-streak">--</span>
       </div>
     </section>
 
     <details class="tips-section" open>
-      <summary>Consiglio del giorno</summary>
+      <summary data-i18n="widget.tips.title">Tip of the day</summary>
       <div class="tips-text" id="tips-text">—</div>
 
       <div id="local-insights" class="local-insights" hidden>
-        <div class="local-insights-header">Insight locali · Claude Code</div>
+        <div class="local-insights-header" data-i18n="widget.insights.header">Local insights · Claude Code</div>
         <div class="local-insights-body">
-          <div class="metric local-insights-yield" title="Token di output prodotti nelle sessioni Claude Code di questa macchina per ogni 1% di quota consumato, sui soli giorni presenti in entrambe le fonti. Più alta = ogni token è costato meno quota. Limite: una sessione è attribuita al giorno della sua ultima modifica (l'SDK non espone l'orario dei singoli messaggi), e l'uso di claude.ai dal browser non è contato nei token.">
-            <span class="metric-label">Resa (token per 1% di quota)</span>
+          <div class="metric local-insights-yield" data-i18n-title="widget.insights.yieldHelp">
+            <span class="metric-label" data-i18n="widget.insights.yield">Yield (tokens per 1% of quota)</span>
             <span class="metric-value" id="local-insights-yield">--</span>
             <span class="metric-hint" id="local-insights-yield-hint"></span>
           </div>
           <div class="metric">
-            <span class="metric-label">Contesto oltre 150k</span>
+            <span class="metric-label" data-i18n="widget.insights.context">Context over 150k</span>
             <span class="metric-value" id="local-insights-context">--</span>
           </div>
           <div class="metric">
-            <span class="metric-label">Da sessioni 8h+</span>
+            <span class="metric-label" data-i18n="widget.insights.longSessions">From 8h+ sessions</span>
             <span class="metric-value" id="local-insights-duration">--</span>
           </div>
           <div class="local-insights-tools">
-            <span class="metric-label">Tool più usati</span>
+            <span class="metric-label" data-i18n="widget.insights.topTools">Most used tools</span>
             <ul id="local-insights-tools"></ul>
           </div>
         </div>

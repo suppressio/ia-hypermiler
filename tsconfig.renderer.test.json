@@ -1,0 +1,15 @@
+{
+  // Renderer unit tests only (renderer/**/*.test.ts): same settings as
+  // tsconfig.renderer.json plus Node types for node:test/node:assert. Kept separate
+  // so the renderer app code itself never sees Node globals (it runs in a sandboxed
+  // browser context: no require/process). Emits into dist/renderer as ES modules,
+  // run by `node --test` thanks to dist/renderer/package.json ("type": "module",
+  // written by scripts/copy-assets.js).
+  "extends": "./tsconfig.renderer.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "esModuleInterop": true
+  },
+  "include": ["renderer/**/*.ts"],
+  "exclude": []
+}

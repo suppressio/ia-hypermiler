@@ -261,69 +261,58 @@ function baseTipContext(overrides: Partial<budget.DailyTipContext> = {}): budget
   };
 }
 
-test('generateDailyTip ritorna NO_TIP_MESSAGE se nessuna condizione è vera', () => {
-  const result = budget.generateDailyTip(baseTipContext());
-  assert.equal(result, budget.NO_TIP_MESSAGE);
+test('generateDailyTip returns `none` when no condition holds', () => {
+  assert.deepEqual(budget.generateDailyTip(baseTipContext()), budget.NO_TIP);
 });
 
-test('generateDailyTip segnala quando l\'autonomia stimata è più corta del tempo al reset', () => {
-  const ctx = baseTipContext({ estimatedAutonomyWorkingDays: 4, workingDaysUntilReset: 8 });
-  const result = budget.generateDailyTip(ctx);
-  assert.match(result, /4gg lavorativi/);
-  assert.match(result, /8gg al rinnovo/);
-  assert.match(result, /50% più basso/); // 1 - 4/8 = 50%
+test('generateDailyTip flags an estimated autonomy shorter than the time to reset', () => {
+  const tip = budget.generateDailyTip(baseTipContext({ estimatedAutonomyWorkingDays: 4, workingDaysUntilReset: 8 }));
+  assert.deepEqual(tip, { key: 'autonomy', params: { autonomyDays: 4, daysToReset: 8, reductionPercent: 50 } }); // 1 - 4/8
 });
 
-test('generateDailyTip segnala quando il ritmo recente supera quello sostenibile', () => {
-  const ctx = baseTipContext({ instantRate: 5, sustainableRate: 2 });
-  const result = budget.generateDailyTip(ctx);
-  assert.match(result, /5%\/h/);
-  assert.match(result, /2%\/h/);
+test('generateDailyTip flags a recent pace above the sustainable one', () => {
+  const tip = budget.generateDailyTip(baseTipContext({ instantRate: 5, sustainableRate: 2 }));
+  assert.deepEqual(tip, { key: 'instantRate', params: { instantRate: 5, sustainableRate: 2 } });
 });
 
-test('generateDailyTip segnala un rating alto come margine per usare di più', () => {
-  const ctx = baseTipContext({ efficiencyRating: { stars: 5, avgRatio: 1.8 } });
-  const result = budget.generateDailyTip(ctx);
-  assert.match(result, /Rating 5\/5/);
-  assert.match(result, /1\.8/);
+test('generateDailyTip reports a high rating as room for more usage', () => {
+  const tip = budget.generateDailyTip(baseTipContext({ efficiencyRating: { stars: 5, avgRatio: 1.8 } }));
+  assert.deepEqual(tip, { key: 'rating', params: { stars: 5, avgRatio: 1.8 } });
 });
 
-test('generateDailyTip non segnala un rating basso come margine (solo >= 4 stelle)', () => {
-  const ctx = baseTipContext({ efficiencyRating: { stars: 2, avgRatio: 0.7 } });
-  const result = budget.generateDailyTip(ctx);
-  assert.equal(result, budget.NO_TIP_MESSAGE);
+test('generateDailyTip does not report a low rating (only >= 4 stars)', () => {
+  const tip = budget.generateDailyTip(baseTipContext({ efficiencyRating: { stars: 2, avgRatio: 0.7 } }));
+  assert.deepEqual(tip, budget.NO_TIP);
 });
 
-test('generateDailyTip segnala pochi giorni al reset con utilizzo già alto', () => {
-  const ctx = baseTipContext({ window: pctWindow(85), daysUntilReset: 1 });
-  const result = budget.generateDailyTip(ctx);
-  assert.match(result, /1gg/);
-  assert.match(result, /85%/);
+test('generateDailyTip flags few days to reset with usage already high', () => {
+  const tip = budget.generateDailyTip(baseTipContext({ window: pctWindow(85), daysUntilReset: 1 }));
+  assert.deepEqual(tip, { key: 'nearReset', params: { days: 1, utilization: 85 } });
+  const today = budget.generateDailyTip(baseTipContext({ window: pctWindow(85), daysUntilReset: 0 }));
+  assert.equal(today.key, 'nearResetToday');
 });
 
-test('generateDailyTip segnala una proiezione oltre il 100% anche se non ancora raggiunto', () => {
-  const ctx = baseTipContext({ window: pctWindow(90), projectedUsage: 130 });
-  const result = budget.generateDailyTip(ctx);
-  assert.match(result, /130%/);
+test('generateDailyTip flags a projection above 100% before it is reached', () => {
+  const tip = budget.generateDailyTip(baseTipContext({ window: pctWindow(90), projectedUsage: 130 }));
+  assert.deepEqual(tip, { key: 'projected', params: { projectedUsage: 130 } });
 });
 
-test('generateDailyTip non ripete la proiezione se l\'utilizzo è già al 100%', () => {
-  const ctx = baseTipContext({ window: pctWindow(100), projectedUsage: 100 });
-  const result = budget.generateDailyTip(ctx);
-  assert.equal(result, budget.NO_TIP_MESSAGE);
+test('generateDailyTip does not repeat the projection once usage is already 100%', () => {
+  const tip = budget.generateDailyTip(baseTipContext({ window: pctWindow(100), projectedUsage: 100 }));
+  assert.deepEqual(tip, budget.NO_TIP);
 });
 
-test('generateDailyTip sceglie tra i candidati applicabili in base al random iniettato, mai uno non applicabile', () => {
+test('generateDailyTip picks among applicable candidates using the injected random, never a non-applicable one', () => {
   const ctx = baseTipContext({
     instantRate: 5,
-    sustainableRate: 2, // candidato 2 applicabile
-    efficiencyRating: { stars: 5, avgRatio: 1.8 }, // candidato 3 applicabile
+    sustainableRate: 2, // candidate 2 applies
+    efficiencyRating: { stars: 5, avgRatio: 1.8 }, // candidate 3 applies
   });
   const first = budget.generateDailyTip(ctx, () => 0);
   const second = budget.generateDailyTip(ctx, () => 0.99);
-  assert.notEqual(first, second); // due candidati applicabili, random diverso -> frasi diverse
-  assert.match(first, /%\/h|Rating/);
-  assert.match(second, /%\/h|Rating/);
+  assert.deepEqual([first.key, second.key], ['instantRate', 'rating']);
+  // A random of exactly 1 must not overflow the candidate list.
+  assert.equal(budget.generateDailyTip(ctx, () => 1).key, 'rating');
 });
 
 // ---------------------------------------------------------------------------
@@ -437,6 +426,6 @@ test('consumptionCause: segnale debole o pochi giorni → nessuna frase (null)',
 test('generateDailyTip: il legame consumo/contesto entra come candidato solo se presente', () => {
   const cause = { highDaysHighContextPercent: 85, lowDaysHighContextPercent: 12, daysCompared: 6 };
   const tip = budget.generateDailyTip({ ...baseTipContext(), consumptionCause: cause });
-  assert.match(tip, /85% dei token è prodotto a contesto oltre 150k/);
-  assert.equal(budget.generateDailyTip({ ...baseTipContext(), consumptionCause: null }), budget.NO_TIP_MESSAGE);
+  assert.deepEqual(tip, { key: 'cause', params: { highPercent: 85, lowPercent: 12, days: 6 } });
+  assert.deepEqual(budget.generateDailyTip({ ...baseTipContext(), consumptionCause: null }), budget.NO_TIP);
 });

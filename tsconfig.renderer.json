@@ -20,5 +20,6 @@
     "sourceMap": true,
     "types": []
   },
-  "include": ["renderer/*.ts"]
+  "include": ["renderer/**/*.ts"],
+  "exclude": ["renderer/**/*.test.ts"]
 }

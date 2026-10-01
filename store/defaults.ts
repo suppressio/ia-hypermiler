@@ -31,6 +31,7 @@ export const DEFAULTS: AppSettings = {
   },
 
   ui: {
+    language: 'auto',
     windowStyle: 'filled',
     alwaysOnTop: false,
     accentColor: '#2563eb',

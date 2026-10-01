@@ -4,6 +4,7 @@ import { Tray, Menu, nativeImage, app, BrowserWindow, MenuItem } from 'electron'
 import path from 'path';
 import type Store from 'electron-store';
 import type { AppSettings } from '../types/index';
+import { t } from './i18n/index';
 
 const ICON_PATH = path.join(__dirname, '..', 'renderer', 'assets', 'tray-icon.png');
 
@@ -49,14 +50,14 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
     const available = store.get('updates').available;
     return Menu.buildFromTemplate([
       ...(available
-        ? [{ label: `Aggiornamento disponibile (${available.version})…`, click: openSettings }, { type: 'separator' as const }]
+        ? [{ label: t('tray.updateAvailable', { version: available.version }), click: openSettings }, { type: 'separator' as const }]
         : []),
-      { label: 'Mostra/Nascondi', click: toggleMainWindow },
-      { label: 'Impostazioni…', click: openSettings },
-      { label: 'Aggiorna ora', click: refreshNow },
+      { label: t('tray.toggle'), click: toggleMainWindow },
+      { label: t('tray.settings'), click: openSettings },
+      { label: t('tray.refresh'), click: refreshNow },
       { type: 'separator' },
       {
-        label: 'Sempre in primo piano',
+        label: t('tray.alwaysOnTop'),
         type: 'checkbox',
         checked: ui.alwaysOnTop,
         click: (menuItem: MenuItem) => {
@@ -66,7 +67,7 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
         },
       },
       { type: 'separator' },
-      { label: 'Esci', click: () => { app.quit(); } },
+      { label: t('tray.quit'), click: () => { app.quit(); } },
     ]);
   };
 

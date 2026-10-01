@@ -1,7 +1,9 @@
-// settings.ts — logica finestra impostazioni (nessun accesso diretto a Node.js)
+// settings.ts — Settings window logic (no direct access to Node.js).
+// Every visible string goes through t() or data-i18n attributes (renderer/i18n).
 
 import type { AccountConfig, AccountId, AppSettings, HypermilerBridge, ProviderId, UpdateSettings } from './types';
 import { byId } from './dom.js';
+import { applyTranslations, formatDateTime, resolveLocale, setLocale, t, type MessageKey } from './i18n/index.js';
 
 declare global {
   interface Window {
@@ -9,23 +11,23 @@ declare global {
   }
 }
 
-const DAY_LABELS: Record<string, string> = {
-  mon: 'Lunedì', tue: 'Martedì', wed: 'Mercoledì', thu: 'Giovedì', fri: 'Venerdì', sat: 'Sabato', sun: 'Domenica',
-};
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+const DAY_STATUSES = ['full', 'half', 'off'] as const;
 
 let settings: AppSettings | null = null;
-// Ultimo stato realmente persistito (confermato con "Salva" o appena ricevuto da
-// getSettings()): usato da "Annulla" per ripristinare il form, e per capire quali
-// campi sono davvero cambiati rispetto all'ultimo salvataggio (es. per non
-// ricreare la finestra ad ogni Salva se lo stile non è stato toccato).
+// Last state actually persisted (confirmed with "Save" or just received from
+// getSettings()): used by "Cancel" to restore the form, and to tell which fields
+// really changed since the last save (e.g. not to recreate the window on every
+// Save when the style was not touched).
 let savedSettings: AppSettings | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-// Account con il pannello di dettaglio aperto nella tabella (uno alla volta).
+// Account whose detail panel is open in the table (one at a time).
 let expandedAccountId: AccountId | null = null;
-// Account appena creato con "Aggiungi account" e non ancora salvato: stesso form
-// di dettaglio, cambia solo il titolo ("Nuovo account …" invece di "Configura …").
+// Account just created with "Add account" and not saved yet: same detail form,
+// only the title changes ("New … account" instead of "Configure …").
 let newAccountId: AccountId | null = null;
 
+// Provider names are proper names: not translated.
 const PROVIDER_LABELS: Record<ProviderId, string> = { claude: 'Claude', copilot: 'GitHub Copilot' };
 
 type PlainRecord = Record<string, unknown>;
@@ -68,28 +70,42 @@ function readFieldValue(el: HTMLInputElement | HTMLSelectElement): unknown {
   return el.value;
 }
 
+// --- Language ------------------------------------------------------------------
+
+function applyLanguage(language: AppSettings['ui']['language']): void {
+  const locale = resolveLocale(language, navigator.language);
+  setLocale(locale, navigator.language);
+  document.documentElement.lang = locale;
+  applyTranslations(document);
+}
+
+// Week grid: labels and options carry data-i18n keys, so applyTranslations
+// translates them like the static markup.
 function buildWeekGrid(): void {
   const grid = byId('week-grid', HTMLElement);
   grid.innerHTML = '';
-  Object.entries(DAY_LABELS).forEach(([key, label]) => {
+  for (const day of DAY_KEYS) {
     const labelEl = document.createElement('span');
-    labelEl.textContent = label;
+    labelEl.dataset.i18n = `settings.schedule.${day}`;
     const select = document.createElement('select');
-    select.dataset.field = `workSchedule.days.${key}`;
-    (['full', 'half', 'off'] as const).forEach((opt) => {
+    select.dataset.field = `workSchedule.days.${day}`;
+    for (const status of DAY_STATUSES) {
       const optionEl = document.createElement('option');
-      optionEl.value = opt;
-      optionEl.textContent = opt === 'full' ? 'Intera' : opt === 'half' ? 'Mezza giornata' : 'Riposo';
+      optionEl.value = status;
+      optionEl.dataset.i18n = `settings.schedule.${status}`;
       select.appendChild(optionEl);
-    });
+    }
     grid.appendChild(labelEl);
     grid.appendChild(select);
-  });
+  }
+  applyTranslations(grid);
 }
 
 function fieldElements(): (HTMLInputElement | HTMLSelectElement)[] {
   return Array.from(document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-field]'));
 }
+
+// --- Accounts table ----------------------------------------------------------------
 
 function accounts(): AccountConfig[] {
   return Array.isArray(settings?.accounts) ? settings.accounts : [];
@@ -100,27 +116,26 @@ function isAccountConnected(account: AccountConfig): boolean {
 }
 
 function connectionLabel(account: AccountConfig): string {
-  if (!isAccountConnected(account)) return 'Non connesso';
+  if (!isAccountConnected(account)) return t('settings.accounts.statusNotConnected');
   return account.provider === 'copilot' && account.credentials.username
-    ? `Connesso come ${account.credentials.username}`
-    : 'Connesso';
+    ? t('settings.accounts.statusConnectedAs', { user: account.credentials.username })
+    : t('settings.accounts.statusConnected');
 }
 
-function actionButton(label: string, action: string, id: AccountId, disabled = false): HTMLButtonElement {
+function actionButton(labelKey: MessageKey, action: string, id: AccountId): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'btn-secondary btn-small';
-  btn.textContent = label;
+  btn.textContent = t(labelKey);
   btn.dataset.action = action;
   btn.dataset.accountId = id;
-  btn.disabled = disabled;
   return btn;
 }
 
-// Tabella account (issue #4): una riga per account + riga di dettaglio espandibile,
-// clonata dal template del provider. I campi del dettaglio diventano
-// data-field="accounts.<indice>.<campo>": getPath/setPath funzionano già su indici
-// di array, quindi bozza/Salva/Annulla restano quelli generici del resto del form.
+// Accounts table (issue #4): one row per account + an expandable detail row,
+// cloned from the provider template. Detail fields become
+// data-field="accounts.<index>.<field>": getPath/setPath already work on array
+// indices, so draft/Save/Cancel stay the generic ones of the rest of the form.
 function renderAccountsTable(): void {
   const tbody = byId('accounts-tbody', HTMLTableSectionElement);
   tbody.innerHTML = '';
@@ -130,8 +145,8 @@ function renderAccountsTable(): void {
     const isExpanded = expandedAccountId === account.id;
     const row = document.createElement('tr');
     row.dataset.accountId = account.id;
-    // Zebra calcolata qui e non con :nth-child: le righe di dettaglio aperte
-    // sfaserebbero l'alternanza.
+    // Zebra computed here rather than with :nth-child: open detail rows would
+    // shift the alternation.
     row.className = `account-row${index % 2 ? ' zebra' : ''}${isExpanded ? ' expanded' : ''}`;
 
     const nameCell = document.createElement('td');
@@ -150,23 +165,23 @@ function renderAccountsTable(): void {
     const enabled = document.createElement('input');
     enabled.type = 'checkbox';
     enabled.dataset.field = `accounts.${index}.enabled`;
-    enabled.setAttribute('aria-label', `Account ${account.label} attivo`);
+    enabled.setAttribute('aria-label', t('settings.accounts.enabledAria', { name: account.label }));
     enabledCell.appendChild(enabled);
 
     const actionsCell = document.createElement('td');
     actionsCell.className = 'account-actions';
-    actionsCell.appendChild(actionButton(expandedAccountId === account.id ? 'Chiudi' : 'Configura', 'toggle-detail', account.id));
+    actionsCell.appendChild(actionButton(isExpanded ? 'settings.accounts.close' : 'settings.accounts.configure', 'toggle-detail', account.id));
     if (isAccountConnected(account)) {
-      actionsCell.appendChild(actionButton('Disconnetti', 'disconnect', account.id));
+      actionsCell.appendChild(actionButton('settings.accounts.disconnect', 'disconnect', account.id));
     } else if (account.provider === 'claude') {
-      actionsCell.appendChild(actionButton('Connetti…', 'connect-claude', account.id));
+      actionsCell.appendChild(actionButton('settings.accounts.connect', 'connect-claude', account.id));
     }
-    actionsCell.appendChild(actionButton('Rimuovi', 'remove', account.id));
+    actionsCell.appendChild(actionButton('settings.accounts.remove', 'remove', account.id));
 
     row.append(nameCell, providerCell, statusCell, enabledCell, actionsCell);
     tbody.appendChild(row);
 
-    if (expandedAccountId === account.id) {
+    if (isExpanded) {
       const detailRow = document.createElement('tr');
       detailRow.className = 'account-detail-row';
       detailRow.dataset.accountId = account.id;
@@ -174,14 +189,15 @@ function renderAccountsTable(): void {
       cell.colSpan = 5;
       const tpl = byId(`tpl-detail-${account.provider}`, HTMLTemplateElement);
       const templateRoot = tpl.content.firstElementChild;
-      if (!(templateRoot instanceof HTMLElement)) throw new Error(`Template di dettaglio vuoto: ${account.provider}`);
+      if (!(templateRoot instanceof HTMLElement)) throw new Error(`Empty detail template: ${account.provider}`);
       const detail = templateRoot.cloneNode(true) as HTMLElement;
       detail.dataset.accountId = account.id;
+      applyTranslations(detail);
       const title = document.createElement('h3');
       title.className = 'account-detail-title';
       title.textContent = account.id === newAccountId
-        ? `Nuovo account ${PROVIDER_LABELS[account.provider]}`
-        : `Configura «${account.label}»`;
+        ? t('settings.accounts.detailTitleNew', { provider: PROVIDER_LABELS[account.provider] })
+        : t('settings.accounts.detailTitle', { name: account.label });
       detail.prepend(title);
       detail.querySelectorAll<HTMLElement>('[data-account-field]').forEach((el) => {
         el.dataset.field = `accounts.${index}.${el.dataset.accountField}`;
@@ -208,11 +224,9 @@ function populateForm(): void {
   updateWorkScheduleLock();
 }
 
-// Quando il calendario di lavoro è disattivato (account personale, nessun
-// giorno/ora specifico da rispettare — feedback utente), i selettori dei giorni
-// e le ore/giorno non hanno più alcun effetto sul pacing (vedi budget.getDayUnit):
-// disabilitati visivamente invece di lasciarli modificabili senza conseguenze,
-// stesso pattern di updateCopilotEnabledLock.
+// When the work schedule is disabled (personal account, no specific days/hours —
+// user feedback), the day selectors and hours/day no longer affect pacing (see
+// budget.getDayUnit): they are disabled instead of editable without effect.
 function updateWorkScheduleLock(): void {
   const enabled = getPath(settings, 'workSchedule.enabled') !== false;
   const hint = byId('work-schedule-disabled-hint', HTMLElement);
@@ -228,10 +242,10 @@ function detailElement(id: AccountId): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.account-detail[data-account-id="${CSS.escape(id)}"]`);
 }
 
-// Stato dinamico della riga/dettaglio di un account Copilot:
-// - seat aziendale → nessuna via self-service affidabile per il consumo (RESEARCH.md
-//   §2.2/§2.3): checkbox "Attivo" bloccata e forzata a false, avviso visibile;
-// - PAT/OAuth condividono lo stesso slot di credenziali: un solo pannello visibile.
+// Dynamic state of a Copilot account row/detail:
+// - company seat → no reliable self-service way to read usage (RESEARCH.md
+//   §2.2/§2.3): "Active" checkbox locked and forced to false, warning shown;
+// - PAT/OAuth share the same credentials slot: only one panel visible.
 function applyAccountDetailState(index: number): void {
   const account = accounts()[index];
   if (!account || account.provider !== 'copilot') return;
@@ -239,7 +253,7 @@ function applyAccountDetailState(index: number): void {
   const enabled = document.querySelector<HTMLInputElement>(`[data-field="accounts.${index}.enabled"]`);
   if (enabled) {
     enabled.disabled = isOrg;
-    enabled.title = isOrg ? 'Seat aziendale: monitoraggio non disponibile (vedi Configura)' : '';
+    enabled.title = isOrg ? t('settings.accounts.orgLocked') : '';
     if (isOrg && enabled.checked) {
       enabled.checked = false;
       setPath(settings as PlainRecord, `accounts.${index}.enabled`, false);
@@ -252,9 +266,9 @@ function applyAccountDetailState(index: number): void {
   (detail.querySelector('[data-role="oauth-panel"]') as HTMLElement).hidden = account.authMethod !== 'oauth';
 }
 
-// Le sessioni Claude Code locali non dicono a quale account appartengono: il flag
-// può stare su un solo account Claude alla volta (lo stesso vincolo è riapplicato
-// lato main, enforceSingleLocalInsights in store/migrate.ts).
+// Local Claude Code sessions do not say which account they belong to: the flag
+// can be on one Claude account at a time (the same constraint is enforced by the
+// main process, enforceSingleLocalInsights in store/migrate.ts).
 function enforceSingleLocalInsightsDraft(keepIndex: number): void {
   accounts().forEach((account, index) => {
     if (index === keepIndex || account.provider !== 'claude' || !account.localInsights) return;
@@ -264,10 +278,10 @@ function enforceSingleLocalInsightsDraft(keepIndex: number): void {
   });
 }
 
-// Dopo un'azione eseguita dal main (connetti/disconnetti/aggiungi/rimuovi) serve
-// lo stato reale dello store per l'account toccato — ma le modifiche in bozza non
-// ancora salvate sugli ALTRI account e sulle altre sezioni non vanno perse (prima
-// si ricaricava tutto il form da capo, scartandole).
+// After an action performed by the main process (connect/disconnect/add/remove)
+// the real store state is needed for the touched account — but unsaved draft
+// changes on OTHER accounts and sections must not be lost (the form used to be
+// reloaded from scratch, discarding them).
 async function reloadAfterAccountAction(actedOn: AccountId | null): Promise<void> {
   const fresh = await window.hypermiler.getSettings();
   const draft = settings;
@@ -293,6 +307,7 @@ function setDetailStatus(id: AccountId, text: string): void {
 async function runAccountAction(action: string, id: AccountId, button: HTMLButtonElement): Promise<void> {
   const account = accounts().find((a) => a.id === id);
   if (!account) return;
+  const name = account.label;
 
   if (action === 'toggle-detail') {
     expandedAccountId = expandedAccountId === id ? null : id;
@@ -305,54 +320,56 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
   button.disabled = true;
   try {
     if (action === 'connect-claude') {
-      setDetailStatus(id, 'Login in corso… (completa nella finestra che si è aperta)');
+      setDetailStatus(id, t('settings.accounts.loginInProgress'));
       const result = await window.hypermiler.connectClaude(id);
       await reloadAfterAccountAction(id);
-      showSaveStatus(result.organizationId ? `${account.label} connesso` : `${account.label} connesso (organizzazione non rilevata)`);
+      showSaveStatus(result.organizationId
+        ? t('settings.accounts.connected', { name })
+        : t('settings.accounts.connectedNoOrg', { name }));
     } else if (action === 'connect-copilot-pat') {
       const input = detailElement(id)?.querySelector<HTMLInputElement>('[data-role="token-input"]');
       const token = input?.value.trim() ?? '';
       if (!token) {
-        setDetailStatus(id, 'Incolla un token prima di salvare');
+        setDetailStatus(id, t('settings.accounts.pasteToken'));
         return;
       }
-      setDetailStatus(id, 'Verifica token…');
+      setDetailStatus(id, t('settings.accounts.checkingToken'));
       const result = await window.hypermiler.connectCopilot(id, token);
       await reloadAfterAccountAction(id);
-      showSaveStatus(`${account.label} connesso come ${result.username}`);
+      showSaveStatus(t('settings.accounts.connectedAs', { name, user: result.username }));
     } else if (action === 'connect-copilot-oauth') {
       const detail = detailElement(id);
       const clientId = detail?.querySelector<HTMLInputElement>('[data-role="oauth-client-id"]')?.value.trim() ?? '';
       const clientSecret = detail?.querySelector<HTMLInputElement>('[data-role="oauth-secret-input"]')?.value.trim() ?? '';
       if (!clientId || !clientSecret) {
-        setDetailStatus(id, 'Inserisci Client ID e Client Secret prima di connetterti');
+        setDetailStatus(id, t('settings.accounts.oauthMissing'));
         return;
       }
-      setDetailStatus(id, "Apri il browser e autorizza l'accesso…");
+      setDetailStatus(id, t('settings.accounts.oauthAuthorize'));
       const result = await window.hypermiler.connectCopilotOAuth(id, clientId, clientSecret);
       await reloadAfterAccountAction(id);
-      showSaveStatus(`${account.label} connesso (OAuth) come ${result.username}`);
+      showSaveStatus(t('settings.accounts.connectedOauthAs', { name, user: result.username }));
     } else if (action === 'disconnect') {
       await window.hypermiler.disconnectAccount(id);
       await reloadAfterAccountAction(id);
-      showSaveStatus(`${account.label} disconnesso`);
+      showSaveStatus(t('settings.accounts.disconnected', { name }));
     } else if (action === 'remove') {
-      if (!window.confirm(`Rimuovere l'account "${account.label}"? La sessione salvata verrà cancellata.`)) return;
+      if (!window.confirm(t('settings.accounts.removeConfirm', { name }))) return;
       await window.hypermiler.removeAccount(id);
       if (expandedAccountId === id) expandedAccountId = null;
       await reloadAfterAccountAction(id);
-      showSaveStatus(`${account.label} rimosso`);
+      showSaveStatus(t('settings.accounts.removed', { name }));
     }
   } catch (err) {
-    setDetailStatus(id, `Operazione non riuscita: ${errorMessage(err)}`);
+    setDetailStatus(id, t('settings.operationFailed', { error: errorMessage(err) }));
   } finally {
     if (button.isConnected) button.disabled = false;
   }
 }
 
-// Rilegge nella bozza tutti i campi attualmente nel DOM: serve prima di ridisegnare
-// la tabella (apri/chiudi dettaglio), altrimenti un valore digitato ma non ancora
-// "change" (input in focus) andrebbe perso.
+// Reads every field currently in the DOM back into the draft: needed before
+// re-rendering the table (open/close detail), otherwise a value typed but not yet
+// "changed" (input still focused) would be lost.
 function captureDraftFromForm(): Set<string> {
   const touchedKeys = new Set<string>();
   fieldElements().forEach((el) => {
@@ -363,49 +380,51 @@ function captureDraftFromForm(): Set<string> {
   return touchedKeys;
 }
 
-// Card "Aggiornamenti" (issue #5): stato letto da settings.updates, scritto solo
-// dal main (services/updates.ts). Non fa parte della bozza del form: si aggiorna
-// dal vivo anche quando arriva l'esito di un controllo automatico.
+// --- Updates card --------------------------------------------------------------------
+
+// "Updates" card (issue #5): state read from settings.updates, written only by
+// the main process (services/updates.ts). Not part of the form draft: it updates
+// live even when the result of an automatic check arrives.
 function renderUpdatesCard(updates: UpdateSettings | undefined): void {
   const status = byId('updates-status', HTMLElement);
   const download = byId('btn-download-update', HTMLButtonElement);
   const hint = byId('updates-download-hint', HTMLElement);
-  const checkedAt = updates?.lastCheckedAt ? new Date(updates.lastCheckedAt).toLocaleString('it-IT') : null;
   const available = updates?.available ?? null;
 
   status.classList.remove('connected', 'update-available', 'update-error');
   if (available) {
-    status.textContent = '';
+    status.textContent = `${t('settings.updates.available', { version: available.version })} `;
     status.classList.add('update-available');
-    status.append(`Disponibile la versione ${available.version} `);
     const notes = document.createElement('a');
     notes.href = '#';
-    notes.textContent = '(note di rilascio)';
+    notes.textContent = t('settings.updates.releaseNotes');
     notes.addEventListener('click', (event) => {
       event.preventDefault();
-      // Passa dal main, che apre solo URL del repository del progetto.
+      // Goes through the main process, which only opens URLs of the project repository.
       runGuarded(window.hypermiler.openReleaseNotes());
     });
     status.append(notes);
   } else if (updates?.lastError) {
-    status.textContent = `Controllo non riuscito: ${updates.lastError}`;
+    status.textContent = t('settings.updates.failed', { error: updates.lastError });
     status.classList.add('update-error');
-  } else if (checkedAt) {
-    status.textContent = `Sei aggiornato (ultimo controllo: ${checkedAt})`;
+  } else if (updates?.lastCheckedAt) {
+    status.textContent = t('settings.updates.upToDate', { time: formatDateTime(updates.lastCheckedAt) });
     status.classList.add('connected');
   } else {
-    status.textContent = 'Nessun controllo eseguito.';
+    status.textContent = t('settings.updates.neverChecked');
   }
 
   download.hidden = !available;
   hint.hidden = !available;
   if (available) {
-    download.textContent = `Scarica ${available.version}`;
+    download.textContent = t('settings.updates.download', { version: available.version });
     hint.textContent = available.assetName
-      ? `Si scarica ${available.assetName} nel browser: chiudi l'app e installalo.`
-      : 'Nessun pacchetto specifico per questo sistema: si apre la pagina della release.';
+      ? t('settings.updates.downloadHintAsset', { asset: available.assetName })
+      : t('settings.updates.downloadHintPage');
   }
 }
+
+// --- Status bar and error handling ---------------------------------------------------
 
 function showSaveStatus(text: string): void {
   const el = byId('save-status', HTMLElement);
@@ -418,13 +437,13 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// Nessuna promise lasciata a sé stessa: un errore (IPC rifiutato, main che lancia)
-// finisce nella barra di stato invece di perdersi nella console — prima un
-// fallimento di "Aggiungi account"/"Salva" non mostrava nulla all'utente.
+// No promise left on its own: an error (rejected IPC, main process throwing) ends
+// up in the status bar instead of the console — a failing "Add account"/"Save"
+// used to show nothing to the user.
 function runGuarded(task: Promise<unknown>): void {
   task.catch((err: unknown) => {
     console.error('[settings]', err);
-    showSaveStatus(`Operazione non riuscita: ${errorMessage(err)}`);
+    showSaveStatus(t('settings.operationFailed', { error: errorMessage(err) }));
   });
 }
 
@@ -436,9 +455,11 @@ async function persist(key: string): Promise<void> {
   await window.hypermiler.setSettings({ [key]: (settings as PlainRecord)[key] });
 }
 
+// --- Events ----------------------------------------------------------------------------
+
 function bindEvents(): void {
-  // Delegato su document: righe e dettagli della tabella account vengono ricreati
-  // ad ogni populateForm(), listener per-elemento andrebbero persi.
+  // Delegated on document: account table rows and details are recreated on every
+  // populateForm(), per-element listeners would be lost.
   document.addEventListener('change', (event) => {
     const el = event.target;
     if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement) || !el.dataset.field) return;
@@ -452,10 +473,9 @@ function bindEvents(): void {
       applyAccountDetailState(index);
     }
     if (field === 'workSchedule.enabled') updateWorkScheduleLock();
-    // Nessun salvataggio né effetto collaterale qui: la modifica resta "in
-    // bozza" nel form finché l'utente non preme "Salva" (o "Annulla" per
-    // scartarla) — prima si salvava ad ogni campo, un comportamento discordante
-    // col pulsante "Salva impostazioni" già presente (feedback utente).
+    // No saving or side effect here: the change stays a draft in the form until
+    // the user presses "Save" (or "Cancel" to discard it) — saving on every field
+    // used to clash with the "Save settings" button (user feedback).
   });
 
   document.addEventListener('click', (event) => {
@@ -474,47 +494,52 @@ function bindEvents(): void {
   }));
 
   byId('btn-save').addEventListener('click', guarded(async () => {
-    // Rilegge esplicitamente tutti i campi (anche quelli senza un evento 'change'
-    // ancora scattato, es. input numerico in focus) e salva tutto in un colpo solo.
+    // Explicitly re-reads every field (even those without a 'change' event yet,
+    // e.g. a focused number input) and saves everything at once.
     const touchedKeys = captureDraftFromForm();
     for (const key of touchedKeys) {
       await persist(key);
     }
 
-    // Effetti collaterali che richiedono un'azione dedicata lato main: applicati
-    // solo ora che l'utente ha confermato col Salva, e solo se il valore è
-    // davvero cambiato rispetto all'ultimo salvataggio (altrimenti ogni Salva
-    // ricreerebbe la finestra anche per una modifica non correlata, es. il piano).
+    // Side effects that need a dedicated main-process action: applied only now
+    // that the user confirmed with Save, and only if the value really changed
+    // (otherwise every Save would recreate the window for an unrelated change).
     const newStyle = getPath(settings, 'ui.windowStyle') as AppSettings['ui']['windowStyle'];
     const newAlwaysOnTop = getPath(settings, 'ui.alwaysOnTop') as boolean;
+    const newLanguage = getPath(settings, 'ui.language') as AppSettings['ui']['language'];
     if (newStyle !== savedSettings?.ui.windowStyle) {
       await window.hypermiler.setWindowStyle(newStyle);
     }
     if (newAlwaysOnTop !== savedSettings?.ui.alwaysOnTop) {
       await window.hypermiler.setAlwaysOnTop(newAlwaysOnTop);
     }
+    if (newLanguage !== savedSettings?.ui.language) {
+      // This window too switches language at once; the draft is kept.
+      applyLanguage(newLanguage);
+      populateForm();
+      renderUpdatesCard(settings?.updates);
+    }
 
-    // Un campo che cambia il calcolo del budget (piano, giorno di rinnovo, quota
-    // manuale, calendario di lavoro...) non deve restare visibile solo al widget
-    // dopo il prossimo refresh automatico (fino a 30 min dopo, vedi CLAUDE.md).
+    // A field affecting the budget computation (plan, renewal day, manual quota,
+    // work schedule…) must not wait for the next automatic refresh (up to 30 min).
     if (touchedKeys.has('accounts') || touchedKeys.has('workSchedule')) {
       window.hypermiler.requestUsageRefresh();
     }
 
     savedSettings = structuredClone(settings);
     newAccountId = null;
-    showSaveStatus('Impostazioni salvate ✓');
+    showSaveStatus(t('settings.saved'));
   }));
 
   byId('btn-check-updates').addEventListener('click', guarded(async () => {
     const btn = byId('btn-check-updates', HTMLButtonElement);
     const status = byId('updates-status', HTMLElement);
     btn.disabled = true;
-    status.textContent = 'Controllo in corso…';
+    status.textContent = t('settings.updates.checking');
     try {
       renderUpdatesCard(await window.hypermiler.checkForUpdates());
     } catch (err) {
-      status.textContent = `Controllo non riuscito: ${errorMessage(err)}`;
+      status.textContent = t('settings.updates.failed', { error: errorMessage(err) });
     } finally {
       btn.disabled = false;
     }
@@ -524,30 +549,30 @@ function bindEvents(): void {
     try {
       await window.hypermiler.downloadUpdate();
     } catch (err) {
-      showSaveStatus(`Download non riuscito: ${errorMessage(err)}`);
+      showSaveStatus(t('settings.updates.downloadFailed', { error: errorMessage(err) }));
     }
   }));
 
   byId('btn-cancel').addEventListener('click', guarded(async () => {
-    // Scarta le modifiche non salvate: ricarica lo stato realmente persistito e
-    // ripopola il form da lì.
+    // Discards unsaved changes: reloads the persisted state and repopulates the form.
     settings = await window.hypermiler.getSettings();
     savedSettings = structuredClone(settings);
     populateForm();
-    showSaveStatus('Modifiche annullate');
+    showSaveStatus(t('settings.cancelled'));
   }));
 }
 
 async function init(): Promise<void> {
-  buildWeekGrid();
   settings = await window.hypermiler.getSettings();
   savedSettings = structuredClone(settings);
+  applyLanguage(settings.ui.language);
+  buildWeekGrid();
   populateForm();
   bindEvents();
   byId('app-version', HTMLElement).textContent = await window.hypermiler.getAppVersion();
   renderUpdatesCard(settings.updates);
-  // Solo lo stato aggiornamenti (gestito dal main): il resto del form resta in
-  // bozza, un ripopolamento completo scarterebbe le modifiche non salvate.
+  // Only the updates state (owned by the main process): the rest of the form stays
+  // a draft, a full repopulation would discard unsaved changes.
   window.hypermiler.onSettingsUpdate((updated) => {
     if (settings && updated.updates) {
       settings.updates = { ...updated.updates, autoCheck: settings.updates?.autoCheck ?? updated.updates.autoCheck };

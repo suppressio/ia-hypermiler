@@ -19,6 +19,7 @@ import type {
   WindowVerdict,
   LocalDailyTokens,
   TokenYield,
+  DailyTip,
   ConsumptionCause,
 } from './types/index';
 
@@ -469,19 +470,18 @@ export interface DailyTipContext {
   consumptionCause?: ConsumptionCause | null;
 }
 
-export const NO_TIP_MESSAGE = 'Non ci sono ancora abbastanza dati per un consiglio specifico su questa finestra.';
+export const NO_TIP: DailyTip = { key: 'none', params: {} };
 
 /**
- * Genera il "consiglio del giorno" come affermazione derivata dai dati reali
- * della finestra, mai una frase generica scelta a caso: ogni candidato qui sotto
- * ha una condizione esplicita sui numeri già calcolati da questo file (nessun
- * dato nuovo, nessuna euristica inventata). Se più condizioni sono vere
- * contemporaneamente si sceglie a caso tra quelle applicabili (varietà senza
- * mai mostrare un'affermazione falsa); se nessuna è vera si dichiara onestamente
- * che non c'è nulla di specifico da segnalare (NO_TIP_MESSAGE), invece di
- * riempire lo spazio con un consiglio generico non ancorato ai dati.
+ * Daily tip as DATA, not a sentence: a message key plus the real numbers it
+ * states. The renderer turns it into text in the active language
+ * (renderer/i18n, keys `tips.<key>`), so the tip follows a language switch
+ * without a refresh. Every candidate below has an explicit condition on values
+ * already computed in this file — never a generic tip picked at random. When
+ * several hold, one is chosen among the applicable ones (variety without ever
+ * stating something false); when none holds, `none` says so honestly.
  */
-export function generateDailyTip(ctx: DailyTipContext, random: () => number = Math.random): string {
+export function generateDailyTip(ctx: DailyTipContext, random: () => number = Math.random): DailyTip {
   const {
     window,
     projectedUsage,
@@ -494,66 +494,74 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
     consumptionCause: cause,
   } = ctx;
   const utilization = normalizedUtilization(window);
-  const candidates: string[] = [];
+  const candidates: DailyTip[] = [];
 
-  // 1. L'autonomia stimata al ritmo attuale è più corta del tempo che manca al
-  // reset: rischio concreto di esaurire la quota prima del rinnovo. Include il
-  // rallentamento necessario per arrivarci (rapporto tra le due durate).
+  // 1. Estimated autonomy at the current pace is shorter than the time left to
+  // the reset: a concrete risk of running out first. Includes the slowdown
+  // needed to make it (ratio between the two durations).
   if (
     estimatedAutonomyWorkingDays !== null && Number.isFinite(estimatedAutonomyWorkingDays) &&
     workingDaysUntilReset !== null && workingDaysUntilReset > 0 &&
     estimatedAutonomyWorkingDays < workingDaysUntilReset
   ) {
-    const reductionPercent = Math.round((1 - estimatedAutonomyWorkingDays / workingDaysUntilReset) * 100);
-    candidates.push(
-      `Al ritmo attuale ${window.label} durerebbe circa ${round1(estimatedAutonomyWorkingDays)}gg lavorativi, ma mancano ${round1(workingDaysUntilReset)}gg al rinnovo: per arrivarci serve un ritmo circa il ${reductionPercent}% più basso.`,
-    );
+    candidates.push({
+      key: 'autonomy',
+      params: {
+        autonomyDays: round1(estimatedAutonomyWorkingDays),
+        daysToReset: round1(workingDaysUntilReset),
+        reductionPercent: Math.round((1 - estimatedAutonomyWorkingDays / workingDaysUntilReset) * 100),
+      },
+    });
   }
 
-  // 2. Il ritmo osservato nelle ultime ore è sopra quello sostenibile per
-  // arrivare esattamente al reset — vedi instantaneousRate/sustainableHourlyRate.
+  // 2. The pace of the last hours is above the sustainable one to reach the
+  // reset exactly at 100% — see instantaneousRate/sustainableHourlyRate.
   if (instantRate !== null && sustainableRate !== null && instantRate > sustainableRate) {
-    const resetLabel = window.resetsAt ? new Date(window.resetsAt).toLocaleDateString('it-IT') : 'il prossimo reset';
-    candidates.push(
-      `Il ritmo delle ultime ore su ${window.label} (${round2(instantRate)}%/h) è sopra il ${round2(sustainableRate)}%/h sostenibile per arrivare a ${resetLabel} senza sforare.`,
-    );
+    candidates.push({
+      key: 'instantRate',
+      params: { instantRate: round2(instantRate), sustainableRate: round2(sustainableRate) },
+    });
   }
 
-  // 3. Rating alto sugli ultimi giorni: margine reale per un uso più intenso oggi.
+  // 3. High rating over the last days: real room for heavier use today.
   if (efficiencyRating !== null && efficiencyRating.stars >= 4) {
-    candidates.push(
-      `Rating ${efficiencyRating.stars}/5 su ${window.label} negli ultimi giorni (in media ${round2(efficiencyRating.avgRatio)}× il ritmo ideale): c'è margine per una sessione più lunga oggi.`,
-    );
+    candidates.push({
+      key: 'rating',
+      params: { stars: efficiencyRating.stars, avgRatio: round2(efficiencyRating.avgRatio) },
+    });
   }
 
-  // 4. Pochi giorni al reset e utilizzo già alto: meglio centellinare il residuo.
+  // 4. Few days to the reset and usage already high: better to ration what is left.
   if (daysUntilReset !== null && daysUntilReset <= 2 && utilization !== null && utilization >= 70) {
-    const when = daysUntilReset === 0 ? 'meno di un giorno' : `${daysUntilReset}gg`;
-    candidates.push(
-      `Mancano ${when} al rinnovo di ${window.label} e sei già al ${round1(utilization)}%: valuta di consolidare le richieste rimanenti prima del reset.`,
-    );
+    candidates.push({
+      key: daysUntilReset === 0 ? 'nearResetToday' : 'nearReset',
+      params: { days: daysUntilReset, utilization: round1(utilization) },
+    });
   }
 
-  // 5. La proiezione lineare a fine periodo supera il 100%, anche se non ci si è
-  // ancora arrivati — segnale anticipato rispetto al caso 1 (che serve autonomia).
+  // 5. The linear projection to the end of the period exceeds 100%, even though
+  // it has not been reached yet — earlier signal than case 1 (which needs autonomy).
   if (projectedUsage !== null && projectedUsage >= 100 && utilization !== null && utilization < 100) {
-    candidates.push(
-      `Di questo passo ${window.label} arriverebbe al ${round1(projectedUsage)}% entro il rinnovo: supererebbe il limite se il ritmo resta questo.`,
-    );
+    candidates.push({ key: 'projected', params: { projectedUsage: round1(projectedUsage) } });
   }
 
-  // 6. Legame netto tra giorni di consumo alto e contesto ampio (sessioni Claude
-  // Code locali) — vedi consumptionCause: presente solo se il segnale è forte.
+  // 6. Strong link between high-consumption days and large context (local
+  // Claude Code sessions) — see consumptionCause: present only when the signal is clear.
   if (cause) {
-    candidates.push(
-      `Nei giorni in cui consumi più quota di ${window.label}, il ${cause.highDaysHighContextPercent}% dei token è prodotto a contesto oltre 150k (contro il ${cause.lowDaysHighContextPercent}% negli altri giorni, su ${cause.daysCompared}gg): ridurre il contesto (/clear tra un task e l'altro, /compact) abbassa il costo di ogni turno.`,
-    );
+    candidates.push({
+      key: 'cause',
+      params: {
+        highPercent: cause.highDaysHighContextPercent,
+        lowPercent: cause.lowDaysHighContextPercent,
+        days: cause.daysCompared,
+      },
+    });
   }
 
-  // Indice limitato all'ultimo candidato: un random iniettato che restituisce 1
-  // (Math.random() no, ma i test sì) avrebbe prodotto undefined.
+  // Index capped to the last candidate: an injected random returning 1
+  // (Math.random() never does, tests may) would otherwise yield undefined.
   const index = Math.min(candidates.length - 1, Math.floor(random() * candidates.length));
-  return candidates[index] ?? NO_TIP_MESSAGE;
+  return candidates[index] ?? NO_TIP;
 }
 
 /**

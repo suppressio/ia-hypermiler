@@ -11,6 +11,7 @@
 // ritrovava il vecchio cookie e riprendeva la stessa sessione (issue #4).
 
 import { BrowserWindow, session } from 'electron';
+import { t } from './i18n/index';
 
 const LOGIN_URL = 'https://claude.ai/login';
 const COOKIE_DOMAIN = '.claude.ai';
@@ -87,7 +88,7 @@ export async function captureClaudeSession(partition: string): Promise<CapturedC
     const authWindow = new BrowserWindow({
       width: 480,
       height: 720,
-      title: 'Accedi a Claude',
+      title: t('login.claudeWindowTitle'),
       webPreferences: {
         partition,
         nodeIntegration: false,

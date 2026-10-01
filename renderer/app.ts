@@ -1,8 +1,32 @@
-// app.ts — logica renderer del widget principale (nessun accesso diretto a Node.js)
-// Legge/scrive solo tramite window.hypermiler esposto da preload.ts.
+// app.ts — renderer logic of the main widget (no direct access to Node.js).
+// Reads/writes only through window.hypermiler, exposed by preload.ts.
+// Every visible string goes through t() (renderer/i18n): see CLAUDE.md, i18n rule.
 
-import type { AccountId, AccountSnapshot, AppSettings, DailyDelta, HypermilerBridge, QuotaWindow, QuotaWindowSnapshot, UsageSnapshot, WindowVerdict } from './types';
+import type {
+  AccountId,
+  AccountSnapshot,
+  AppSettings,
+  DailyDelta,
+  DailyTip,
+  HypermilerBridge,
+  ProviderId,
+  QuotaWindow,
+  QuotaWindowSnapshot,
+  UsageSnapshot,
+  WindowVerdict,
+} from './types';
 import { byId } from './dom.js';
+import {
+  applyTranslations,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  formatTime,
+  isMessageKey,
+  resolveLocale,
+  setLocale,
+  t,
+} from './i18n/index.js';
 
 declare global {
   interface Window {
@@ -13,7 +37,7 @@ declare global {
 interface RendererState {
   settings: AppSettings | null;
   latestSnapshot: UsageSnapshot | null;
-  // null = nessuna scelta esplicita: si mostra il primo account dello snapshot.
+  // null = no explicit choice: the first account of the snapshot is shown.
   activeAccount: AccountId | null;
   activeWindowId: string | null;
 }
@@ -25,11 +49,19 @@ const state: RendererState = {
   activeWindowId: null,
 };
 
-// Mostrato solo quando non c'è ancora nessuna finestra di quota da cui derivare
-// un consiglio (account non collegato/prima sincronizzazione) — il consiglio vero
-// e proprio arriva sempre da winSnap.dailyTip, generato da dati reali in
-// budget.generateDailyTip, mai da qui.
-const NO_WINDOW_TIP = 'In attesa di dati per generare un consiglio.';
+// --- Language ------------------------------------------------------------------
+
+// Applies the configured language (or the system one for 'auto') to the static
+// markup and re-renders the dynamic parts with the latest snapshot.
+function applyLanguage(settings: AppSettings): void {
+  const locale = resolveLocale(settings.ui.language, navigator.language);
+  setLocale(locale, navigator.language);
+  document.documentElement.lang = locale;
+  applyTranslations(document);
+  if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+}
+
+// --- Appearance ----------------------------------------------------------------
 
 function applyWindowStyle(style: AppSettings['ui']['windowStyle']): void {
   document.body.classList.remove('style-filled', 'style-filled-dark', 'style-transparent-digital');
@@ -39,41 +71,38 @@ function applyWindowStyle(style: AppSettings['ui']['windowStyle']): void {
   document.body.classList.add(cls);
 }
 
-// Il colore accento (Impostazioni → Aspetto) era salvato ma non veniva mai
-// applicato a nulla: style.css legge --accent da :root, mai aggiornato dal valore
-// scelto dall'utente (feedback utente: "cambiandolo non varia nulla").
+// The accent color (Settings → Appearance) used to be saved but never applied:
+// style.css reads --accent from :root, which was never updated (user feedback).
 function applyAccentColor(accentColor: string | undefined): void {
   if (!accentColor) return;
   document.documentElement.style.setProperty('--accent', accentColor);
 }
 
-// Riflette lo stato "sempre in primo piano" sul pin in titlebar (stessa fonte di
-// verità di ui.alwaysOnTop, già impostabile anche da Impostazioni/tray).
+// Mirrors the "always on top" state on the title bar pin (same source of truth
+// as ui.alwaysOnTop, also settable from Settings/tray).
 function updatePinButton(active: boolean): void {
   const btn = byId('btn-pin', HTMLButtonElement);
   btn.classList.toggle('active', active);
   btn.setAttribute('aria-pressed', String(active));
 }
 
-// Rivela pulsanti/indicatore di trascinamento in hover su TUTTA la finestra, non
-// solo sulla titlebar. Tentativi precedenti con eventi mouse DOM (mouseenter/
-// mouseleave, poi mouseover/mouseout con relatedTarget) sono stati abbandonati:
-// la striscia -webkit-app-region:drag viene trattata dal sistema operativo come
-// area non-client (come una titlebar nativa), quindi il dispatch dei normali
-// eventi mouse del documento non è affidabile proprio lì — la barra spariva
-// esattamente passandoci sopra, qualunque tecnica DOM si usasse (feedback utente,
-// ripetuto più volte). Il fix è calcolare l'hover lato main process, dove
-// screen.getCursorScreenPoint() è sempre disponibile indipendentemente dal
-// dispatch di eventi del renderer (vedi main.ts, startWindowHoverPolling), e
-// riceverlo qui via IPC invece di ricostruirlo da eventi DOM.
+// Reveals buttons/drag handle while hovering the WHOLE window. DOM mouse events
+// were abandoned (mouseenter/leave, then mouseover/out): the
+// -webkit-app-region:drag strip is treated by the OS as a non-client area, so
+// regular document mouse events are unreliable exactly there — the bar vanished
+// while hovering it (repeated user feedback). The reliable fix computes hover in
+// the main process with screen.getCursorScreenPoint() (see main.ts,
+// startWindowHoverPolling) and receives it here via IPC.
 function initHoverReveal(): void {
   window.hypermiler.onWindowHoverChanged((isHovering) => {
     document.body.classList.toggle('window-hover', isHovering);
   });
 }
 
-// Piccola replica locale di budget.normalizedUtilization: il renderer non può
-// fare require()/import di budget.ts (nodeIntegration è disabilitato di proposito).
+// --- Formatting ------------------------------------------------------------------
+
+// Small local copy of budget.normalizedUtilization: the renderer cannot
+// require()/import budget.ts (nodeIntegration is disabled on purpose).
 function budgetNormalizedUtilization(win: QuotaWindow): number | null {
   if (win.unit === 'percentage') return win.used;
   if (typeof win.total === 'number' && win.total > 0) {
@@ -84,46 +113,89 @@ function budgetNormalizedUtilization(win: QuotaWindow): number | null {
 
 function formatPercent(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '--%';
-  return `${Math.round(value * 10) / 10}%`;
+  return `${formatNumber(value, 1)}%`;
 }
 
 function formatEfficiency(value: number | null | undefined): string {
   if (value === null || value === undefined) return '--';
-  return value.toFixed(2);
+  return formatNumber(value, 2);
 }
 
-// Il valore grezzo di efficiencyIndex (es. "1.75") non è auto-esplicativo — feedback
-// utente ("non capisco che valore mostra"). >=1 = si sta consumando meno del ritmo
-// ideale (bene), <1 = più del sostenibile (rischio), vedi budget.efficiencyIndex.
+// The raw efficiencyIndex value (e.g. "1.75") is not self-explanatory (user
+// feedback). >= 1 = consuming less than the ideal pace (good), < 1 = more than
+// sustainable (risk) — see budget.efficiencyIndex.
 function formatEfficiencyHint(value: number | null | undefined): string {
   if (value === null || value === undefined) return '';
-  return value >= 1 ? 'sotto il ritmo ideale' : 'sopra il ritmo ideale';
+  return value >= 1 ? t('widget.metric.efficiencyBelow') : t('widget.metric.efficiencyAbove');
 }
 
 function formatDays(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return `${Math.round(value * 10) / 10} gg`;
+  return t('unit.days', { n: formatNumber(value, 1) });
 }
 
-// Issue #3: se il reset cade oggi la data (dd/mm/yyyy) non dice nulla di utile —
-// conta l'orario. Confronto sul giorno di calendario LOCALE, non UTC.
+// Issue #3: when the reset falls today the date says nothing useful — the time
+// does. Compared on the LOCAL calendar day, not UTC.
 function formatResetMoment(resetsAt: Date | string): string {
   const d = new Date(resetsAt);
   const now = new Date();
   const isToday = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  return isToday
-    ? `alle ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`
-    : d.toLocaleDateString('it-IT');
+  return isToday ? t('widget.resetAtTime', { time: formatTime(d) }) : formatDate(d);
 }
 
 function formatRate(value: number | null | undefined): string {
   if (value === null || value === undefined) return '--';
-  return `${Math.round(value * 100) / 100}%/h`;
+  return t('unit.ratePerHour', { n: formatNumber(value, 2) });
 }
 
-// Slot fissi per data (7 o 30), riempiendo i giorni senza dati: con un solo
-// giorno di storico (account appena collegato) un'unica barra a larghezza piena
-// sembrava un rettangolo pieno invece di un grafico (feedback utente).
+// Quota window label in the active language. Known window ids have their own
+// key; generic windows are labelled from data the snapshot already carries,
+// mirroring services/claude.ts (a Claude window with dollar amounts is modelled
+// as unit 'count' = extra credit).
+function windowLabel(win: QuotaWindow, provider: ProviderId): string {
+  const key = `windows.${win.id}`;
+  if (isMessageKey(key)) return t(key);
+  if (provider === 'claude') {
+    return t(win.unit === 'count' ? 'windows.claudeExtraCredit' : 'windows.claudeUndocumented', { name: win.id });
+  }
+  return t('windows.copilotSnapshot', { name: win.id });
+}
+
+// Tip of the day: budget.generateDailyTip returns a key + numbers, the sentence
+// is composed here so it follows the active language without a refresh.
+function formatTip(tip: DailyTip, win: QuotaWindow, provider: ProviderId): string {
+  const window = windowLabel(win, provider);
+  const reset = win.resetsAt ? formatDate(win.resetsAt) : t('tips.nextReset');
+  const params = { ...tip.params, window, reset };
+  switch (tip.key) {
+    case 'none': return t('tips.none');
+    case 'autonomy': return t('tips.autonomy', params);
+    case 'instantRate': return t('tips.instantRate', params);
+    case 'rating': return t('tips.rating', params);
+    case 'nearReset': return t('tips.nearReset', params);
+    case 'nearResetToday': return t('tips.nearResetToday', params);
+    case 'projected': return t('tips.projected', params);
+    case 'cause': return t('tips.cause', params);
+  }
+}
+
+function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
+  const moment = win.resetsAt ? formatResetMoment(win.resetsAt) : null;
+  switch (verdict.kind) {
+    case 'exhausted': return moment ? t('verdict.exhaustedReset', { moment }) : t('verdict.exhausted');
+    case 'at-risk':
+      if (verdict.autonomyWorkingDays !== undefined) return t('verdict.atRiskAutonomy', { days: formatDays(verdict.autonomyWorkingDays) });
+      return t('verdict.atRiskProjection', { value: formatPercent(verdict.projectedUsage) });
+    case 'on-track': return t('verdict.onTrack');
+    case 'no-pacing': return moment ? t('verdict.noPacingReset', { moment }) : t('verdict.noPacing');
+  }
+}
+
+// --- Daily chart -------------------------------------------------------------------
+
+// Fixed date slots (7 or 30), filling days without data: with a single day of
+// history (account just connected) one full-width bar looked like a filled
+// rectangle instead of a chart (user feedback).
 function buildChartSeries(deltas: DailyDelta[], days: number): DailyDelta[] {
   const byDate = new Map(deltas.map((d) => [d.date, d]));
   const series: DailyDelta[] = [];
@@ -137,12 +209,11 @@ function buildChartSeries(deltas: DailyDelta[], days: number): DailyDelta[] {
   return series;
 }
 
-// Grafico "consumo giornaliero vs budget" (EVOLUTION.md punto 1): ogni barra è il
-// consumo di QUEL giorno (winSnap.dailyDeltas, calcolati in budget.dailyDeltas),
-// non la % cumulata come nella dashboard del provider. Il trattino su ogni slot
-// è la quota ideale del giorno (0 nei giorni non lavorativi, metà in quelli a
-// mezza giornata): le barre che la superano usano --warning. Giorni senza dato o
-// con un reset in mezzo restano una barra minima tenue.
+// "Daily consumption vs budget" chart (EVOLUTION.md point 1): each bar is the
+// consumption of THAT day (winSnap.dailyDeltas, from budget.dailyDeltas), not the
+// cumulative % shown by the provider dashboard. The tick on each slot is the
+// day's ideal share (0 on non-working days, half on half days): bars above it use
+// --warning. Days without data or with a reset in between stay a faint bar.
 function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): void {
   const container = byId('chart', HTMLDivElement);
   const idealLabel = byId('chart-ideal', HTMLSpanElement);
@@ -150,18 +221,18 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): vo
   idealLabel.textContent = '';
 
   if (winSnap?.window.periodType === 'rolling-hours') {
-    // Stesso criterio del rating a stelle: su una finestra di poche ore un
-    // consumo "giornaliero" attraversa più reset e non misura nulla.
+    // Same criterion as the star rating: on a window of a few hours a "daily"
+    // consumption spans several resets and measures nothing.
     const note = document.createElement('div');
     note.className = 'chart-note';
-    note.textContent = 'Non applicabile su finestre di poche ore — vedi il consumo istantaneo.';
+    note.textContent = t('widget.chart.notApplicable');
     container.appendChild(note);
     return;
   }
 
   const series = buildChartSeries(winSnap?.dailyDeltas ?? [], days);
   const fullDayIdeal = Math.max(0, ...series.map((d) => d.idealShare ?? 0));
-  if (fullDayIdeal > 0) idealLabel.textContent = `quota ideale ${formatPercent(fullDayIdeal)}/giorno`;
+  if (fullDayIdeal > 0) idealLabel.textContent = t('widget.chart.ideal', { value: formatPercent(fullDayIdeal) });
 
   const width = container.clientWidth || 300;
   const height = 90;
@@ -176,20 +247,23 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): vo
   svg.setAttribute('height', String(height));
 
   series.forEach((point, i) => {
-    const hasData = point.delta !== null;
-    const barHeight = Math.max(2, scale(point.delta ?? 0));
-    const overBudget = hasData && point.idealShare !== null && (point.delta as number) > point.idealShare;
+    const delta = point.delta;
+    const barHeight = Math.max(2, scale(delta ?? 0));
+    const overBudget = delta !== null && point.idealShare !== null && delta > point.idealShare;
     const rect = document.createElementNS(svgNs, 'rect');
     rect.setAttribute('x', String(i * barWidth + 1));
     rect.setAttribute('y', String(height - barHeight));
     rect.setAttribute('width', String(Math.max(1, barWidth - 2)));
     rect.setAttribute('height', String(barHeight));
     rect.setAttribute('fill', overBudget ? 'var(--warning)' : 'var(--accent)');
-    rect.setAttribute('opacity', hasData ? '0.85' : '0.15');
+    rect.setAttribute('opacity', delta !== null ? '0.85' : '0.15');
     const title = document.createElementNS(svgNs, 'title');
-    title.textContent = hasData
-      ? `${point.date}: ${formatPercent(point.delta)}${point.idealShare !== null ? ` (ideale ${formatPercent(point.idealShare)})` : ''}`
-      : `${point.date}: nessun dato`;
+    const date = formatDate(point.date);
+    title.textContent = delta === null
+      ? t('widget.chart.noData', { date })
+      : point.idealShare !== null
+        ? t('widget.chart.pointWithIdeal', { date, value: formatPercent(delta), ideal: formatPercent(point.idealShare) })
+        : t('widget.chart.point', { date, value: formatPercent(delta) });
     rect.appendChild(title);
     svg.appendChild(rect);
 
@@ -211,12 +285,12 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): vo
   container.appendChild(svg);
 }
 
-// Gauge "consumo istantaneo": barra che si riempie in base al ritmo recente
-// (winSnap.instantRate, %/ora) con un marcatore verticale sul ritmo sostenibile
-// per arrivare esattamente al 100% al reset (winSnap.sustainableRate, il
-// "pallino target"). La scala si adatta al valore più alto tra i due, non è
-// fissa: un ritmo istantaneo molto sopra il target riempie quasi tutta la barra
-// ed è colorato con --warning invece di --accent.
+// --- Instant consumption gauge ------------------------------------------------------
+
+// A bar filled by the recent pace (winSnap.instantRate, %/h) with a vertical
+// marker on the sustainable pace that reaches exactly 100% at the reset
+// (winSnap.sustainableRate, the "target"). The scale adapts to the larger of the
+// two; a pace well above the target fills most of the bar in --warning.
 function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
   const container = byId('instant-gauge', HTMLDivElement);
   const label = byId('gauge-label', HTMLSpanElement);
@@ -226,11 +300,11 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
   const sustainable = winSnap?.sustainableRate ?? null;
 
   if (instant === null) {
-    label.textContent = 'In attesa di più campioni…';
+    label.textContent = t('widget.gauge.waiting');
     return;
   }
   label.textContent = sustainable !== null
-    ? `${formatRate(instant)} · target ${formatRate(sustainable)}`
+    ? t('widget.gauge.withTarget', { rate: formatRate(instant), target: formatRate(sustainable) })
     : formatRate(instant);
 
   const width = container.clientWidth || 300;
@@ -273,13 +347,15 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
     marker.setAttribute('height', String(height));
     marker.setAttribute('fill', 'currentColor');
     const title = document.createElementNS(svgNs, 'title');
-    title.textContent = `Ritmo sostenibile: ${formatRate(sustainable)}`;
+    title.textContent = t('widget.gauge.sustainable', { rate: formatRate(sustainable) });
     marker.appendChild(title);
     svg.appendChild(marker);
   }
 
   container.appendChild(svg);
 }
+
+// --- Efficiency rating ------------------------------------------------------------
 
 function starIcon(filled: boolean): SVGSVGElement {
   const svgNs = 'http://www.w3.org/2000/svg';
@@ -294,43 +370,37 @@ function starIcon(filled: boolean): SVGSVGElement {
   return svg;
 }
 
-// Rating efficienza a stelle (winSnap.efficiencyRating): quanto costantemente ci
-// si è tenuti vicini al ritmo ideale nella finestra `chartDays` (7 o 30 giorni,
-// la stessa vista scelta per il grafico — coerenza tra indicatori, vedi
-// budget.efficiencyRating). Tenuto vicino a "Indice efficienza" in index.html
-// perché è lo stesso concetto su un orizzonte diverso (istantaneo/cumulativo lì,
-// media mobile qui) — feedback utente.
+// Star rating (winSnap.efficiencyRating): how consistently usage stayed close to
+// the ideal pace over `chartDays` (7 or 30, the same view as the chart — see
+// budget.efficiencyRating). Kept next to "Efficiency index" in index.html: same
+// concept on a different horizon (user feedback).
 function renderEfficiencyRating(winSnap: QuotaWindowSnapshot | undefined, chartDays: number): void {
   const starsContainer = byId('efficiency-rating-stars', HTMLDivElement);
   const labelEl = byId('efficiency-rating-label', HTMLSpanElement);
   starsContainer.innerHTML = '';
+  starsContainer.removeAttribute('title');
 
   const rating = winSnap?.efficiencyRating ?? null;
   const isRollingHours = winSnap?.window.periodType === 'rolling-hours';
 
   if (!rating) {
-    // Su una finestra che si rinnova ogni poche ore (es. limite 5 ore di Claude)
-    // un rating su base giornaliera non è un dato mancante: è un concetto che non
-    // si applica a quella scala temporale — messaggio esplicito invece di stelle
-    // vuote (che si leggerebbero come "pessimo", non come "non applicabile").
-    labelEl.textContent = isRollingHours ? 'non applicabile su finestre così brevi' : 'dati insufficienti';
+    // On a window renewing every few hours (e.g. Claude's 5-hour limit) a daily
+    // rating is not missing data: the concept does not apply at that time scale —
+    // an explicit message instead of empty stars (which would read as "terrible").
+    labelEl.textContent = isRollingHours ? t('widget.rating.notApplicable') : t('widget.rating.insufficient');
     for (let i = 1; i <= 5; i++) starsContainer.appendChild(starIcon(false));
     return;
   }
 
-  labelEl.textContent = `Rating (${chartDays}gg)`;
-  starsContainer.title = `Rapporto medio ideale/reale: ${rating.avgRatio}`;
+  labelEl.textContent = t('widget.rating.label', { days: chartDays });
+  starsContainer.title = t('widget.rating.avgRatio', { ratio: formatNumber(rating.avgRatio, 2) });
   for (let i = 1; i <= 5; i++) starsContainer.appendChild(starIcon(i <= rating.stars));
 }
 
-// Insight comportamentali da sessioni Claude Code LOCALI (opt-in, vedi
-// CLAUDE.md/RESEARCH.md §5) — sottosezione dentro la <details> "Consiglio del
-// giorno" (index.html), mostrata solo se abilitati e disponibili: a differenza
-// del consiglio (sempre presente), qui l'intero blocco può restare nascosto.
-// Presente solo sull'account Claude a cui l'utente ha attribuito le sessioni
-// locali (flag per account in Impostazioni): Copilot non ha una sorgente equivalente.
-// Resa (EVOLUTION.md punto 4, budget.tokenYield): token prodotti per 1% di quota
-// della finestra selezionata, con il trend tra seconda e prima metà dei giorni.
+// --- Local insights (Claude Code sessions on this machine) ---------------------------
+
+// Yield (EVOLUTION.md point 4, budget.tokenYield): tokens produced per 1% of quota
+// of the selected window, with the trend between the second and first half.
 function renderTokenYield(winSnap: QuotaWindowSnapshot | undefined): void {
   const valueEl = byId('local-insights-yield', HTMLElement);
   const hintEl = byId('local-insights-yield-hint', HTMLElement);
@@ -338,15 +408,25 @@ function renderTokenYield(winSnap: QuotaWindowSnapshot | undefined): void {
   if (!y) {
     valueEl.textContent = '--';
     hintEl.textContent = winSnap?.window.periodType === 'rolling-hours'
-      ? 'non applicabile su finestre di poche ore'
-      : 'servono almeno 3 giorni con sessioni locali e consumo di quota';
+      ? t('widget.insights.yieldNotApplicable')
+      : t('widget.insights.yieldInsufficient');
     return;
   }
-  valueEl.textContent = y.tokensPerPercent >= 1000 ? `${Math.round(y.tokensPerPercent / 100) / 10}k` : String(y.tokensPerPercent);
-  const trend = y.trendPercent === null ? '' : ` · ${y.trendPercent >= 0 ? '▲' : '▼'}${Math.abs(y.trendPercent)}% vs prima metà`;
-  hintEl.textContent = `su ${y.daysCompared}gg${trend}`;
+  valueEl.textContent = y.tokensPerPercent >= 1000 ? `${formatNumber(y.tokensPerPercent / 1000, 1)}k` : formatNumber(y.tokensPerPercent, 0);
+  const over = t('widget.insights.yieldOver', { days: formatDays(y.daysCompared) });
+  hintEl.textContent = y.trendPercent === null
+    ? over
+    : t('widget.insights.yieldTrend', {
+      over,
+      arrow: y.trendPercent >= 0 ? '▲' : '▼',
+      percent: formatNumber(Math.abs(y.trendPercent), 1),
+    });
 }
 
+// Behavioural insights from LOCAL Claude Code sessions (opt-in, see RESEARCH.md
+// §5) — a sub-section inside the "Tip of the day" <details>, shown only when
+// enabled and available. Present only on the Claude account the user attributed
+// local sessions to (per-account flag in Settings).
 function renderLocalInsights(account: AccountSnapshot | undefined): void {
   const details = byId('local-insights', HTMLDivElement);
   const insights = account?.localInsights ?? null;
@@ -372,9 +452,10 @@ function renderLocalInsights(account: AccountSnapshot | undefined): void {
   });
 }
 
-// Un account per tab, nell'ordine della tabella in Impostazioni (issue #4: N
-// account, anche due dello stesso provider — da qui l'etichetta dell'account, non
-// il nome del provider).
+// --- Accounts and quota windows ------------------------------------------------------
+
+// One tab per account, in the order of the Settings table (issue #4: N accounts,
+// possibly two of the same provider — hence the account label, not the provider name).
 function selectAccount(snapshot: UsageSnapshot): AccountSnapshot | undefined {
   const accounts = snapshot.accounts;
   return accounts.find((a) => a.accountId === state.activeAccount) ?? accounts[0];
@@ -406,27 +487,14 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
   });
 }
 
-function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
-  const reset = win.resetsAt ? formatResetMoment(win.resetsAt) : null;
-  switch (verdict.kind) {
-    case 'exhausted': return reset ? `esaurita · rinnovo ${reset}` : 'esaurita';
-    case 'at-risk':
-      if (verdict.autonomyWorkingDays !== undefined) return `a rischio · finisce tra ${formatDays(verdict.autonomyWorkingDays)} lav.`;
-      return `a rischio · proiezione ${formatPercent(verdict.projectedUsage)}`;
-    case 'on-track': return 'in linea';
-    case 'no-pacing': return reset ? `nessun pacing · rinnovo ${reset}` : 'nessun pacing';
-  }
-}
-
-// Lista delle finestre di quota dell'account attivo (EVOLUTION.md punto 1), al
-// posto delle tab che affiancavano solo le metriche esposte dal provider: una riga
-// per finestra con un verdetto calcolato da noi (budget.windowVerdict), la critica
-// per prima. Clic su una riga = dettaglio di quella finestra nel resto del widget.
-// Nascosta se l'account ha una sola finestra.
+// Quota windows of the active account (EVOLUTION.md point 1), replacing tabs that
+// only lined up the provider's metrics: one row per window with a verdict computed
+// by the app (budget.windowVerdict), the critical one first. Clicking a row shows
+// that window in the rest of the widget. Hidden when the account has one window.
 function renderWindowList(account: AccountSnapshot): void {
   const list = byId('window-list', HTMLElement);
-  // Svuotata sempre, anche quando va nascosta: non deve restare nel DOM nessuna
-  // riga di un altro account (vedi [hidden] in style.css, bug della 0.2.0).
+  // Always emptied, even when hidden: no row of another account may stay in the
+  // DOM (see [hidden] in style.css, 0.2.0 bug).
   list.innerHTML = '';
   if (account.windows.length <= 1) {
     list.hidden = true;
@@ -439,16 +507,17 @@ function renderWindowList(account: AccountSnapshot): void {
 
   ordered.forEach((winSnap) => {
     const utilization = budgetNormalizedUtilization(winSnap.window);
+    const labelText = windowLabel(winSnap.window, account.provider);
     const row = document.createElement('button');
     row.type = 'button';
     row.className = `window-row verdict-${winSnap.verdict.kind}${winSnap.window.id === selected?.window.id ? ' active' : ''}`;
-    row.title = winSnap.window.label;
+    row.title = labelText;
 
     const dot = document.createElement('span');
     dot.className = 'window-row-dot';
     const label = document.createElement('span');
     label.className = 'window-row-label';
-    label.textContent = winSnap.window.label;
+    label.textContent = labelText;
     const bar = document.createElement('span');
     bar.className = 'window-row-bar';
     const fill = document.createElement('span');
@@ -483,22 +552,23 @@ function selectWindowSnapshot(account: AccountSnapshot): QuotaWindowSnapshot | u
   return critical ?? account.windows[0];
 }
 
+// --- Main render ------------------------------------------------------------------
+
 function renderSnapshot(snapshot: UsageSnapshot): void {
   state.latestSnapshot = snapshot;
   renderAccountTabs(snapshot);
-  // Stessa finestra (7/30gg) della vista scelta per il grafico, usata anche dal
-  // rating a stelle — coerenza tra indicatori, vedi renderEfficiencyRating.
+  // Same window (7/30 days) as the chart view, also used by the star rating.
   const chartDays = state.settings?.ui.chartRange === 'month' ? 30 : 7;
 
   const account = selectAccount(snapshot);
   if (!account) {
     byId('window-list').hidden = true;
     byId('current-value').textContent = '--';
-    byId('current-label').textContent = 'Nessun account collegato — apri le impostazioni';
+    byId('current-label').textContent = t('widget.noAccount');
     renderInstantGauge(undefined);
     renderEfficiencyRating(undefined, chartDays);
     renderLocalInsights(undefined);
-    byId('tips-text').textContent = NO_WINDOW_TIP;
+    byId('tips-text').textContent = t('widget.tips.waiting');
     return;
   }
 
@@ -510,18 +580,18 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   byId('current-value').textContent =
     utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
 
-  const resetLabel = win?.resetsAt ? ` · rinnovo ${formatResetMoment(win.resetsAt)}` : '';
-  let label = win ? `${win.label}${resetLabel}` : 'In attesa di dati…';
+  let label = t('widget.waiting');
+  if (win) {
+    const name = windowLabel(win, account.provider);
+    label = win.resetsAt ? t('widget.windowWithReset', { window: name, moment: formatResetMoment(win.resetsAt) }) : name;
+  }
   if (account.stale) {
-    if (account.lastUpdatedAt) {
-      const ts = new Date(account.lastUpdatedAt).toLocaleString('it-IT');
-      label += ` — dato non aggiornato (ultimo aggiornamento riuscito: ${ts})`;
-    } else {
-      // Mai una sincronizzazione riuscita finora: l'account è collegato, ma la
-      // primissima fetch è fallita — non confondere questo caso con "non collegato".
-      label = 'Account collegato — prima sincronizzazione non riuscita';
-    }
-    if (account.lastError) label += ` (${account.lastError})`;
+    // Never a successful sync so far: the account IS connected but the very first
+    // fetch failed — not to be confused with "not connected".
+    label = account.lastUpdatedAt
+      ? t('widget.stale', { label, time: formatDateTime(account.lastUpdatedAt) })
+      : t('widget.firstSyncFailed');
+    if (account.lastError) label = t('widget.withError', { label, error: account.lastError });
   }
   byId('current-label').textContent = label;
 
@@ -533,21 +603,27 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   byId('metric-efficiency').textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
   byId('metric-efficiency-hint').textContent = formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
   byId('metric-projected').textContent = formatPercent(winSnap?.projectedUsage ?? null);
-  byId('metric-days-left').textContent =
-    `${winSnap?.daysUntilReset ?? '--'} (${formatDays(winSnap?.workingDaysUntilReset ?? null)} lav.)`;
+  byId('metric-days-left').textContent = t('widget.metric.daysLeftValue', {
+    days: winSnap?.daysUntilReset ?? '--',
+    working: formatDays(winSnap?.workingDaysUntilReset ?? null),
+  });
   byId('metric-autonomy').textContent = formatDays(winSnap?.estimatedAutonomyWorkingDays ?? null);
 
   const stats = winSnap?.deltaStats;
   byId('metric-peak-avg').textContent =
     stats?.peak == null ? '--' : `${formatPercent(stats.peak)} / ${formatPercent(stats.avg)}`;
   byId('metric-streak').textContent =
-    stats?.streakUnderBudget == null ? '--' : `${stats.streakUnderBudget} gg`;
+    stats?.streakUnderBudget == null ? '--' : formatDays(stats.streakUnderBudget);
 
-  byId('chart-title').textContent = `Consumo giornaliero vs budget (${chartDays}gg)`;
+  byId('chart-title').textContent = t('widget.chart.title', { days: chartDays });
   renderChart(winSnap, chartDays);
 
-  byId('tips-text').textContent = winSnap?.dailyTip ?? NO_WINDOW_TIP;
+  byId('tips-text').textContent = winSnap && win
+    ? formatTip(winSnap.dailyTip, win, account.provider)
+    : t('widget.tips.waiting');
 }
+
+// --- Startup ----------------------------------------------------------------------
 
 async function togglePin(): Promise<void> {
   const next = !(state.settings?.ui.alwaysOnTop ?? false);
@@ -559,6 +635,7 @@ async function togglePin(): Promise<void> {
 async function init(): Promise<void> {
   const settings = await window.hypermiler.getSettings();
   state.settings = settings;
+  applyLanguage(settings);
   applyWindowStyle(settings.ui.windowStyle);
   applyAccentColor(settings.ui.accentColor);
   updatePinButton(settings.ui.alwaysOnTop);
@@ -575,9 +652,9 @@ async function init(): Promise<void> {
   });
   byId('btn-pin').addEventListener('click', () => { runGuarded(togglePin()); });
   byId('btn-refresh').addEventListener('click', () => {
-    // requestUsageRefresh() è "fire and forget" (ipcRenderer.send): il risultato
-    // arriva comunque via onUsageUpdate qui sotto, che riabilita il pulsante —
-    // disabilitarlo nel frattempo evita solo lo spam-click, non serve altro stato.
+    // requestUsageRefresh() is fire-and-forget (ipcRenderer.send): the result
+    // arrives through onUsageUpdate below, which re-enables the button —
+    // disabling it meanwhile only prevents spam clicks.
     const btn = byId('btn-refresh', HTMLButtonElement);
     btn.disabled = true;
     window.hypermiler.requestUsageRefresh();
@@ -587,24 +664,25 @@ async function init(): Promise<void> {
     renderSnapshot(snapshot);
     byId('btn-refresh', HTMLButtonElement).disabled = false;
   });
-  // Applica dal vivo i cambi di Impostazioni (es. colore accento, always-on-top
-  // cambiato da Impostazioni o dal tray) mentre il widget è già aperto — vedi
-  // preload.ts/main.ts (canale settings:update).
+  // Applies Settings changes live while the widget is open (accent color, always
+  // on top from Settings/tray, language) — see preload.ts/main.ts, settings:update.
   window.hypermiler.onSettingsUpdate((updated) => {
+    const languageChanged = updated.ui.language !== state.settings?.ui.language;
     state.settings = updated;
     applyAccentColor(updated.ui.accentColor);
     updatePinButton(updated.ui.alwaysOnTop);
+    if (languageChanged) applyLanguage(updated);
   });
   window.hypermiler.requestUsageRefresh();
 }
 
-// Un errore all'avvio o su un pulsante non deve lasciare il widget muto:
-// lo si mostra nell'etichetta sotto il valore principale.
+// An error at startup or on a button must not leave the widget silent: it is
+// shown in the label under the main value.
 function runGuarded(task: Promise<unknown>): void {
   task.catch((err: unknown) => {
     console.error('[widget]', err);
     const label = document.getElementById('current-label');
-    if (label) label.textContent = `Errore: ${err instanceof Error ? err.message : String(err)}`;
+    if (label) label.textContent = t('widget.error', { message: err instanceof Error ? err.message : String(err) });
   });
 }
 

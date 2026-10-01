@@ -11,6 +11,8 @@ export type AccountScope = 'personal' | 'organization';
 export type DayStatus = 'full' | 'half' | 'off';
 export type WindowStyle = 'filled' | 'filled-dark' | 'transparent-digital';
 export type ChartRange = 'week' | 'month';
+// 'auto' follows the system language (Italian for it-*, English otherwise).
+export type LanguageSetting = 'auto' | 'en' | 'it';
 
 export interface RenewalRule {
   type: 'dayOfMonth' | 'rrule';
@@ -108,6 +110,15 @@ export interface WindowVerdict {
 }
 
 /**
+ * Daily tip as data (see budget.generateDailyTip): a message key plus the
+ * numbers it states; the renderer renders it in the active language.
+ */
+export interface DailyTip {
+  key: 'none' | 'autonomy' | 'instantRate' | 'rating' | 'nearReset' | 'nearResetToday' | 'projected' | 'cause';
+  params: Record<string, number>;
+}
+
+/**
  * Metriche calcolate per UNA finestra di quota (vedi main.ts, computeWindowSnapshot).
  * Un account può avere più finestre attive contemporaneamente (es. Claude: limite
  * standard + credito extra una tantum) — il widget le mostra come tab separate invece
@@ -134,7 +145,7 @@ export interface QuotaWindowSnapshot {
   efficiencyRating: EfficiencyRating | null;
   // "Consiglio del giorno": frase generata da fatti reali sui dati di questa
   // finestra, mai una frase generica — vedi budget.generateDailyTip.
-  dailyTip: string;
+  dailyTip: DailyTip;
   // Solo per l'account Claude con insight locali attivi (null altrimenti) — vedi budget.tokenYield.
   tokenYield: TokenYield | null;
 }
@@ -268,6 +279,7 @@ export interface CopilotAccountSettings extends AccountConfigBase {
 export type AccountConfig = ClaudeAccountSettings | CopilotAccountSettings;
 
 export interface UiSettings {
+  language: LanguageSetting;
   windowStyle: WindowStyle;
   alwaysOnTop: boolean;
   accentColor: string;

@@ -21,6 +21,7 @@ import { fetchLatestUpdate, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
 import { buildFormatDriftIssueUrl } from './diagnostics/githubIssue';
+import { resolveLocale, setLocale, t } from './main/i18n/index';
 import { randomUUID } from 'crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import type {
@@ -372,9 +373,17 @@ type StampedUsage = RawAccountUsage & { accountId: AccountId; lastUpdatedAt: str
 function friendlyErrorMessage(err: unknown): string {
   const error = err as Error & { status?: number };
   if (error.status === 401 || error.status === 403) {
-    return `Sessione scaduta o non valida — riconnetti l'account da Impostazioni. (${error.message})`;
+    return t('error.sessionExpired', { detail: error.message });
   }
   return error.message;
+}
+
+// Main-process language (tray, notifications, dialogs): same rule as the
+// renderer — ui.language, or the system language for 'auto'. Re-applied after
+// every settings:set, which also rebuilds the tray menu.
+function applyMainLocale(): void {
+  setLocale(resolveLocale(store.get('ui').language, app.getLocale()));
+  trayHandle?.refreshMenu();
 }
 
 async function fetchAccountOrFallback(
@@ -432,7 +441,7 @@ function maybeReportFormatDrift(provider: ProviderId, err: unknown): void {
   if (Notification.isSupported()) {
     new Notification({
       title: 'IA Hypermiler',
-      body: `Il formato della risposta ${providers.providerDisplayName(provider)} sembra cambiato: ho aperto una bozza di segnalazione nel browser (da confermare tu).`,
+      body: t('notify.formatDrift', { provider: providers.providerDisplayName(provider) }),
     }).show();
   }
 
@@ -506,7 +515,7 @@ function maybeNotifyThreshold(snapshot: UsageSnapshot): void {
     if (Notification.isSupported()) {
       new Notification({
         title: 'IA Hypermiler',
-        body: `${account.label}: hai superato l'${threshold}% del budget (${account.criticalWindow.label}).`,
+        body: t('notify.threshold', { account: account.label, threshold }),
       }).show();
     }
     notifiedToday[flagKey] = true;
@@ -639,7 +648,7 @@ async function checkForUpdates(source: 'auto' | 'manual'): Promise<UpdateSetting
   if (next.available && next.available.version !== next.notifiedVersion && Notification.isSupported()) {
     const notification = new Notification({
       title: 'IA Hypermiler',
-      body: `È disponibile la versione ${next.available.version}: apri Impostazioni → Aggiornamenti per scaricarla.`,
+      body: t('notify.updateAvailable', { version: next.available.version }),
     });
     notification.on('click', openSettingsWindow);
     notification.show();
@@ -682,6 +691,7 @@ function registerIpcHandlers(): void {
     // Stessa normalizzazione dell'avvio (store/normalize.ts): un valore del tipo
     // sbagliato o un campo mancante nella patch non arriva mai nello store.
     store.store = normalizeSettings(next, DEFAULTS);
+    applyMainLocale();
     const redacted = redactSecretsForRenderer(store.store);
     // Propaga il cambio al widget se già aperto: alcuni campi (es. colore accento)
     // non hanno un IPC dedicato come ui.windowStyle/ui.alwaysOnTop e altrimenti
@@ -861,6 +871,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
   registerIpcHandlers();
+  applyMainLocale();
   await migrateLegacyClaudeCookies();
 
   const win = createMainWindow(store);
@@ -890,7 +901,7 @@ app.whenReady().then(async () => {
   // Avvio fallito (finestra, tray, migrazione…): senza questo l'app resterebbe viva
   // in background senza interfaccia e senza alcun messaggio. Meglio dirlo e uscire.
   console.error('[main] avvio fallito:', err);
-  dialog.showErrorBox('IA Hypermiler non è riuscita ad avviarsi', err instanceof Error ? err.message : String(err));
+  dialog.showErrorBox(t('startup.failedTitle'), err instanceof Error ? err.message : String(err));
   app.quit();
 });
 

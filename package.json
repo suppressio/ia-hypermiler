@@ -6,13 +6,13 @@
   "type": "commonjs",
   "scripts": {
     "build:main": "tsc -p tsconfig.json",
-    "build:renderer": "tsc -p tsconfig.renderer.json",
+    "build:renderer": "tsc -p tsconfig.renderer.json && tsc -p tsconfig.renderer.test.json",
     "copy-assets": "node scripts/copy-assets.js",
     "build": "npm run build:main && npm run build:renderer && npm run copy-assets",
     "start": "npm run build && electron .",
     "test": "npm run build && cd dist && node --env-file-if-exists=../.env.test --test",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit && tsc -p tsconfig.renderer.test.json --noEmit",
     "coverage": "npm run build && cd dist && node --test --experimental-test-coverage --test-coverage-exclude=\"**/*.test.js\" --test-coverage-exclude=\"tests/**\"",
     "package": "npm run build && electron-builder"
   },

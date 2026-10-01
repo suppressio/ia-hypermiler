@@ -1,0 +1,240 @@
+// renderer/i18n/en.ts — reference dictionary (English, primary language).
+// Flat dotted keys. Every other language is typed `Record<MessageKey, string>`
+// (see it.ts): a missing or extra key there is a compile error.
+// Placeholders use `{name}` and are filled by t() — see index.ts.
+
+export const en = {
+  // --- Widget: title bar -----------------------------------------------------
+  'widget.pin': 'Always on top',
+  'widget.refresh': 'Refresh now',
+  'widget.settings': 'Settings',
+  'widget.minimize': 'Minimize',
+  'widget.hide': 'Hide',
+
+  // --- Widget: main value ----------------------------------------------------
+  'widget.waiting': 'Waiting for data…',
+  'widget.noAccount': 'No account connected — open the settings',
+  'widget.firstSyncFailed': 'Account connected — first sync failed',
+  'widget.windowWithReset': '{window} · renews {moment}',
+  'widget.resetAtTime': 'at {time}',
+  'widget.stale': '{label} — data not up to date (last successful update: {time})',
+  'widget.withError': '{label} ({error})',
+  'widget.error': 'Error: {message}',
+
+  // --- Widget: instant consumption gauge ------------------------------------
+  'widget.gauge.title': 'Instant consumption',
+  'widget.gauge.waiting': 'Waiting for more samples…',
+  'widget.gauge.withTarget': '{rate} · target {target}',
+  'widget.gauge.sustainable': 'Sustainable pace: {rate}',
+
+  // --- Widget: daily chart ---------------------------------------------------
+  'widget.chart.title': 'Daily consumption vs budget ({days}d)',
+  'widget.chart.ideal': 'ideal share {value}/day',
+  'widget.chart.notApplicable': 'Not applicable to windows of a few hours — see instant consumption.',
+  'widget.chart.noData': '{date}: no data',
+  'widget.chart.point': '{date}: {value}',
+  'widget.chart.pointWithIdeal': '{date}: {value} (ideal {ideal})',
+
+  // --- Widget: metrics -------------------------------------------------------
+  'widget.metric.efficiency': 'Efficiency index',
+  'widget.metric.efficiencyBelow': 'below the ideal pace',
+  'widget.metric.efficiencyAbove': 'above the ideal pace',
+  'widget.metric.projected': 'Projection',
+  'widget.metric.daysLeft': 'Days to reset',
+  'widget.metric.daysLeftValue': '{days} ({working} working)',
+  'widget.metric.autonomy': 'Estimated autonomy',
+  'widget.metric.peakAvg': 'Daily peak / average',
+  'widget.metric.streak': 'Streak under budget',
+  'widget.rating.aria': 'Efficiency rating',
+  'widget.rating.label': 'Rating ({days}d)',
+  'widget.rating.notApplicable': 'not applicable to such short windows',
+  'widget.rating.insufficient': 'not enough data',
+  'widget.rating.avgRatio': 'Average ideal/actual ratio: {ratio}',
+
+  // --- Widget: tip of the day + local insights -------------------------------
+  'widget.tips.title': 'Tip of the day',
+  'widget.tips.waiting': 'Waiting for data to generate a tip.',
+  'widget.insights.header': 'Local insights · Claude Code',
+  'widget.insights.yield': 'Yield (tokens per 1% of quota)',
+  'widget.insights.yieldHelp': 'Output tokens produced in this machine’s Claude Code sessions for every 1% of quota used, only on days present in both sources. Higher = each token cost less quota. Limit: a session is attributed to the day it was last modified (the SDK does not expose per-message times), and claude.ai browser usage is not counted in tokens.',
+  'widget.insights.yieldNotApplicable': 'not applicable to windows of a few hours',
+  'widget.insights.yieldInsufficient': 'needs at least 3 days with local sessions and quota usage',
+  'widget.insights.yieldOver': 'over {days}',
+  'widget.insights.yieldTrend': '{over} · {arrow}{percent}% vs first half',
+  'widget.insights.context': 'Context over 150k',
+  'widget.insights.longSessions': 'From 8h+ sessions',
+  'widget.insights.topTools': 'Most used tools',
+
+  // --- Tips (budget.generateDailyTip keys) -----------------------------------
+  'tips.none': 'Not enough data yet for a specific tip on this window.',
+  'tips.autonomy': 'At the current pace {window} would last about {autonomyDays} working days, but {daysToReset} are left until renewal: you need a pace about {reductionPercent}% lower to make it.',
+  'tips.instantRate': 'The pace of the last hours on {window} ({instantRate}%/h) is above the {sustainableRate}%/h that is sustainable to reach {reset} without going over.',
+  'tips.rating': 'Rating {stars}/5 on {window} over the last days (on average {avgRatio}× the ideal pace): there is room for a longer session today.',
+  'tips.nearReset': '{days} days left until {window} renews and you are already at {utilization}%: consider consolidating the remaining requests before the reset.',
+  'tips.nearResetToday': 'Less than a day until {window} renews and you are already at {utilization}%: consider consolidating the remaining requests before the reset.',
+  'tips.projected': 'At this pace {window} would reach {projectedUsage}% by renewal: it would go over the limit if the pace stays the same.',
+  'tips.cause': 'On days when you use more {window} quota, {highPercent}% of tokens are produced with context over 150k (vs {lowPercent}% on other days, over {days} days): reducing context (/clear between tasks, /compact) lowers the cost of each turn.',
+  'tips.nextReset': 'the next reset',
+
+  // --- Quota window verdicts (budget.windowVerdict) --------------------------
+  'verdict.exhausted': 'exhausted',
+  'verdict.exhaustedReset': 'exhausted · renews {moment}',
+  'verdict.atRiskAutonomy': 'at risk · runs out in {days} working',
+  'verdict.atRiskProjection': 'at risk · projection {value}',
+  'verdict.onTrack': 'on track',
+  'verdict.noPacing': 'no pacing',
+  'verdict.noPacingReset': 'no pacing · renews {moment}',
+
+  // --- Quota window labels (by window id; generic ones by provider/kind) -----
+  'windows.five_hour': '5-hour limit',
+  'windows.seven_day': 'Weekly limit (all models)',
+  'windows.seven_day_opus': 'Weekly Opus limit',
+  'windows.ai_credits': 'AI credits',
+  'windows.claudeExtraCredit': 'Claude extra credit ({name})',
+  'windows.claudeUndocumented': 'Claude usage — undocumented window ({name})',
+  'windows.copilotSnapshot': 'Copilot — {name}',
+
+  // --- Units -----------------------------------------------------------------
+  'unit.days': '{n} d',
+  'unit.ratePerHour': '{n}%/h',
+
+  // --- Settings: general -----------------------------------------------------
+  'settings.windowTitle': 'IA Hypermiler — Settings',
+  'settings.title': 'Settings',
+  'settings.cancel': 'Cancel',
+  'settings.save': 'Save settings',
+  'settings.saved': 'Settings saved ✓',
+  'settings.cancelled': 'Changes discarded',
+  'settings.operationFailed': 'Operation failed: {error}',
+
+  // --- Settings: accounts table ----------------------------------------------
+  'settings.accounts.title': 'Accounts',
+  'settings.accounts.colName': 'Name',
+  'settings.accounts.colProvider': 'Provider',
+  'settings.accounts.colStatus': 'Status',
+  'settings.accounts.colActive': 'Active',
+  'settings.accounts.empty': 'No accounts yet: add one below.',
+  'settings.accounts.providerAria': 'Provider of the new account',
+  'settings.accounts.add': 'Add account',
+  'settings.accounts.hint': 'You can connect several accounts, even of the same provider (e.g. two Claude accounts): each one has its own session, isolated from the others. "Disconnect" really deletes the saved session — the next login starts from scratch.',
+  'settings.accounts.configure': 'Configure',
+  'settings.accounts.close': 'Close',
+  'settings.accounts.connect': 'Connect…',
+  'settings.accounts.disconnect': 'Disconnect',
+  'settings.accounts.remove': 'Remove',
+  'settings.accounts.statusConnected': 'Connected',
+  'settings.accounts.statusConnectedAs': 'Connected as {user}',
+  'settings.accounts.statusNotConnected': 'Not connected',
+  'settings.accounts.enabledAria': 'Account {name} active',
+  'settings.accounts.orgLocked': 'Company seat: monitoring not available (see Configure)',
+  'settings.accounts.detailTitle': 'Configure “{name}”',
+  'settings.accounts.detailTitleNew': 'New {provider} account',
+  'settings.accounts.removeConfirm': 'Remove the account "{name}"? The saved session will be deleted.',
+  'settings.accounts.loginInProgress': 'Login in progress… (complete it in the window that opened)',
+  'settings.accounts.connected': '{name} connected',
+  'settings.accounts.connectedNoOrg': '{name} connected (organization not detected)',
+  'settings.accounts.connectedAs': '{name} connected as {user}',
+  'settings.accounts.connectedOauthAs': '{name} connected (OAuth) as {user}',
+  'settings.accounts.disconnected': '{name} disconnected',
+  'settings.accounts.removed': '{name} removed',
+  'settings.accounts.pasteToken': 'Paste a token before saving',
+  'settings.accounts.checkingToken': 'Checking token…',
+  'settings.accounts.oauthMissing': 'Enter Client ID and Client Secret before connecting',
+  'settings.accounts.oauthAuthorize': 'Open the browser and authorize access…',
+
+  // --- Settings: account detail (common) --------------------------------------
+  'settings.account.name': 'Account name',
+  'settings.account.scope': 'Account scope',
+  'settings.account.scopePersonal': 'Personal',
+  'settings.account.scopeOrg': 'Company (organization seat)',
+  'settings.account.plan': 'Plan',
+  'settings.account.renewalDay': 'Renewal day (of the month)',
+
+  // --- Settings: Claude detail ------------------------------------------------
+  'settings.claude.loginMethod': 'Login method',
+  'settings.claude.loginPassword': 'Email and password',
+  'settings.claude.loginSso': 'Company SSO',
+  'settings.claude.localInsights': 'Attribute this machine’s Claude Code sessions to this account (local insights, experimental)',
+  'settings.claude.localInsightsHint': 'Reads local Claude Code sessions (CLI and VS Code extension — same source) to show how much of your usage happens with a very large context or in very long sessions, which tools/MCP servers you use most and how many tokens you produce per point of quota. It only reads token counts and tool names — never message content. Local sessions do not say which account they belong to: enable it on one Claude account only, the one you use with Claude Code. Sessions older than about 30 days are no longer available.',
+  'settings.claude.loginHint': 'Login opens in a claude.ai window dedicated to this account (works with company SSO too): no cookie to paste by hand.',
+
+  // --- Settings: Copilot detail -------------------------------------------------
+  'settings.copilot.orgWarning': 'With a company seat there is no reliable self-service way to read Copilot usage: the internal endpoint used by VS Code no longer exposes quota data, and the official API (AI Credits) requires administrator permissions (see RESEARCH.md §2.2/§2.3). The account stays disabled; monitoring is available with a personal plan.',
+  'settings.copilot.planIndividual': 'Individual (Pro)',
+  'settings.copilot.manualQuota': 'Monthly premium request quota (not exposed by the API, enter it from your contract/plan)',
+  'settings.copilot.authMethod': 'Authentication method',
+  'settings.copilot.authOauth': 'GitHub OAuth (experimental)',
+  'settings.copilot.patHelpAria': 'How to get a token',
+  'settings.copilot.patHelpFineGrained': 'Fine-grained:',
+  'settings.copilot.patHelpFineGrainedSteps': 'github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → under "Account permissions" grant "Plan: Read-only".',
+  'settings.copilot.patHelpClassic': 'Classic:',
+  'settings.copilot.patHelpClassicSteps': 'Developer settings → Personal access tokens (classic) → Generate new token — no extra scope needed to read your own personal usage.',
+  'settings.copilot.patPlaceholder': 'github_pat_… or ghp_…',
+  'settings.copilot.saveToken': 'Save token',
+  'settings.copilot.patHint': 'The token is stored encrypted and never reaches the renderer in clear after saving.',
+  'settings.copilot.oauthTitle': 'Sign in with GitHub OAuth',
+  'settings.copilot.oauthHelpAria': 'How to set up OAuth access',
+  'settings.copilot.oauthHelpBefore': 'Create a GitHub OAuth App on github.com → Settings → Developer settings → OAuth Apps → New OAuth App. Homepage URL: anything. Authorization callback URL:',
+  'settings.copilot.oauthHelpAfter': 'Paste the Client ID here (it is saved) and the Client Secret (never saved, used only for this sign-in).',
+  'settings.copilot.oauthWarning': 'Experimental — it is not confirmed that it returns more data than a Personal Access Token for a company seat. See RESEARCH.md §2.2.',
+  'settings.copilot.clientSecretPlaceholder': 'never saved to disk',
+  'settings.copilot.oauthConnect': 'Connect with GitHub (OAuth)',
+
+  // --- Settings: work schedule ----------------------------------------------------
+  'settings.schedule.title': 'Work schedule',
+  'settings.schedule.enabled': 'Limit pacing to specific days/hours of the week',
+  'settings.schedule.disabledHint': 'Disabled: every day counts as a full working day, with no distinction between days of the week — useful for a personal account with no fixed hours to respect.',
+  'settings.schedule.hoursPerDay': 'Working hours per day (for future fine tuning, e.g. intra-day pacing)',
+  'settings.schedule.mon': 'Monday',
+  'settings.schedule.tue': 'Tuesday',
+  'settings.schedule.wed': 'Wednesday',
+  'settings.schedule.thu': 'Thursday',
+  'settings.schedule.fri': 'Friday',
+  'settings.schedule.sat': 'Saturday',
+  'settings.schedule.sun': 'Sunday',
+  'settings.schedule.full': 'Full',
+  'settings.schedule.half': 'Half day',
+  'settings.schedule.off': 'Off',
+
+  // --- Settings: appearance -------------------------------------------------------
+  'settings.appearance.title': 'Appearance',
+  'settings.appearance.language': 'Language',
+  'settings.appearance.languageAuto': 'Automatic (system language)',
+  'settings.appearance.windowStyle': 'Window style',
+  'settings.appearance.styleFilled': 'Filled (classic - light)',
+  'settings.appearance.styleFilledDark': 'Filled (dark)',
+  'settings.appearance.styleTransparent': 'Transparent / digital',
+  'settings.appearance.chartRange': 'Chart range',
+  'settings.appearance.week': 'Week',
+  'settings.appearance.month': 'Month',
+  'settings.appearance.alwaysOnTop': 'Always on top',
+  'settings.appearance.accentColor': 'Accent color',
+
+  // --- Settings: notifications ----------------------------------------------------
+  'settings.notifications.title': 'Notifications',
+  'settings.notifications.threshold': 'Alert threshold (%)',
+
+  // --- Settings: updates ------------------------------------------------------------
+  'settings.updates.title': 'Updates',
+  'settings.updates.installed': 'Installed version:',
+  'settings.updates.neverChecked': 'No check performed yet.',
+  'settings.updates.checkNow': 'Check now',
+  'settings.updates.checking': 'Checking…',
+  'settings.updates.download': 'Download {version}',
+  'settings.updates.available': 'Version {version} available',
+  'settings.updates.releaseNotes': '(release notes)',
+  'settings.updates.upToDate': 'You are up to date (last check: {time})',
+  'settings.updates.failed': 'Check failed: {error}',
+  'settings.updates.downloadFailed': 'Download failed: {error}',
+  'settings.updates.downloadHintAsset': '{asset} is downloaded in the browser: close the app and install it.',
+  'settings.updates.downloadHintPage': 'No specific package for this system: the release page opens.',
+  'settings.updates.autoCheck': 'Check automatically at startup and every 24 hours',
+  'settings.updates.hint': 'Only reads the list of versions published on GitHub (no personal data sent). The package for your system is downloaded in the browser: close the app and install it like the first time.',
+
+  // --- Settings: diagnostics ----------------------------------------------------------
+  'settings.diagnostics.title': 'Diagnostics',
+  'settings.diagnostics.autoReport': 'Report automatically if the format of a Claude/Copilot response changes',
+  'settings.diagnostics.hint': 'If an endpoint stops being recognized, a pre-filled GitHub issue draft opens in the browser (field structure only, never real values such as percentages or amounts): it must always be reviewed and submitted by hand, nothing is published automatically.',
+} as const;
+
+export type MessageKey = keyof typeof en;

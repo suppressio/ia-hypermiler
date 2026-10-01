@@ -19,6 +19,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { shell } from 'electron';
+import { getLocale, t } from './i18n/index';
 
 const AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
@@ -77,12 +78,12 @@ function renderCallbackPage(title: string, message: string): string {
   const escapedTitle = escapeHtml(title);
   const escapedMessage = escapeHtml(message);
   return `<!doctype html>
-<html lang="it">
+<html lang="${getLocale()}">
   <head><meta charset="utf-8" /><title>${escapedTitle}</title></head>
   <body>
     <h1>${escapedTitle}</h1>
     <p>${escapedMessage}</p>
-    <p>Puoi chiudere questa scheda e tornare all'app.</p>
+    <p>${escapeHtml(t('oauth.closeTab'))}</p>
   </body>
 </html>`;
 }
@@ -171,25 +172,25 @@ export function captureGithubOAuthToken(config: GithubOAuthConfig): Promise<{ ac
       const code = requestUrl.searchParams.get('code');
 
       if (error) {
-        finishWithHtml('Accesso GitHub non riuscito', errorDescription ?? error);
+        finishWithHtml(t('oauth.failedTitle'), errorDescription ?? error);
         finish(reject, new Error(errorDescription ?? `Autorizzazione GitHub fallita: ${error}`));
         return;
       }
 
       if (!code || returnedState !== state) {
-        finishWithHtml('Accesso GitHub non riuscito', 'Callback OAuth non valida o scaduta.');
+        finishWithHtml(t('oauth.failedTitle'), t('oauth.invalidCallback'));
         finish(reject, new Error('Validazione della callback OAuth GitHub fallita'));
         return;
       }
 
       exchangeCodeForToken({ clientId, clientSecret, code, codeVerifier, redirectUri })
         .then((accessToken) => {
-          finishWithHtml('Accesso GitHub completato', 'Autenticazione riuscita.');
+          finishWithHtml(t('oauth.successTitle'), t('oauth.successMessage'));
           finish(resolve, { accessToken });
         })
         .catch((exchangeError: unknown) => {
-          const message = exchangeError instanceof Error ? exchangeError.message : 'Scambio del token fallito.';
-          finishWithHtml('Accesso GitHub non riuscito', message);
+          const message = exchangeError instanceof Error ? exchangeError.message : t('oauth.exchangeFailed');
+          finishWithHtml(t('oauth.failedTitle'), message);
           finish(reject, exchangeError instanceof Error ? exchangeError : new Error(message));
         });
     });
