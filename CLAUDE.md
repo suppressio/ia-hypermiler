@@ -240,7 +240,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-09-30 | v0.2.0-beta | N provider-independent accounts with isolated sessions (#4), own chart + window verdicts, value per token, reset time when today (#3) |
 | 2026-09-30 | v0.2.1-beta | Fix: hidden window list stayed visible across accounts (`[hidden]` vs `display:flex`) |
 | 2026-09-30 | v0.3.0-beta | Update check + browser download (#5) |
-| 2026-10-01 | (next) | Robustness: stricter TS, type-aware ESLint gating CI, store normalization, IPC validation, unhandled promises, packaged icon fix; English/Italian UI; code in English; bilingual docs |
+| 2026-10-01 | v0.4.0-beta | Robustness: stricter TS, type-aware ESLint gating CI, store normalization, IPC validation, unhandled promises, packaged icon fix; English/Italian UI; code in English; bilingual docs |
 
 ### Lessons learned (still relevant)
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
