@@ -1,185 +1,189 @@
-# IA Hypermiler — Piano di sviluppo (3 giorni)
+🌐 **English** | [Italiano](PLAN.it.md)
 
-> **Stack:** Electron · Node.js · HTML/CSS/SVG vanilla · Anthropic SDK · electron-store · electron-builder
+# IA Hypermiler — Development plan (3 days)
+
+> **Historical document:** the initial plan, kept as it was. For the current state see the milestones in `CLAUDE.md` and the directions in `EVOLUTION.md`.
+
+> **Stack:** Electron · Node.js · vanilla HTML/CSS/SVG · Anthropic SDK · electron-store · electron-builder
 > **Target:** Cross-platform (Windows, macOS, Linux)
-> **Ritmo:** ~4-5 ore al giorno
+> **Pace:** ~4-5 hours a day
 
 ---
 
-## Prima di iniziare — Setup una tantum (30 min, fuori dai 3 giorni)
+## Before starting — one-off setup (30 min, outside the 3 days)
 
-Crea la struttura del progetto e il file `CLAUDE.md` che guiderà Claude Code per tutta la sessione.
+Create the project structure and the `CLAUDE.md` file that guides Claude Code for the whole session.
 
 ```
 ia-hypermiler/
-├── CLAUDE.md               ← memoria di progetto per Claude Code
-├── main.js                 ← processo principale Electron
-├── preload.js              ← bridge sicuro renderer ↔ main
-├── renderer/               ← UI (HTML + CSS + JS vanilla)
+├── CLAUDE.md               ← project memory for Claude Code
+├── main.js                 ← Electron main process
+├── preload.js              ← secure renderer ↔ main bridge
+├── renderer/               ← UI (vanilla HTML + CSS + JS)
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
-├── agents/                 ← agenti Claude
+├── agents/                 ← Claude agents
 │   └── advisor.js
-├── services/               ← fetch dati token
+├── services/               ← token data fetch
 │   ├── claude.js
 │   └── copilot.js
-├── store/                  ← persistenza locale (electron-store)
+├── store/                  ← local persistence (electron-store)
 │   └── index.js
 └── package.json
 ```
 
 ---
 
-## Giorno 1 — Ricerca API + Scheletro Electron
+## Day 1 — API research + Electron skeleton
 
-**Obiettivo:** capire cosa si può realmente leggere dalle API, e avere l'app che si avvia con dati mock.
+**Goal:** understand what can really be read from the APIs, and have the app start with mock data.
 
-### Sessione 1 · Ricerca API con agente (1.5 ore)
+### Session 1 · API research with an agent (1.5 hours)
 
-Questa è la sessione più critica: usi un agente Claude Code con web search e accesso filesystem per rispondere a domande concrete **prima di scrivere una riga di codice**.
+The most critical session: a Claude Code agent with web search and filesystem access answers concrete questions **before a single line of code is written**.
 
-**Prompt da dare all'agente:**
+**Prompt for the agent:**
 
-> Cerca su GitHub, nei forum ufficiali Anthropic e Microsoft, nella documentazione pubblica e nelle repository open source (termini: `Claude API usage tokens`, `Anthropic usage endpoint`, `Copilot token consumption API`, `GitHub Copilot billing API`, `copilot-usage-action`) come recuperare il consumo token corrente e la quota mensile per un account Claude Pro e un account GitHub Copilot.
+> Search GitHub, the official Anthropic and Microsoft forums, public documentation and open source repositories (terms: `Claude API usage tokens`, `Anthropic usage endpoint`, `Copilot token consumption API`, `GitHub Copilot billing API`, `copilot-usage-action`) for how to retrieve the current token consumption and monthly quota of a Claude Pro account and a GitHub Copilot account.
 >
-> Per ciascuno dimmi: endpoint esatto o URL da fare scraping, autenticazione richiesta (API key, OAuth, cookie di sessione), frequenza di aggiornamento dei dati, formato della risposta (JSON, HTML, altro). Se non esiste un endpoint ufficiale, dimmi qual è il workaround più usato dalla community.
+> For each one tell me: the exact endpoint or URL to scrape, the required authentication (API key, OAuth, session cookie), how often the data is updated, the response format (JSON, HTML, other). If there is no official endpoint, tell me the workaround most used by the community.
 >
-> Scrivi i risultati in `RESEARCH.md`.
+> Write the results in `RESEARCH.md`.
 
-**Scenari probabili da tenere a mente:**
+**Likely scenarios to keep in mind:**
 
-- **Claude:** l'API Anthropic non espone un endpoint pubblico di usage per utenti Pro. Il workaround più diffuso è il parsing della pagina `console.anthropic.com/settings/usage` con sessione autenticata (cookie). Per piani Team/Enterprise esiste `GET /v1/usage` — l'agente cercherà conferme aggiornate.
-- **Copilot:** GitHub espone `GET /orgs/{org}/copilot/usage` per organizzazioni, ma non per account personali. Il workaround è la pagina `github.com/settings/billing`. L'agente verificherà cosa è cambiato di recente.
+- **Claude:** the Anthropic API exposes no public usage endpoint for Pro users. The most common workaround is parsing the `console.anthropic.com/settings/usage` page with an authenticated session (cookie). For Team/Enterprise plans there is `GET /v1/usage` — the agent will look for up-to-date confirmation.
+- **Copilot:** GitHub exposes `GET /orgs/{org}/copilot/usage` for organizations, but not for personal accounts. The workaround is the `github.com/settings/billing` page. The agent will check what changed recently.
 
-> ⚠️ **Punto di rischio principale:** se entrambe le API non espongono dati utili e il workaround è fragile, meglio saperlo subito e ridurre lo scope a un solo servizio (preferibilmente Claude).
+> ⚠️ **Main risk:** if neither API exposes useful data and the workaround is fragile, better to know right away and reduce the scope to a single service (preferably Claude).
 
-L'agente produce `RESEARCH.md`. Questo documento determina l'architettura del Giorno 2.
+The agent produces `RESEARCH.md`. That document drives the Day 2 architecture.
 
 ---
 
-### Sessione 2 · Scheletro Electron con dati mock (2.5 ore)
+### Session 2 · Electron skeleton with mock data (2.5 hours)
 
-Con Claude Code in **plan mode**, costruisci l'app shell alimentata da dati fittizi hardcodati.
+With Claude Code in **plan mode**, build the app shell fed by hard-coded fake data.
 
 **`main.js`**
-- Finestra principale 800×600
-- `Tray` icon con menu contestuale (show/hide/quit)
-- `ipcMain` per i canali dati
+- Main window 800×600
+- `Tray` icon with a context menu (show/hide/quit)
+- `ipcMain` for the data channels
 
 **`preload.js`**
-- Esponi solo i canali necessari via `contextBridge`
-- Mai `nodeIntegration: true`
+- Expose only the needed channels via `contextBridge`
+- Never `nodeIntegration: true`
 
 **`renderer/`**
-- UI con i tre blocchi: token oggi, grafico settimanale, proiezione mensile
-- Grafico in SVG/Canvas vanilla — zero librerie esterne (Electron è già pesante)
+- UI with three blocks: tokens today, weekly chart, monthly projection
+- Chart in vanilla SVG/Canvas — zero external libraries (Electron is heavy enough)
 
 **`store/index.js`**
-- `electron-store` per persistere: API key, data rinnovo, quota mensile
+- `electron-store` to persist: API key, renewal date, monthly quota
 
-**✅ Fine Giorno 1:** app avviabile con `npm start`, tray icon funzionante, UI visibile con mock data.
+**✅ End of Day 1:** app starts with `npm start`, working tray icon, UI visible with mock data.
 
 ---
 
-## Giorno 2 — Integrazione dati reali + Agente consigli
+## Day 2 — Real data integration + advice agent
 
-**Obiettivo:** sostituire i mock con dati reali e integrare l'agente che genera i consigli.
+**Goal:** replace the mocks with real data and integrate the agent that generates advice.
 
-### Sessione 1 · Services layer (2 ore)
+### Session 1 · Services layer (2 hours)
 
-Basandoti su `RESEARCH.md`, implementa i due service con interfaccia uniforme:
+Based on `RESEARCH.md`, implement the two services with a uniform interface:
 
 ```js
-// Interfaccia attesa da entrambi i service
+// Interface expected from both services
 export async function fetchUsage(credentials) {
-  // Ritorna: { used, total, resetDate, dailyHistory: [...] }
+  // Returns: { used, total, resetDate, dailyHistory: [...] }
 }
 ```
 
-**Autenticazione:**
-- Se API key → salva in `electron-store` con `encryptionKey`, non esporre mai nel renderer
-- Se cookie di sessione → usa `electron-session` o una `BrowserWindow` nascosta per il login OAuth; non chiedere mai all'utente di incollare cookie a mano
+**Authentication:**
+- API key → store it in `electron-store` with `encryptionKey`, never expose it to the renderer
+- Session cookie → use the Electron session or a hidden `BrowserWindow` for the OAuth login; never ask the user to paste cookies by hand
 
-Testa ogni service da terminale con `node services/claude.js` prima di collegarlo a Electron.
+Test each service from the terminal with `node services/claude.js` before wiring it into Electron.
 
 ---
 
-### Sessione 2 · Logica budget + Agente advisor (2 ore)
+### Session 2 · Budget logic + advisor agent (2 hours)
 
-**Logica di calcolo (`budget.js`):**
+**Computation logic (`budget.js`):**
 
 ```js
 function dailyBudget({ used, total, resetDate }) {
   const daysLeft = differenceInDays(resetDate, today());
   const remaining = total - used;
-  return Math.floor(remaining / daysLeft); // token/giorno
+  return Math.floor(remaining / daysLeft); // tokens/day
 }
 ```
 
-**Agente consigli (`agents/advisor.js`):**
-- Chiamata all'API Anthropic con il consumo degli ultimi 7 giorni come contesto
-- System prompt che richiede consigli pratici e specifici (non generici)
-- Risultato cachato su `electron-store`, aggiornato una volta al giorno
-- Visualizzato in un pannello "Consigli del giorno" nella UI
+**Advice agent (`agents/advisor.js`):**
+- Anthropic API call with the consumption of the last 7 days as context
+- System prompt asking for practical, specific advice (not generic)
+- Result cached in `electron-store`, refreshed once a day
+- Shown in a "Tips of the day" panel in the UI
 
-**✅ Fine Giorno 2:** dati reali nella UI, calcolo budget corretto, consigli generati dall'agente.
-
----
-
-## Giorno 3 — Rifinitura, notifiche, build
-
-**Obiettivo:** app robusta, notifiche utili, pacchetto distribuibile.
-
-### Sessione 1 · Notifiche e robustezza (2 ore)
-
-- **Notifica di sistema** (`Notification` API di Electron) quando il consumo giornaliero supera l'80% del budget
-- **Gestione errori:** se le API non rispondono, mostra l'ultimo dato noto con timestamp — mai schermata bianca
-- **Auto-refresh** ogni 30 minuti in background via `setInterval` nel main process (senza finestra aperta)
-- **Onboarding:** al primo avvio, finestra di configurazione per API key e data di rinnovo
+**✅ End of Day 2:** real data in the UI, correct budget computation, advice generated by the agent.
 
 ---
 
-### Sessione 2 · Subagent review + Build (2 ore)
+## Day 3 — Polishing, notifications, build
 
-**Subagent di code review** prima del build:
+**Goal:** robust app, useful notifications, distributable package.
 
-> Leggi tutti i file in `agents/`, `services/` e `main.js`. Segnala: chiamate API senza timeout, segreti esposti nel renderer, path non cross-platform, memory leak nei setInterval. Scrivi le correzioni direttamente.
+### Session 1 · Notifications and robustness (2 hours)
 
-**Build cross-platform con `electron-builder`:**
+- **System notification** (Electron `Notification` API) when daily consumption passes 80% of the budget
+- **Error handling:** if the APIs do not answer, show the last known data with a timestamp — never a blank screen
+- **Auto-refresh** every 30 minutes in the background via `setInterval` in the main process (even without an open window)
+- **Onboarding:** at first start, a configuration window for API key and renewal date
+
+---
+
+### Session 2 · Subagent review + Build (2 hours)
+
+**Code review subagent** before the build:
+
+> Read every file in `agents/`, `services/` and `main.js`. Report: API calls without a timeout, secrets exposed to the renderer, non cross-platform paths, memory leaks in setInterval. Write the fixes directly.
+
+**Cross-platform build with `electron-builder`:**
 
 ```json
 "build": {
-  "appId": "com.tuonome.ia-hypermiler",
+  "appId": "com.yourname.ia-hypermiler",
   "mac":   { "target": "dmg" },
   "win":   { "target": "nsis" },
   "linux": { "target": "AppImage" }
 }
 ```
 
-> 💡 Su GitHub Actions puoi fare il build multi-piattaforma in parallelo — è la strada più rapida per avere `.dmg`, `.exe` e `.AppImage` dallo stesso commit senza tre macchine fisiche.
+> 💡 On GitHub Actions the multi-platform build can run in parallel — the fastest way to get `.dmg`, `.exe` and `.AppImage` from the same commit without three physical machines.
 
-**✅ Fine Giorno 3:** app buildabile, notifiche funzionanti, codice revisionato dall'agente.
+**✅ End of Day 3:** buildable app, working notifications, code reviewed by the agent.
 
 ---
 
-## Stack di riferimento
+## Reference stack
 
-| Componente | Scelta | Motivo |
+| Component | Choice | Reason |
 |---|---|---|
-| Shell | Electron | già noto, cross-platform |
-| UI | HTML/CSS/SVG vanilla | zero bundle, avvio rapido |
-| Persistenza | electron-store | semplice, cifrabile |
-| Agente consigli | Anthropic SDK (Node) | già usato nel corso |
-| Build | electron-builder + GH Actions | multi-piattaforma senza VM |
-| Claude Code | plan mode + subagent review | come da corso |
+| Shell | Electron | already known, cross-platform |
+| UI | vanilla HTML/CSS/SVG | no bundle, fast startup |
+| Persistence | electron-store | simple, encryptable |
+| Advice agent | Anthropic SDK (Node) | already used in the course |
+| Build | electron-builder + GH Actions | multi-platform without VMs |
+| Claude Code | plan mode + subagent review | as in the course |
 
 ---
 
-## Cosa resta fuori (da valutare dopo)
+## Left out (to evaluate later)
 
-- Autenticazione OAuth nativa per Copilot (se il workaround cookie non è abbastanza stabile)
-- Supporto account multipli (più API key / più servizi)
-- Auto-update dell'app (`electron-updater`)
-- Grafico storico oltre 7 giorni
-- Integrazione nativa tray icon avanzata (animazioni, badge contatore)
+- Native OAuth authentication for Copilot (if the cookie workaround is not stable enough) — *later implemented as an experimental alternative to the PAT*
+- Multiple accounts (several API keys / several services) — *later implemented (issue #4)*
+- App auto-update (`electron-updater`) — *later implemented as an update check + browser download, without electron-updater (issue #5)*
+- Historical chart beyond 7 days — *later implemented (30-day view)*
+- Advanced native tray integration (animations, counter badge)

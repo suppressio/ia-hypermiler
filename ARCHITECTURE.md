@@ -1,60 +1,62 @@
-# ARCHITECTURE.md — Struttura dell'applicazione (Giorno 1, Sessione 2 — Plan Mode)
+🌐 **English** | [Italiano](ARCHITECTURE.it.md)
 
-> Documento di design prodotto in **plan mode**, come da flusso di lavoro in `CLAUDE.md`: descrive cosa verrà costruito, non contiene ancora implementazione. Da confermare prima di passare al codice.
-> Si basa sui vincoli reali emersi in `RESEARCH.md` (v3): Claude espone soprattutto **percentuali di utilizzo** su finestre multiple e concorrenti (5 ore + settimanale), non un pool di token con un unico totale; Copilot espone invece contatori discreti (premium requests / crediti) su un ciclo di fatturazione mensile.
+# ARCHITECTURE.md — Application structure (Day 1, Session 2 — Plan Mode)
+
+> Design document produced in **plan mode**, following the workflow in `CLAUDE.md`: it describes what is built, and has been updated as features were implemented (sections marked *implemented* / *updated*).
+> It is based on the real constraints found in `RESEARCH.md` (v3): Claude mostly exposes **usage percentages** over multiple concurrent windows (5 hours + weekly), not a token pool with a single total; Copilot instead exposes discrete counters (premium requests / credits) over a monthly billing cycle.
 
 ---
 
-## 0. Una decisione di design che precede tutto il resto
+## 0. A design decision that comes before everything else
 
-Il concept originale in `CLAUDE.md` (`{ used, total, resetDate }`) assume **un solo contatore per servizio**. La ricerca mostra che non basta:
+The original concept in `CLAUDE.md` (`{ used, total, resetDate }`) assumes **a single counter per service**. Research shows that is not enough:
 
-- **Claude**: 2-3 finestre di quota concorrenti e indipendenti — `five_hour` (rolling 5h), `seven_day` (rolling 7gg, tutti i modelli), `seven_day_opus` (rolling 7gg, solo Opus). Ognuna ha una propria `utilization` (%) e un proprio `resets_at`. Non c'è un "totale token mensile" da leggere dall'account: il rinnovo mensile esiste solo come **data di fatturazione dell'abbonamento**, scollegata dalle finestre di utilizzo.
-- **Copilot**: un contatore discreto (`premium_requests` + `ai_credit`) legato al ciclo di fatturazione mensile — qui il modello "used/total/resetDate" originale funziona bene così com'è.
+- **Claude**: 2-3 concurrent, independent quota windows — `five_hour` (rolling 5h), `seven_day` (rolling 7 days, all models), `seven_day_opus` (rolling 7 days, Opus only). Each has its own `utilization` (%) and its own `resets_at`. There is no "monthly token total" to read from the account: the monthly renewal exists only as the **subscription billing date**, unrelated to the usage windows.
+- **Copilot**: a discrete counter (`premium_requests` + `ai_credit`) tied to the monthly billing cycle — here the original "used/total/resetDate" model works as is.
 
-**Proposta:** generalizzare l'interfaccia dei service da un singolo contatore a una **lista di "finestre di quota"** (`quotaWindows`) per account, ciascuna con il proprio tipo di periodo (`rolling-hours`, `rolling-days`, `billing-cycle`) e la propria unità di misura (`percentage` per Claude, `count` per Copilot). L'indicatore "Token/gg" richiesto va quindi ridefinito come **"% di quota consumata per giorno lavorativo"** per Claude, e come "richieste premium consumate/giorno lavorativo" per Copilot — normalizzando comunque tutto a una percentuale per il confronto visivo nel widget quando serve mostrare un unico numero aggregato.
+**Proposal (adopted):** generalize the service interface from a single counter to a **list of "quota windows"** (`quotaWindows`) per account, each with its own period type (`rolling-hours`, `rolling-days`, `billing-cycle`) and unit (`percentage` for Claude, `count` for Copilot). The requested "tokens/day" indicator is therefore redefined as **"% of quota used per working day"** for Claude, and "premium requests used per working day" for Copilot — still normalizing everything to a percentage for visual comparison in the widget when a single aggregated number must be shown.
 
-Questo va confermato esplicitamente perché cambia l'interfaccia `fetchUsage()` già scritta in `CLAUDE.md`:
+This had to be confirmed explicitly because it changes the `fetchUsage()` interface written in `CLAUDE.md`:
 
 ```js
-// Proposta di interfaccia estesa (sostituisce { used, total, resetDate, dailyHistory })
+// Extended interface (replaces { used, total, resetDate, dailyHistory })
 {
   planTier: string,
-  subscriptionRenewsAt: Date | null,        // data di fatturazione, se nota
+  subscriptionRenewsAt: Date | null,        // billing date, if known
   quotaWindows: Array<{
     id: string,                              // 'five_hour' | 'seven_day' | 'seven_day_opus' | 'ai_credits' | ...
     label: string,
     periodType: 'rolling-hours' | 'rolling-days' | 'billing-cycle',
-    periodLength: number,                    // es. 5, 7, o giorni del ciclo
+    periodLength: number,                    // e.g. 5, 7, or days of the cycle
     unit: 'percentage' | 'count',
-    used: number,                            // 0-100 se percentage, valore assoluto se count
-    total: number | null,                    // null se il servizio non espone un totale (caso Claude)
+    used: number,                            // 0-100 for percentage, absolute value for count
+    total: number | null,                    // null when the service exposes no total (Claude case)
     resetsAt: Date,
   }>,
   dailyHistory: Array<{ date: string, perWindow: Record<string, number> }>,
 }
 ```
 
-Se preferisci restare più semplici e trattare solo la finestra più rilevante per servizio (es. solo `seven_day` per Claude, ignorando 5h e Opus), possiamo farlo come opzione di scope ridotto — ma perderesti la vista "sto per sforare la finestra delle 5 ore proprio oggi", che è probabilmente l'informazione più operativa per non restare bloccati a metà giornata.
+A reduced scope (only the most relevant window per service, e.g. only `seven_day` for Claude, ignoring 5h and Opus) was possible, but it would lose the "I am about to exceed the 5-hour window today" view, probably the most actionable information to avoid being blocked mid-day.
 
 ---
 
-## 1. Impostazioni (settings) — schema dati
+## 1. Settings — data schema
 
-Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token) resta cifrato via `encryptionKey` di `electron-store` e non passa mai dal renderer se non tramite IPC verso il main.
+Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the file on disk in `store/normalize.ts`). Everything secret (session cookie, PAT, token) stays encrypted through `electron-store`'s `encryptionKey` and never reaches the renderer except through IPC towards the main process.
 
 ```js
 {
-  // Registro di N account indipendenti dal provider (issue #4, EVOLUTION.md punto 3):
-  // parte comune + parte specifica, unione discriminata su `provider`. Fino a v0.1.2 erano
-  // due slot fissi { claude, copilot }: convertiti una volta all'avvio da store/migrate.ts,
-  // mantenendo gli id 'claude'/'copilot' (così history.* resta valido senza riscritture).
-  // La parte specifica per provider lato main vive in main/providers.ts.
+  // Registry of N provider-independent accounts (issue #4, EVOLUTION.md point 3):
+  // common part + specific part, discriminated union on `provider`. Up to v0.1.2 these
+  // were two fixed slots { claude, copilot }: converted once at startup by
+  // store/migrate.ts, keeping the ids 'claude'/'copilot' (so history.* stays valid
+  // without rewrites). The provider-specific main-process part lives in main/providers.ts.
   accounts: Array<{
-    // --- comune ---
-    id: string,                // 'claude'/'copilot' se migrato, altrimenti '<provider>-<uuid8>'
+    // --- common ---
+    id: string,                // 'claude'/'copilot' if migrated, otherwise '<provider>-<uuid8>'
     provider: 'claude' | 'copilot',
-    label: string,             // nome mostrato in tabella e nelle tab del widget ("Claude", "Claude 2"…)
+    label: string,             // name shown in the table and the widget tabs ("Claude", "Claude 2"…)
     enabled: boolean,
     accountScope: 'personal' | 'organization',
     subscription: {
@@ -64,27 +66,27 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
     { // --- provider: 'claude' ---
       authMethod: 'password' | 'google' | 'sso',
       session: {
-        sessionKey: string,        // cifrato
-        organizationId: string | null, // risolto automaticamente al login (GET /api/organizations)
+        sessionKey: string,        // encrypted
+        organizationId: string | null, // resolved automatically at login (GET /api/organizations)
         capturedAt: string,        // ISO date
-        expiresAt: string | null,  // stimata ~30gg, da ri-validare
+        expiresAt: string | null,  // estimated ~30 days, to re-validate
       },
       planTier: 'free' | 'pro' | 'max_5x' | 'max_20x' | 'team' | 'enterprise',
-      partition: string,         // 'persist:account-<id>': cookie claude.ai isolati per account,
-                                 // cancellati da Disconnetti/Rimuovi e prima di ogni login (issue #4)
-      localInsights: boolean,    // sessioni Claude Code locali attribuite a questo account (max 1)
+      partition: string,         // 'persist:account-<id>': claude.ai cookies isolated per account,
+                                 // cleared by Disconnect/Remove and before every login (issue #4)
+      localInsights: boolean,    // local Claude Code sessions attributed to this account (max 1)
     } | { // --- provider: 'copilot' ---
-      authMethod: 'pat' | 'oauth',  // sceglie quale pannello di connessione mostrare; aggiornato dall'ultima connessione riuscita
-      credentials: { token: string, username: string | null },  // token cifrato (PAT o access token OAuth App — vedi main/copilot-oauth.ts)
-      oauthApp: { clientId: string | null },  // non è un segreto; il client secret non viene mai persistito
-      manualQuota: number, // l'API di billing non espone il totale del piano: valore inserito dall'utente
+      authMethod: 'pat' | 'oauth',  // chooses which connection panel to show; updated from the last successful connection
+      credentials: { token: string, username: string | null },  // encrypted token (PAT or OAuth App access token — see main/copilot-oauth.ts)
+      oauthApp: { clientId: string | null },  // not a secret; the client secret is never persisted
+      manualQuota: number, // the billing API does not expose the plan total: value entered by the user
       planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise',
       experimentalWarningAcknowledged: boolean,
     }
   )>,
 
   workSchedule: {
-    enabled: boolean, // se false, ogni giorno vale come giornata piena (pacing non legato a giorni/ore specifici — es. account personale)
+    enabled: boolean, // when false, every day counts as a full day (pacing not tied to specific days/hours — e.g. a personal account)
     days: {
       mon: 'full' | 'half' | 'off',
       tue: 'full' | 'half' | 'off',
@@ -94,143 +96,153 @@ Estende `store/index.ts`. Tutto ciò che è segreto (session cookie, PAT, token)
       sat: 'full' | 'half' | 'off',
       sun: 'full' | 'half' | 'off',
     },
-    hoursPerDay: number, // semplificato da intervallo inizio/fine su feedback utente (Giorno 2):
-                         // budget.ts lavora a granularità giorno/mezza-giornata e non usa ancora
-                         // orari puntuali; riservato per un futuro pacing infra-giornaliero (es.
-                         // finestra Claude delle 5 ore).
+    hoursPerDay: number, // simplified from a start/end range after user feedback (Day 2):
+                         // budget.ts works at day/half-day granularity and does not use exact
+                         // hours yet; reserved for future intra-day pacing (e.g. Claude's
+                         // 5-hour window).
   },
 
   ui: {
+    language: 'auto' | 'en' | 'it',       // 'auto' follows the system language (see §4c)
     windowStyle: 'filled' | 'filled-dark' | 'transparent-digital',
     alwaysOnTop: boolean,
     accentColor: string,
-    bounds: { x, y, width, height },       // posizione/dimensione persistita
+    bounds: { x, y, width, height },       // persisted position/size
     chartRange: 'week' | 'month',
-    notificationThresholdPercent: number,  // default 80, configurabile
+    notificationThresholdPercent: number,  // default 80, configurable
   },
 
   history: {
-    // append-only, un record per giorno per finestra di quota; retention configurabile (default 90gg) per non far crescere il file all'infinito
+    // append-only, one record per day per quota window; configurable retention (default 90 days) so the file does not grow forever
     dailyUsage: Array<{ date: string, accountId: string, windowId: string, used: number }>,
-    lastGood: Record<accountId, RawAccountUsage>, // ultimo dato riuscito per account (fallback)
+    lastGood: Record<accountId, RawAccountUsage>, // last successful data per account (fallback)
   },
 
   advisorCache: { generatedAt: string, adviceText: string },
 
   meta: {
-    notifiedToday: Record<string, boolean>, // flag anti-doppia-notifica per account/giorno
-    claudeCookiesMigrated?: boolean,         // copia una tantum dei cookie da defaultSession alla partition del Claude migrato
+    notifiedToday: Record<string, boolean>, // anti-duplicate notification flag per account/day
+    claudeCookiesMigrated?: boolean,         // one-off copy of cookies from defaultSession into the migrated Claude account partition
   },
 }
 ```
 
-Sezioni del pannello impostazioni (finestra separata `renderer/settings.html`, aperta dal tray o da un'icona ingranaggio nel widget):
+Sections of the Settings panel (separate window `renderer/settings.html`, opened from the tray or a gear icon in the widget):
 
-1. **Account e sessioni** — *(aggiornato, issue #4)* una **tabella** di account (Nome | Provider | Stato | Attivo | azioni Configura/Connetti/Disconnetti/Rimuovi) con "Aggiungi account"; "Configura" apre sotto la riga il pannello del provider (campi comuni + specifici). Descrizione originale: per Claude e Copilot: stato connessione, metodo (password/SSO/PAT/OAuth device), pulsante "Connetti/Riconnetti" che apre una `BrowserWindow` di login per Claude o il device-flow per Copilot, data di scadenza sessione stimata, toggle "seat aziendale" con avviso automatico se attivo su Copilot ("funzionalità sperimentale, può interrompersi senza preavviso").
-2. **Piano e rinnovo** — tipo piano, giorno di rinnovo abbonamento (selettore semplice "giorno del mese"; dietro le quinte salvato come RRULE minimale `FREQ=MONTHLY;BYMONTHDAY=n` così in futuro si possono aggiungere ricorrenze diverse senza cambiare schema).
-3. **Calendario di lavoro** — 7 toggle giorno con 3 stati (pieno/mezza/riposo) + switch opzionale per ore lavorative (inizio/fine). Usato per calcolare budget e proiezioni su "giorni/ore lavorative rimanenti", non su giorni di calendario.
-4. **Aspetto** — stile finestra (le tre skin descritte sotto), always-on-top, colore accento, intervallo grafico (settimana/mese) di default.
-5. **Notifiche** — soglia percentuale di allarme (default 80%, come da `CLAUDE.md`, ma ora configurabile), eventualmente per-finestra (es. avviso separato per il limite 5h di Claude).
-6. **Avanzate** — placeholder per le evoluzioni future (vedi §5): abilitazione futura server locale, export dati.
-
----
-
-## 2. Finestra principale — le tre "skin"
-
-Tutte leggono dagli stessi dati (IPC dal main, nessuna duplicazione di logica) e cambiano solo `renderer/style.css` + flag di creazione della `BrowserWindow`.
-
-**Stile "pieno" (classico - light):**
-`frame: true`, `transparent: false`, controlli di sistema nativi sempre visibili, sfondo opaco, layout a blocchi con bordi.
-
-**Stile "pieno" (dark):** *(aggiunta, feedback utente)*
-Stessa struttura opaca/non trasparente della skin classica, con colori invertiti (sfondo scuro, testo chiaro) — vedi i token `--*-filled-dark` in `renderer/style.css`. Nessuna differenza di comportamento rispetto alla skin classica oltre ai colori (stessa titlebar custom, stesso comportamento hover, stesso layout).
-
-**Stile "trasparente/digitale":**
-`frame: false`, `transparent: true`, `titleBarStyle` nascosto. Numeri/barre in stile HUD (font monospazio, glow leggero — restando comunque sobri per rispettare "no animazioni" di `CLAUDE.md`: niente pulsazioni, solo contrasto/opacità statici). Pulsanti di sistema (chiudi/riduci) ricreati come controlli custom in overlay, `opacity: 0` di default e `opacity: 1` solo on-hover via CSS, con `-webkit-app-region: drag` sull'area libera per permettere lo spostamento finestra senza barra del titolo nativa.
-
-**Always-on-top:** toggle in impostazioni e nel menu del tray, applicato con `win.setAlwaysOnTop(bool, 'floating')`; persistito e riapplicato all'avvio.
+1. **Accounts and sessions** — *(updated, issue #4)* a **table** of accounts (Name | Provider | Status | Active | actions Configure/Connect/Disconnect/Remove) with "Add account"; "Configure" opens the provider panel below the row (common + specific fields). Original description: for Claude and Copilot, connection status, method (password/SSO/PAT/OAuth device), a "Connect/Reconnect" button opening a login `BrowserWindow` for Claude or the device flow for Copilot, estimated session expiry, a "company seat" toggle with an automatic warning when active on Copilot ("experimental feature, may stop working without notice").
+2. **Plan and renewal** — plan type, subscription renewal day (a simple "day of month" picker; stored as a minimal rule so different recurrences can be added later without changing the schema).
+3. **Work schedule** — 7 day toggles with 3 states (full/half/off) + an optional working-hours switch. Used to compute budget and projections on "remaining working days/hours", not calendar days.
+4. **Appearance** — language (Automatic / English / Italiano), window style (the three skins below), always-on-top, accent color, default chart range (week/month).
+5. **Notifications** — alert percentage threshold (default 80%, as in `CLAUDE.md`, now configurable), possibly per window (e.g. a separate alert for Claude's 5h limit).
+6. **Advanced** — placeholder for future evolutions (see §5): future local server, data export.
 
 ---
 
-## 3. Contenuto informativo del widget
+## 2. Main window — the three "skins"
 
-Corpo centrale — numero grande "current usage": la finestra di quota più critica al momento (quella con `utilization` più vicina al reset o più alta in %), con etichetta di quale finestra è (es. "Limite settimanale: 62%").
+They all read the same data (IPC from main, no duplicated logic) and only change `renderer/style.css` + `BrowserWindow` creation flags.
 
-Sotto, un grafico a barre/linea dei **picchi giornalieri**, selezionabile settimana/mese, con overlay della linea di budget ideale (pacing lineare) per vedere a colpo d'occhio se si è sopra o sotto.
+**"Filled" style (classic - light):**
+opaque background, block layout with borders. *(Updated:)* always `frame: false` with the app's custom title bar, revealed on hover — with `frame: true` the native OS title bar showed above the custom one (user feedback).
 
-*(Implementato così dopo EVOLUTION.md punto 1 — prima il grafico mostrava la % cumulata per giorno, un calco della dashboard del provider.)* Ogni barra è il **consumo di quel giorno** (`budget.dailyDeltas`: differenza col giorno precedente, reset esclusi), con un trattino per la quota ideale del giorno (0 nei giorni non lavorativi); barre oltre la quota in `--warning`. Non mostrato per finestre `rolling-hours`. Se l'account ha più finestre di quota, sopra al valore corrente c'è una **lista con verdetto** calcolato dall'app (`budget.windowVerdict`: esaurita / a rischio / in linea / nessun pacing), la critica per prima, al posto delle tab che affiancavano solo le metriche del provider.
+**"Filled" style (dark):** *(added, user feedback)*
+Same opaque structure as the classic skin, with inverted colors (dark background, light text) — see the `--*-filled-dark` tokens in `renderer/style.css`. No behavioural difference from the classic skin besides colors (same custom title bar, same hover behaviour, same layout).
 
-**Valore per token** *(EVOLUTION.md punto 4, solo account Claude con insight locali)*: "Resa" = token di output delle sessioni Claude Code locali per 1% di quota consumata (`budget.tokenYield`, con trend), e un consiglio causale su contesto ampio (`budget.consumptionCause`) mostrato **solo** se il segnale è netto. Limite dichiarato: l'SDK non espone l'orario dei singoli messaggi, ogni sessione è attribuita al giorno di ultima modifica.
+**"Transparent/digital" style:**
+`frame: false`, `transparent: true`. HUD-style numbers/bars (monospace font, light glow — still plain to respect "no animations" in `CLAUDE.md`: no pulsing, only static contrast/opacity). System buttons (close/minimize) recreated as custom overlay controls, `opacity: 0` by default and `opacity: 1` only on hover, with `-webkit-app-region: drag` on the title bar strip to move the window without a native title bar.
 
-Riquadro metriche:
-
-- **Token (o % quota)/giorno lavorativo corrente** — richiesto
-- **Andamento settimanale** — richiesto (il grafico sopra)
-- **Indice di efficienza** — richiesto. Proposta di formula: rapporto tra ritmo di consumo ideale e ritmo reale, calcolato sulle **unità lavorative** trascorse (non giorni di calendario):
-  `efficiencyIndex = (idealPace) / (actualPace)` dove `idealPace = 100% / unitàLavorativeTotaliNelPeriodo` e `actualPace = utilizationAttuale / unitàLavorativeTrascorse`. Valore intorno a 1 = in linea; >1 = si sta usando meno del previsto (margine per usare di più); <1 = si sta consumando più veloce del sostenibile.
-- **Previsionale** — richiesto: proiezione dell'utilizzo a fine periodo, estrapolando il ritmo medio reale sulle unità lavorative rimanenti.
-- **Giorni alla scadenza** — richiesto: sia giorni di calendario sia giorni **lavorativi** rimanenti (spesso più utile).
-- **Giorni di autonomia stimati** *(aggiunta)* — a quanti giorni lavorativi si esaurirà la quota mantenendo il ritmo attuale, utile quando è < giorni alla scadenza (segnale di rischio più diretto del solo indice di efficienza).
-- **Picco massimo vs media giornaliera** *(aggiunta; calcolato sui delta giornalieri, `budget.deltaStats`)* — per capire se i problemi sono concentrati in giornate anomale o distribuiti.
-- **Streak sotto budget** *(aggiunta)* — giorni lavorativi consecutivi entro il budget ideale, per rinforzo positivo leggero (in linea con "sobria", quindi solo un numero, non badge/gamification vistosa).
-- **Vista combinata multi-servizio** *(aggiunta, se entrambi Claude e Copilot attivi)* — un indicatore di "salute generale" che aggrega le percentuali delle finestre più critiche dei due servizi, utile per uno sguardo d'insieme prima di aprire il dettaglio.
-- **Tips/consigli del giorno** — richiesto: pannello alimentato da `agents/advisor.ts` (Claude Sonnet, cache 24h come da `CLAUDE.md`), che ora riceverà come contesto anche calendario di lavoro ed efficienza calcolata, non solo `dailyHistory` grezzo.
+**Always-on-top:** toggle in Settings and in the tray menu, applied with `win.setAlwaysOnTop(bool, 'floating')`; persisted and re-applied at startup.
 
 ---
 
-## 4. Tray (system tray) cross-platform
+## 3. Widget content
 
-`Tray` nativo Electron con icona per piattaforma (asset `.ico`/`.png`/`.icns` gestiti da `electron-builder`). Comportamento uniforme proposto:
-- Click sinistro → toggle mostra/nascondi finestra principale (su macOS il click sinistro apre di norma il menu: gestiamo quindi mostra/nascondi anche da un voce di menu esplicita, per coerenza su tutte le piattaforme).
-- Click destro (o click su macOS) → menu contestuale: Mostra/Nascondi, Impostazioni, Aggiorna ora, Always-on-top (toggle rapido), Esci.
-- Tooltip icona: sintesi rapida (es. "Claude 62% · Copilot 40%").
+Central body — big "current usage" number: the most critical quota window right now (highest `utilization`), labelled with which window it is (e.g. "Weekly limit: 62%").
+
+Below it, a chart, selectable week/month, with the ideal budget line (linear pacing) to see at a glance whether usage is above or below.
+
+*(Implemented this way after EVOLUTION.md point 1 — the chart used to show the cumulative % per day, a copy of the provider dashboard.)* Each bar is **that day's consumption** (`budget.dailyDeltas`: difference with the previous day, resets excluded), with a tick for the day's ideal share (0 on non-working days); bars above the share use `--warning`. Not shown for `rolling-hours` windows. When the account has several quota windows, a **list with a verdict** computed by the app (`budget.windowVerdict`: exhausted / at risk / on track / no pacing) sits above the current value, the critical one first, replacing tabs that only lined up the provider's metrics.
+
+**Value per token** *(EVOLUTION.md point 4, Claude accounts with local insights only)*: "Yield" = output tokens of local Claude Code sessions per 1% of quota used (`budget.tokenYield`, with trend), and a causal tip about large context (`budget.consumptionCause`) shown **only** when the signal is clear. Stated limit: the SDK does not expose per-message times, every session is attributed to the day it was last modified.
+
+Metrics panel:
+
+- **Tokens (or % of quota) per current working day** — requested
+- **Weekly trend** — requested (the chart above)
+- **Efficiency index** — requested. Formula: ratio between the ideal and actual consumption pace, computed on elapsed **working units** (not calendar days):
+  `efficiencyIndex = idealPace / actualPace` where `idealPace = 100% / totalWorkingUnitsInPeriod` and `actualPace = currentUtilization / elapsedWorkingUnits`. Around 1 = on track; >1 = using less than planned (room to use more); <1 = consuming faster than sustainable.
+- **Projection** — requested: projected usage at the end of the period, extrapolating the actual average pace over the remaining working units.
+- **Days to reset** — requested: both calendar days and remaining **working** days (often more useful).
+- **Estimated autonomy days** *(added)* — after how many working days the quota runs out at the current pace; useful when it is < days to reset (a more direct risk signal than the efficiency index alone).
+- **Peak vs daily average** *(added; computed on daily deltas, `budget.deltaStats`)* — to tell whether problems are concentrated on unusual days or spread out.
+- **Streak under budget** *(added)* — consecutive working days within the ideal budget, as light positive reinforcement (consistent with "plain": just a number, no badges/flashy gamification).
+- **Combined multi-service view** *(added, when both Claude and Copilot are active)* — an "overall health" indicator aggregating the most critical windows of the two services, for an overview before opening the details.
+- **Tip of the day** — requested. *(Implemented:)* derived from real data by `budget.generateDailyTip` (explicit conditions on the computed metrics, never a generic sentence); `agents/advisor.ts` (Claude Sonnet, 24h cache as in `CLAUDE.md`) is still a stub.
 
 ---
 
-## 4b. Aggiornamenti dell'app (issue #5)
+## 4. Cross-platform system tray
 
-- **Cosa fa:** all'avvio (dopo ~10s, solo app pacchettizzata) e ogni 24h, `services/updates.ts` legge l'elenco delle Release GitHub del progetto e confronta la versione più alta (semver con pre-release, bozze escluse) con `app.getVersion()`. Se è più recente: notifica di sistema una sola volta per versione (`updates.notifiedVersion`), voce nel menu tray e card "Aggiornamenti" in Impostazioni con "Scarica X" (apre nel browser il pacchetto per l'OS in uso) e "Controlla ora". Disattivabile (`updates.autoCheck`).
-- **Endpoint:** `GET https://api.github.com/repos/suppressio/ia-hypermiler/releases` (API REST ufficiale, anonima, 60 richieste/h per IP: ampio margine). **Non** `/releases/latest`, che esclude le pre-release — e tutte le release del progetto lo sono (`releaseType: "prerelease"`). Nessun dato dell'utente nella richiesta.
-- **Scelta del pacchetto:** `.exe` su Windows, `.dmg` della stessa architettura su macOS (la CI produce solo arm64: su un Mac Intel si apre la pagina della release), `.AppImage` se l'app gira come AppImage (`process.env.APPIMAGE`) altrimenti `.deb` su Linux.
-- **Perché niente installazione automatica (electron-updater):** scelta dell'utente — nessuna dipendenza nuova, e con pacchetti non firmati l'aggiornamento in-app non funzionerebbe comunque su macOS. L'URL aperto viene sempre dallo store (scritto dal main) e deve iniziare per `https://github.com/suppressio/ia-hypermiler/`, mai da un valore passato dal renderer.
+Native Electron `Tray` with a per-platform icon (`.ico`/`.png`/`.icns` assets handled by `electron-builder`). Uniform behaviour:
+- Left click → show/hide the main window (on macOS a left click usually opens the menu: show/hide is therefore also an explicit menu entry, for consistency on every platform).
+- Right click (or click on macOS) → context menu: Show/Hide, Settings, Refresh now, Always on top (quick toggle), Quit; plus "Update available (X)…" when a new version exists.
+- Icon tooltip: quick summary (e.g. "Claude 62% · Copilot 40%").
 
-## 5. Evoluzioni future (non implementate ora, solo predisposte)
+---
 
-**Integrazione con strumenti grafici esterni (Rainmeter, KDE Plasma, ecc.):**
-Per non doppiare la logica, `budget.js` e il calcolo delle metriche restano moduli puri nel main process, richiamabili sia dal canale IPC verso il renderer sia — in futuro — da un piccolo **server HTTP locale in loopback** (`127.0.0.1`, porta configurabile, token di accesso locale generato all'avvio) che espone un endpoint read-only tipo `GET /api/status` con lo stesso JSON usato internamente. Rainmeter può leggerlo con un plugin WebParser/JSON; un Plasmoid KDE con una piccola QML che fa fetch periodico. Nessuna implementazione ora: solo il vincolo architetturale "tieni la logica di calcolo separata dalla UI" già rispettato dalla struttura in `CLAUDE.md`.
+## 4b. App updates (issue #5)
 
-**Analisi di utilizzo avanzata (modello usato, numero di agenti, attività parallele):**
-Per Claude Code questi dati sono già presenti nei JSONL locali (modello, conteggio token per tipo, id di sessione) — quindi è la fonte più ricca e a costo quasi zero da cui partire per questa funzionalità. Per l'uso via webapp claude.ai e per Copilot i dati disponibili sono più poveri (solo utilizzo aggregato). Predisponiamo lo schema `history.dailyUsage` con un campo opzionale `meta` (ignorato dall'aggregazione v1) per non dover fare migrazioni quando arriverà questa funzione:
+- **What it does:** at startup (after ~10s, packaged app only) and every 24h, `services/updates.ts` reads the project's GitHub Releases list and compares the highest version (semver with pre-releases, drafts excluded) with `app.getVersion()`. When newer: one system notification per version (`updates.notifiedVersion`), a tray menu entry and an "Updates" card in Settings with "Download X" (opens the package for the current OS in the browser) and "Check now". Can be disabled (`updates.autoCheck`).
+- **Endpoint:** `GET https://api.github.com/repos/suppressio/ia-hypermiler/releases` (official REST API, anonymous, 60 requests/h per IP: ample margin). **Not** `/releases/latest`, which skips pre-releases — and every release of the project is one (`releaseType: "prerelease"`). No user data in the request.
+- **Package choice:** `.exe` on Windows, `.dmg` of the same architecture on macOS (CI builds arm64 only: on an Intel Mac the release page opens), `.AppImage` when the app runs as an AppImage (`process.env.APPIMAGE`), otherwise `.deb` on Linux.
+- **Why no automatic installation (electron-updater):** the user's choice — no new dependency, and with unsigned packages in-app updates would not work on macOS anyway. The URL opened always comes from the store (written by the main process) and must start with `https://github.com/suppressio/ia-hypermiler/`, never from a value passed by the renderer.
+
+## 4c. Interface language (multilingual)
+
+- **Languages:** English (primary) and Italian. `ui.language`: `'auto'` (Italian when the system language is `it*`, English otherwise) or an explicit choice; applied immediately to widget, Settings and tray, without a restart.
+- **No library:** typed flat dictionaries + `Intl` for numbers and dates. The renderer has no bundler, so it cannot import from `node_modules`; for two languages a dictionary per process is enough. `en.ts` is the reference, `it.ts` is typed on the same keys: a missing or extra key does not compile.
+- **Each process owns its texts** (two separate TypeScript projects): `renderer/i18n/` for the UI (including tips and verdicts), `main/i18n/` for tray, notifications, dialogs, login window and OAuth callback page.
+- **Data, not sentences:** `budget.generateDailyTip` returns `{ key, params }` and the renderer composes the sentence; quota window labels are translated by `id`. Technical error messages from services stay in English (they are code); the main process frames them in the user's language for known cases (session expired).
+- **Text in HTML:** English by default + `data-i18n`, `data-i18n-title`, `data-i18n-aria-label`, `data-i18n-placeholder` attributes.
+- **Code and documents:** all code is in English; human-facing documents exist in English (`X.md`) and Italian (`X.it.md`).
+
+## 5. Future evolutions (not implemented, only prepared for)
+
+**Integration with external desktop tools (Rainmeter, KDE Plasma, etc.):**
+To avoid duplicating logic, `budget.ts` and the metric computation stay pure modules in the main process, callable both from the IPC channel to the renderer and — in the future — from a small **local loopback HTTP server** (`127.0.0.1`, configurable port, local access token generated at startup) exposing a read-only endpoint such as `GET /api/status` with the same JSON used internally. Rainmeter could read it with a WebParser/JSON plugin; a KDE Plasmoid with a small QML doing periodic fetches. No implementation now: only the architectural constraint "keep the computation logic separate from the UI", already respected by the structure in `CLAUDE.md`.
+
+**Advanced usage analysis (model used, number of agents, parallel activity):**
+For Claude Code this data is already in the local session files (model, token counts by type, session id) — the richest source, at almost zero cost, to start this feature from (the first part is implemented: local insights and value per token). For claude.ai web usage and for Copilot the available data is poorer (aggregate usage only). The `history.dailyUsage` schema has an optional `meta` field (ignored by the v1 aggregation) to avoid migrations when this feature arrives:
 ```js
 { date, accountId, windowId, used, meta: { model?, sessionId?, parallelAgents?, activityType? } }
 ```
 
-**Retrospettiva e direzioni future non decise:**
-Dopo la chiusura dell'MVP (Giorno 3), l'utente ha aperto una retrospettiva concettuale sulla direzione del progetto (staccarsi dalla vista dei provider, separare dati/backend da UI con un'API interna, genericità multi-provider, ridefinire "efficienza" verso il valore-per-token, costo in risorse di Electron in modalità solo-tray). Spostata in un documento dedicato per non mischiare "cosa si sta costruendo" (questo file) con "direzioni non ancora decise, in valutazione costi/benefici" — vedi **`EVOLUTION.md`**.
+**Retrospective and undecided future directions:**
+After the MVP (Day 3), the user opened a conceptual retrospective on the direction of the project (moving away from the provider's view, separating data/backend from the UI with an internal API, multi-provider genericity, redefining "efficiency" towards value per token, Electron's resource cost in tray-only mode). Moved to a dedicated document so "what is being built" (this file) is not mixed with "directions not decided yet, under cost/benefit evaluation" — see **`EVOLUTION.md`**.
 
 ---
 
-## 6. Impatto sulla struttura file (rispetto allo scheletro in `CLAUDE.md`)
+## 6. Impact on the file structure (compared with the skeleton in `CLAUDE.md`)
 
-Aggiunte proposte in Sessione 2 (confermate e implementate):
-- `renderer/settings.html` + `renderer/settings.ts` + `renderer/settings.css` — finestra impostazioni separata.
-- `main/windows.ts` — creazione/gestione delle due `BrowserWindow` (skin pieno/trasparente) e della finestra impostazioni, per non appesantire `main.ts`.
-- `main/tray.ts` — logica tray isolata.
-- `budget.ts` — esteso per multi-finestra, efficienza, previsionale, autonomia stimata (resta comunque un modulo puro, testabile con `budget.test.ts` come richiesto in `PLAN.md`).
+Additions proposed in Session 2 (confirmed and implemented):
+- `renderer/settings.html` + `renderer/settings.ts` + `renderer/settings.css` — separate Settings window.
+- `main/windows.ts` — creation/management of the main `BrowserWindow` (skins) and of the Settings window, so `main.ts` is not weighed down.
+- `main/tray.ts` — isolated tray logic.
+- `budget.ts` — extended for multiple windows, efficiency, projection, estimated autonomy (still a pure module, tested by `budget.test.ts` as required in `PLAN.md`).
 
-Aggiunte ulteriori in Giorno 2, Sessione 1 (services layer reale):
-- `main/claude-auth.ts` — cattura della sessione Claude via `BrowserWindow` di login embedded (classico o SSO), mai chiesto in chiaro all'utente.
-- `services/_http.ts` — helper HTTP condiviso tra i due service (timeout esplicito, errori leggibili, mai `null` silenzioso — regola CLAUDE.md).
-- Migrazione a TypeScript (feedback utente, dopo Giorno 2 Sessione 1): tutti i file convertiti a `.ts`, tipi condivisi in `types/index.ts`, test con `node:test` (`budget.test.ts`, `services/*.test.ts`, `tests/integration/*`). Dettagli in CLAUDE.md §"Build e test".
-- `store.history.lastGood.{claude,copilot}` — cache dell'ultimo snapshot riuscito per servizio, usata come fallback quando una fetch fallisce (mostrato in UI con timestamp e indicazione "dato non aggiornato").
+Further additions on Day 2, Session 1 (real services layer):
+- `main/claude-auth.ts` — Claude session capture through an embedded login `BrowserWindow` (classic or SSO), never asked to the user in clear.
+- `services/_http.ts` — HTTP helper shared by the services (explicit timeout, readable errors, never a silent `null` — CLAUDE.md rule).
+- Migration to TypeScript (user feedback, after Day 2 Session 1): every file converted to `.ts`, shared types in `types/index.ts`, tests with `node:test` (`budget.test.ts`, `services/*.test.ts`, `tests/integration/*`). Details in CLAUDE.md, "Build and test".
+- `store.history.lastGood.<accountId>` — cache of the last successful snapshot per account, used as a fallback when a fetch fails (shown in the UI with its timestamp and a "data not up to date" note).
 
-Nessun'altra modifica architetturale non richiesta: services, store, agents restano dove previsto, solo con interfacce estese come discusso al §0.
+Later additions are listed in the `CLAUDE.md` file structure (account registry and providers, store normalization, i18n, update check).
 
 ---
 
-## Domande aperte per confermare prima di procedere al codice
+## Open questions confirmed before writing the code (historical)
 
-1. Va bene generalizzare l'interfaccia `fetchUsage()` al modello multi-finestra (§0), o preferisci partire da una versione semplificata (una sola finestra "principale" per servizio) e aggiungere le altre dopo?
-2. La formula di efficienza proposta al §3 ti sembra utile così, o hai in mente un calcolo diverso?
-3. Confermi le aggiunte proposte (giorni di autonomia stimati, picco vs media, streak, vista combinata) o preferisci restare stretti alla lista che hai indicato?
-4. Per il tray: va bene il comportamento "click sinistro = toggle, click destro = menu" su tutte le piattaforme, o preferisci un menu sempre disponibile anche al click sinistro?
+1. Generalize `fetchUsage()` to the multi-window model (§0), or start with a simplified version (one "main" window per service)? → multi-window, adopted.
+2. Is the efficiency formula in §3 useful as is? → adopted.
+3. Confirm the proposed additions (estimated autonomy days, peak vs average, streak, combined view)? → the first three implemented.
+4. Tray: "left click = toggle, right click = menu" on every platform? → adopted, with show/hide also as a menu entry.

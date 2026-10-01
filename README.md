@@ -1,19 +1,29 @@
+🌐 **English** | [Italiano](README.it.md)
+
 # IA Hypermiler
 
-App desktop Electron (Windows / macOS / Linux) che monitora il consumo di token AI — Claude e GitHub Copilot — e calcola un budget giornaliero ottimale per non esaurire la quota periodica prima del rinnovo. Pensata per il singolo sviluppatore che vuole tenere sotto controllo il proprio utilizzo, non per un admin che monitora un team.
+Electron desktop app (Windows / macOS / Linux) that monitors AI token usage — Claude and GitHub Copilot — and computes an optimal daily budget so the periodic quota does not run out before renewal. Built for the individual developer keeping an eye on their own usage, not for an admin monitoring a team.
 
-Mostra un widget sempre visibile con l'utilizzo corrente, l'andamento settimanale/mensile, un indice di efficienza, una proiezione a fine periodo e consigli d'uso generati da Claude.
+It shows an always-visible widget with the current usage, daily consumption against the ideal budget, an efficiency index and star rating, an end-of-period projection and tips derived from your real data. The interface is available in **English and Italian** (automatic from the system language, or chosen in Settings).
 
-> Progetto personale in sviluppo attivo, costruito in pair-programming con Claude. Non è pronto per un uso in produzione: vedi "Stato del progetto" più sotto per cosa funziona oggi e cosa manca ancora.
+> Personal project in active development, built in pair programming with Claude. Pre-releases (`v0.x-beta`) are published on GitHub; see "Project status" below for what works today.
 
 ---
 
-## Requisiti
+## Features
 
-- Node.js 20 LTS o superiore (consigliato 22 LTS)
+- **Several accounts, any mix of providers** — e.g. two Claude accounts and one Copilot, each with its own isolated session; "Disconnect" really deletes the saved session.
+- **A view of its own, not a copy of the provider dashboard** — consumption per day against the ideal share, a list of quota windows with a verdict (on track / at risk / exhausted), instant consumption gauge, efficiency rating.
+- **Value per token** (Claude, opt-in) — reads local Claude Code sessions (token counts and tool names only, never message content) to show how many tokens you produce per 1% of quota and, when the signal is clear, why you are consuming faster.
+- **Update check** — at startup and every 24 hours; the right package for your system opens in the browser.
+- **Format-drift report** — if a provider changes its response format, a pre-filled GitHub issue draft opens (structure only, never real values) for you to review.
+
+## Requirements
+
+- Node.js 22 LTS or later
 - npm
 
-## Installazione
+## Install
 
 ```bash
 git clone https://github.com/suppressio/ia-hypermiler.git
@@ -21,42 +31,36 @@ cd ia-hypermiler
 npm install
 ```
 
-## Avvio in sviluppo
+Or download a pre-built package (`.exe`, `.dmg`, `.AppImage`, `.deb`) from [Releases](https://github.com/suppressio/ia-hypermiler/releases).
+
+## Run in development
 
 ```bash
 npm start
 ```
 
-Compila TypeScript (main process + renderer) e avvia Electron. Al primo avvio l'app parte senza account collegati: apri le Impostazioni (icona ingranaggio nel widget, o dal tray) per collegare Claude e/o GitHub Copilot.
+Compiles TypeScript (main process + renderer) and starts Electron. On first start there are no accounts: open Settings (gear icon in the widget, or from the tray) and add a Claude and/or GitHub Copilot account.
 
-## Build
-
-```bash
-npm run build
-```
-
-Compila `tsconfig.json` (main process: `main.ts`, `preload.ts`, `services/`, `store/`, `budget.ts`, `agents/`) e `tsconfig.renderer.json` (renderer, ES module nativo — nessun bundler), poi copia gli asset statici (`html`/`css`) del renderer in `dist/renderer/` tramite `scripts/copy-assets.js`. Output sempre in `dist/` (gitignored).
-
-## Test
+## Build, lint and test
 
 ```bash
-npm test
+npm run build      # TypeScript (main + renderer) + static assets into dist/
+npm run lint       # ESLint with type-aware rules (must stay at zero findings)
+npm run typecheck  # tsc --noEmit on every TypeScript project
+npm test           # build + unit tests (Node's built-in node:test runner)
+npm run coverage   # tests with Node's built-in coverage
 ```
 
-Compila il progetto ed esegue i test con il runner nativo di Node (`node:test`, nessuna libreria di test esterna):
-
-- **Test unitari** (`budget.test.ts`, `services/claude.test.ts`, `services/copilot.test.ts`, `services/_shape.test.ts`, `diagnostics/githubIssue.test.ts`): logica pura e parsing/gestione errori con `fetch` mockato. Girano sempre, non toccano la rete.
-- **Test di integrazione** (`tests/integration/`): chiamano le vere API di Claude e GitHub Copilot. Si **auto-skippano** se mancano le credenziali.
-
-Per attivare i test di integrazione in locale, **mai incollando credenziali in chat o in commit**:
+- **Unit tests** run always and never touch the network (`fetch` and the SDK are mocked).
+- **Integration tests** (`tests/integration/`) call the real Claude and GitHub APIs and **skip themselves** when credentials are missing. To enable them locally — **never pasting credentials in chat or commits**:
 
 ```bash
 cp .env.test.example .env.test
-# compila .env.test con le tue credenziali (vedi commenti nel file)
+# fill .env.test with your credentials (see the comments in the file)
 npm test
 ```
 
-`.env.test` è già in `.gitignore` e viene caricato automaticamente da Node (`--env-file-if-exists`), senza dipendenze aggiuntive.
+`.env.test` is already in `.gitignore` and is loaded automatically by Node (`--env-file-if-exists`), with no extra dependency.
 
 ## Packaging
 
@@ -64,62 +68,58 @@ npm test
 npm run package
 ```
 
-Build + `electron-builder`: produce l'installer per la piattaforma corrente (`.dmg` su macOS, `.exe`/NSIS su Windows, `.AppImage` e `.deb` su Linux) in `release/`.
+Build + `electron-builder`: produces the installer for the current platform (`.dmg` on macOS, `.exe`/NSIS on Windows, `.AppImage` and `.deb` on Linux) in `release/`.
 
-### Build multipiattaforma (GitHub Actions)
+### Cross-platform build (GitHub Actions)
 
-`.github/workflows/build.yml` builda in parallelo su macOS/Windows/Linux dallo stesso commit, senza bisogno di tre macchine fisiche. Parte solo pushando un tag `v*` (es. `v0.1.0`) o manualmente dalla tab Actions; i pacchetti risultanti restano scaricabili come artifact della run (nessuna Release pubblicata automaticamente). I pacchetti non sono firmati: su macOS/Windows l'installazione mostrerà un avviso di sicurezza finché non verranno aggiunti certificati di firma reali.
+`.github/workflows/build.yml` builds on macOS/Windows/Linux in parallel from the same commit. It runs when a `v*` tag is pushed (e.g. `v0.4.0-beta`) or manually from the Actions tab: lint, tests, then the packages are attached to the GitHub Release of the tag. Packages are not signed: macOS Gatekeeper and Windows SmartScreen show a warning at install time.
 
 ---
 
-## Struttura del progetto
+## Project structure
 
 ```
 ia-hypermiler/
-├── main.ts, preload.ts        ← processo principale Electron + bridge sicuro verso il renderer
-├── main/                      ← finestre (skin filled/filled-dark/transparent-digital), tray, login Claude
-├── renderer/                  ← widget e finestra impostazioni (HTML/CSS/TS vanilla)
-├── services/                  ← fetch usage da Claude e Copilot (+ relativi test)
-├── diagnostics/                ← auto-segnalazione "format drift" via bozza issue GitHub (mai valori reali, sempre da confermare a mano)
-├── store/                     ← persistenza locale (electron-store, cifrata)
-├── budget.ts                  ← calcolo budget/efficienza/previsionale (+ budget.test.ts)
-├── agents/                    ← agente Claude per i consigli d'uso (in arrivo)
-├── types/                     ← tipi condivisi TypeScript
-├── tests/integration/         ← test contro le vere API, gated da credenziali locali
-└── CLAUDE.md, ARCHITECTURE.md, RESEARCH.md   ← documentazione di progetto (vedi sotto)
+├── main.ts, preload.ts        ← Electron main process + secure bridge to the renderer
+├── main/                      ← windows, tray, Claude login, OAuth, per-provider logic, main-process i18n
+├── renderer/                  ← widget and Settings window (vanilla HTML/CSS/TS) + UI i18n
+├── services/                  ← Claude/Copilot usage fetch, local sessions, update check (+ tests)
+├── diagnostics/               ← format-drift report via a GitHub issue draft
+├── store/                     ← local persistence (encrypted electron-store), defaults, normalization, migration
+├── budget.ts                  ← budget/efficiency/projection logic (+ budget.test.ts)
+├── agents/                    ← Claude agent for usage advice (stub)
+├── types/                     ← shared TypeScript types
+├── tests/                     ← test helpers + integration tests gated by local credentials
+└── *.md / *.it.md             ← project documentation, English + Italian
 ```
 
-Per i dettagli — ricerca sulle API disponibili, decisioni architetturali, regole di sviluppo — vedi:
+Further reading:
 
-- [`RESEARCH.md`](./RESEARCH.md) — cosa si può leggere realmente dalle API di Claude e Copilot, e con quali limiti
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — modello dati, finestre, indicatori, hook di estensibilità futura
-- [`CLAUDE.md`](./CLAUDE.md) — memoria di progetto: stack, regole architetturali, stato avanzamento dettagliato
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — data model, windows, indicators, extensibility
+- [`RESEARCH.md`](./RESEARCH.md) — what can really be read from the Claude and Copilot APIs, and with which limits
+- [`EVOLUTION.md`](./EVOLUTION.md) — retrospective and future directions with a cost/benefit analysis
+- [`PLAN.md`](./PLAN.md) — the original day-by-day plan
+- [`CLAUDE.md`](./CLAUDE.md) — project memory for Claude Code: stack, rules, milestones
 
 ---
 
-## Sicurezza e credenziali
+## Security and credentials
 
-- `nodeIntegration: false` e `contextIsolation: true` sempre attivi: il renderer non ha mai accesso diretto a Node.js.
-- La sessione Claude si ottiene con un vero login in una finestra embedded (classico o SSO): l'app non chiede mai di incollare un cookie a mano.
-- Il token GitHub Copilot è un Personal Access Token fine-grained (permesso "Plan", sola lettura), fornito dall'utente e salvato cifrato in locale.
-- Nessuna credenziale viene mai esposta nel renderer o loggata; `store/` e `.env.test` sono esclusi da git.
+- `nodeIntegration: false` and `contextIsolation: true` always: the renderer never has direct access to Node.js; every value coming from it through IPC is validated.
+- The Claude session comes from a real login in an embedded window (classic or SSO), in a partition dedicated to the account: the app never asks you to paste a cookie.
+- The GitHub Copilot token is a Personal Access Token (fine-grained, "Plan" read-only) or an OAuth App token, stored encrypted locally.
+- No credential is ever exposed to the renderer or logged; `.env.test` is excluded from git.
 
-## Stato del progetto
+## Project status
 
-Sviluppo per sessioni, tracciato in dettaglio nella tabella "Stato avanzamento" di [`CLAUDE.md`](./CLAUDE.md). In sintesi:
+- ✅ Real data from Claude (internal endpoint + session) and Copilot (official API for personal plans; company seats have no self-service data source, see `RESEARCH.md`)
+- ✅ Several accounts, multi-language UI (EN/IT), update check, format-drift diagnostics
+- ✅ Own visualizations: daily consumption vs budget, window verdicts, instant gauge, rating, value per token
+- ✅ Strict TypeScript (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), type-aware ESLint at zero findings, unit tests on every pure module
+- ✅ Cross-platform CI publishing pre-releases
+- 🟨 Advice agent (`agents/advisor.ts`) still a stub
+- ⬜ Next: shared IPC contract, then extracting a testable core from `main.ts` to work test-first
 
-- ✅ Ricerca API, architettura, scheletro Electron con le due skin, tray, impostazioni complete
-- ✅ Migrazione a TypeScript (`strict: true`, zero `any`)
-- ✅ `services/claude.ts` e `services/copilot.ts` con dati reali: endpoint interno + sessione per Claude, API ufficiale per Copilot personale, endpoint best-effort per seat Copilot aziendali (segnalato in UI come sperimentale)
-- ✅ Fallback su ultimo dato noto con timestamp se una fetch fallisce; storico giornaliero costruito localmente (né Claude né Copilot lo espongono via API)
-- ✅ Test unitari su logica di budget e service (mock, no rete) + test di integrazione predisposti
-- ✅ Diagnostica: se un endpoint Claude/Copilot cambia formato, l'app apre da sola una bozza di issue GitHub precompilata (solo struttura, mai valori reali) da confermare manualmente — vedi `CLAUDE.md` per i dettagli
-- 🟨 Agente consigli (`agents/advisor.ts`) ancora uno stub: da collegare all'SDK Anthropic reale
-- 🟨 CI multipiattaforma definita (`.github/workflows/build.yml`), non ancora verificata con una run reale su GitHub
-- ⬜ Rifinitura notifiche/robustezza e subagent review finale (in arrivo)
+## License
 
-Limite noto: i test di integrazione, l'avvio reale dell'app e la CI di GitHub Actions non sono ancora stati verificati contro account/ambienti veri — vanno provati in locale (`npm test` con `.env.test` compilato, `npm start` con un account collegato dalle Impostazioni) e pushando un tag `v*` per la CI.
-
-## Licenza
-
-Privato / non ancora licenziato (`UNLICENSED` in `package.json`). Il codice è visibile pubblicamente ma non ne è concesso il riuso senza permesso esplicito dell'autore.
+Private / not licensed yet (`UNLICENSED` in `package.json`). The code is publicly visible but may not be reused without the author's explicit permission.
