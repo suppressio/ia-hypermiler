@@ -38,6 +38,7 @@ Project memory for Claude Code. Read it in full before touching the code.
 ```
 ia-hypermiler/
 ├── CLAUDE.md                    ← this file (English only)
+├── LICENSE                      ← MIT
 ├── README.md / README.it.md     ← user-facing docs (EN primary, IT secondary)
 ├── ARCHITECTURE.md / .it.md     ← app design: data model, windows, widget, tray, updates, i18n
 ├── RESEARCH.md / .it.md         ← what the Claude/Copilot APIs really expose (Day 1 + addenda)

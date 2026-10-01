@@ -122,4 +122,4 @@ Further reading:
 
 ## License
 
-Private / not licensed yet (`UNLICENSED` in `package.json`). The code is publicly visible but may not be reused without the author's explicit permission.
+[MIT](./LICENSE) © 2026 Daniele 'suppressio'.

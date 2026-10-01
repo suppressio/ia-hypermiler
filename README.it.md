@@ -122,4 +122,4 @@ Approfondimenti:
 
 ## Licenza
 
-Privato / non ancora licenziato (`UNLICENSED` in `package.json`). Il codice è visibile pubblicamente ma non ne è concesso il riuso senza permesso esplicito dell'autore.
+[MIT](./LICENSE) © 2026 Daniele 'suppressio'. Il testo legale della licenza è in inglese.

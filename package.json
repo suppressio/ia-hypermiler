@@ -17,7 +17,7 @@
     "package": "npm run build && electron-builder"
   },
   "author": "Daniele 'suppressio' <82306300+suppressio@users.noreply.github.com>",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.234",
