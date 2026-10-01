@@ -16,6 +16,7 @@ import type {
   WindowVerdict,
 } from './types';
 import { byId } from './dom.js';
+import { localDateKey, parseDateKey } from './dates.js';
 import {
   applyTranslations,
   formatDate,
@@ -203,7 +204,7 @@ function buildChartSeries(deltas: DailyDelta[], days: number): DailyDelta[] {
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateKey(d);
     series.push(byDate.get(dateStr) ?? { date: dateStr, delta: null, idealShare: null });
   }
   return series;
@@ -258,7 +259,7 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): vo
     rect.setAttribute('fill', overBudget ? 'var(--warning)' : 'var(--accent)');
     rect.setAttribute('opacity', delta !== null ? '0.85' : '0.15');
     const title = document.createElementNS(svgNs, 'title');
-    const date = formatDate(point.date);
+    const date = formatDate(parseDateKey(point.date));
     title.textContent = delta === null
       ? t('widget.chart.noData', { date })
       : point.idealShare !== null

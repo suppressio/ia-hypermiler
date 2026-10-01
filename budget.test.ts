@@ -473,3 +473,19 @@ test('generateDailyTip: the consumption/context link is a candidate only when pr
   assert.deepEqual(tip, { key: 'cause', params: { highPercent: 85, lowPercent: 12, days: 6 } });
   assert.deepEqual(budget.generateDailyTip({ ...baseTipContext(), consumptionCause: null }), budget.NO_TIP);
 });
+
+// ---------------------------------------------------------------------------
+// Local day keys of the daily history
+// ---------------------------------------------------------------------------
+
+test('localDateKey is the LOCAL day, also right after local midnight (not the UTC one)', () => {
+  assert.equal(budget.localDateKey(new Date(2026, 9, 1, 0, 30)), '2026-10-01');
+  assert.equal(budget.localDateKey(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
+});
+
+test('parseDateKey returns local midnight, so the weekday matches the key', () => {
+  const date = budget.parseDateKey('2026-07-13'); // a Monday
+  assert.equal(date.getDay(), 1);
+  assert.equal(date.getHours(), 0);
+  assert.equal(budget.localDateKey(date), '2026-07-13');
+});

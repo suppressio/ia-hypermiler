@@ -109,7 +109,7 @@ function recordDailyUsage(accountId: AccountId, window: QuotaWindow): void {
   const utilization = budget.normalizedUtilization(window);
   if (utilization === null) return;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = budget.localDateKey(new Date());
   const history = store.get('history').dailyUsage;
   const idx = history.findIndex((h) => h.date === today && h.accountId === accountId && h.windowId === window.id);
   const entry: DailyUsagePoint = { date: today, accountId, windowId: window.id, used: Math.round(utilization * 10) / 10 };
@@ -504,7 +504,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
 // ---------------------------------------------------------------------------
 function maybeNotifyThreshold(snapshot: UsageSnapshot): void {
   const threshold = store.get('ui').notificationThresholdPercent;
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = budget.localDateKey(new Date());
   const notifiedToday = { ...store.get('meta').notifiedToday };
 
   for (const account of snapshot.accounts) {

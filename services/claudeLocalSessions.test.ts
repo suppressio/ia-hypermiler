@@ -9,6 +9,7 @@ import { computeClaudeLocalInsights } from './claudeLocalSessions';
 import type { LocalSessionsDeps } from './claudeLocalSessions';
 import type { SDKSessionInfo, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import { at } from '../tests/support/at';
+import { localDateKey } from '../budget';
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -120,8 +121,8 @@ test('computeClaudeLocalInsights returns null when listSessions fails', async ()
 
 test('computeClaudeLocalInsights groups tokens by the day the session was last modified', async () => {
   const now = Date.now();
-  const today = new Date(now).toISOString().slice(0, 10);
-  const yesterday = new Date(now - DAY).toISOString().slice(0, 10);
+  const today = localDateKey(new Date(now));
+  const yesterday = localDateKey(new Date(now - DAY));
   const deps = makeDeps(
     [session({ sessionId: 'a', lastModified: now }), session({ sessionId: 'b', lastModified: now - DAY, createdAt: now - DAY - HOUR })],
     {

@@ -26,6 +26,28 @@ import type {
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 /**
+ * Calendar-day key (YYYY-MM-DD) in LOCAL time — the key of history.dailyUsage and of
+ * the per-day notification flags. Not `toISOString().slice(0, 10)`: that is the UTC
+ * day, so a refresh between local midnight and the UTC offset landed on the previous
+ * day, while every pacing function reasons in local days.
+ */
+export function localDateKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${String(date.getFullYear())}-${month}-${day}`;
+}
+
+/**
+ * Local midnight of a YYYY-MM-DD key. Not `new Date(key)`, which parses a date-only
+ * string as UTC midnight: west of Greenwich that is the previous local day (wrong
+ * weekday, wrong working unit).
+ */
+export function parseDateKey(key: string): Date {
+  const [year = NaN, month = NaN, day = NaN] = key.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/**
  * Working unit of a single calendar day: 1 (full), 0.5 (half), 0 (off).
  * When `workSchedule.enabled` is false (schedule disabled, e.g. a personal account
  * with no days/hours to respect), every day counts as 1 regardless of `days` — pacing
@@ -312,7 +334,7 @@ export function dailyDeltas(
     if (prev) {
       const rawDelta = curr.used - prev.used;
       const idealShare = totalPeriodWorkingUnits > 0
-        ? round2(getDayUnit(new Date(curr.date), workSchedule) * (100 / totalPeriodWorkingUnits))
+        ? round2(getDayUnit(parseDateKey(curr.date), workSchedule) * (100 / totalPeriodWorkingUnits))
         : null;
       result.push({ date: curr.date, delta: rawDelta < 0 ? null : round2(rawDelta), idealShare });
     }

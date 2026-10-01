@@ -16,6 +16,7 @@
 // not). Fix: a native dynamic import(), see dynamicImport below.
 import type { ListSessionsOptions, GetSessionMessagesOptions, SDKSessionInfo, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { ClaudeLocalInsights, LocalDailyTokens, ToolUsageShare } from '../types/index';
+import { localDateKey } from '../budget';
 
 const HIGH_CONTEXT_THRESHOLD = 150_000; // estimated context tokens, same threshold as the VS Code panel that inspired this feature
 const LONG_SESSION_HOURS = 8;
@@ -101,13 +102,13 @@ export async function computeClaudeLocalInsights(
   // Tokens per day, to cross with quota consumption (budget.tokenYield /
   // budget.consumptionCause). The SDK exposes no per-message timestamp (SessionMessage
   // has none), so the whole session is attributed to the day it was last modified: an
-  // approximation stated in the UI. Dates as YYYY-MM-DD UTC, the same convention as
-  // history.dailyUsage (main.ts).
+  // approximation stated in the UI. Dates as LOCAL YYYY-MM-DD, the same convention as
+  // history.dailyUsage (main.ts, budget.localDateKey).
   const daily = new Map<string, LocalDailyTokens>();
 
   for (const session of inWindow) {
     const durationMs = typeof session.createdAt === 'number' ? session.lastModified - session.createdAt : null;
-    const day = new Date(session.lastModified).toISOString().slice(0, 10);
+    const day = localDateKey(new Date(session.lastModified));
     const dayBucket = daily.get(day) ?? { date: day, outputTokens: 0, highContextOutputTokens: 0 };
     daily.set(day, dayBucket);
     const isLongSession = durationMs !== null && durationMs >= LONG_SESSION_HOURS * 3600 * 1000;
