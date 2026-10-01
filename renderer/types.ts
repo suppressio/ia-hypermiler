@@ -162,6 +162,7 @@ export interface ClaudeAccountConfig extends AccountConfigBase {
 export interface CopilotAccountConfig extends AccountConfigBase {
   provider: 'copilot';
   authMethod: 'pat' | 'oauth';
+  host: string;
   planTier: string;
   credentials: { username: string | null };
   oauthApp: { clientId: string | null };
@@ -218,8 +219,8 @@ export interface HypermilerBridge {
   addAccount(provider: ProviderId): Promise<AccountId>;
   removeAccount(id: AccountId): Promise<void>;
   connectClaude(id: AccountId): Promise<{ organizationId: string | null }>;
-  connectCopilot(id: AccountId, token: string): Promise<{ username: string }>;
-  connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string): Promise<{ username: string }>;
+  connectCopilot(id: AccountId, token: string, host: string): Promise<{ username: string }>;
+  connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string, host: string): Promise<{ username: string }>;
   disconnectAccount(id: AccountId): Promise<void>;
   getAppVersion(): Promise<string>;
   checkForUpdates(): Promise<UpdateSettings>;

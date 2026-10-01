@@ -18,6 +18,7 @@ import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
 import { computeClaudeLocalInsights } from './services/claudeLocalSessions';
 import { fetchLatestUpdate, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
+import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost';
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
 import { buildFormatDriftIssueUrl } from './diagnostics/githubIssue';
@@ -581,6 +582,14 @@ function requireOneOf<T extends string>(value: unknown, allowed: readonly T[], w
   return match;
 }
 
+// The token is sent to this host: only github.com or <tenant>.ghe.com (user input, so
+// the message is translated).
+function requireGithubHost(value: unknown): string {
+  const host = normalizeGithubHost(value ?? DEFAULT_GITHUB_HOST);
+  if (!host) throw new Error(t('error.invalidGithubHost'));
+  return host;
+}
+
 // Sections the Settings window may write via settings:set: history, meta, caches
 // and the like are owned by the main process only (schema validation: Day 3 backlog).
 const RENDERER_EDITABLE_KEYS = new Set<string>(['accounts', 'workSchedule', 'ui', 'diagnostics', 'updates']);
@@ -782,12 +791,13 @@ function registerIpcHandlers(): void {
     return { organizationId };
   });
 
-  ipcMain.handle('accounts:connectCopilot', async (_event: IpcMainInvokeEvent, rawId: unknown, rawToken: unknown) => {
+  ipcMain.handle('accounts:connectCopilot', async (_event: IpcMainInvokeEvent, rawId: unknown, rawToken: unknown, rawHost: unknown) => {
     const id = requireString(rawId, 'Account');
     const token = requireString(rawToken, 'Token').trim();
-    const username = await copilotService.resolveUsername(token);
+    const host = requireGithubHost(rawHost);
+    const username = await copilotService.resolveUsername(token, host);
     updateAccount(id, (a) => (a.provider === 'copilot'
-      ? { ...a, enabled: true, authMethod: 'pat', credentials: { token, username } }
+      ? { ...a, enabled: true, authMethod: 'pat', host, credentials: { token, username } }
       : a));
     broadcastSettings();
     runDetached('refresh usage', refreshAndBroadcast());
@@ -803,11 +813,12 @@ function registerIpcHandlers(): void {
     const payload = {
       clientId: requireString(payloadRecord.clientId, 'Client ID'),
       clientSecret: requireString(payloadRecord.clientSecret, 'Client Secret'),
+      host: requireGithubHost(payloadRecord.host),
     };
     const { accessToken } = await captureGithubOAuthToken(payload);
-    const username = await copilotService.resolveUsername(accessToken);
+    const username = await copilotService.resolveUsername(accessToken, payload.host);
     updateAccount(id, (a) => (a.provider === 'copilot'
-      ? { ...a, enabled: true, authMethod: 'oauth', credentials: { token: accessToken, username }, oauthApp: { clientId: payload.clientId } }
+      ? { ...a, enabled: true, authMethod: 'oauth', host: payload.host, credentials: { token: accessToken, username }, oauthApp: { clientId: payload.clientId } }
       : a));
     broadcastSettings();
     runDetached('refresh usage', refreshAndBroadcast());

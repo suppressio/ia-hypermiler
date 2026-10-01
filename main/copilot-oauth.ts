@@ -20,9 +20,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { shell } from 'electron';
 import { getLocale, t } from './i18n/index';
+import { DEFAULT_GITHUB_HOST, githubOAuthBase } from '../services/githubHost';
 
-const AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
-const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
+const TOKEN_EXCHANGE_TIMEOUT_MS = 10_000;
 const REDIRECT_PORT = 8123;
 const SCOPES = ['read:user'];
 const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes, same threshold as main/claude-auth.ts
@@ -30,6 +30,8 @@ const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes, same threshold as main/claude-a
 export interface GithubOAuthConfig {
   clientId: string;
   clientSecret: string;
+  /** github.com or <tenant>.ghe.com (services/githubHost.ts); the OAuth App must be registered there. */
+  host?: string;
 }
 
 interface PkcePair {
@@ -54,8 +56,9 @@ export function buildAuthorizationUrl(params: {
   redirectUri: string;
   state: string;
   codeChallenge: string;
+  host?: string;
 }): string {
-  const url = new URL(AUTHORIZE_URL);
+  const url = new URL(`${githubOAuthBase(params.host ?? DEFAULT_GITHUB_HOST)}/authorize`);
   url.searchParams.set('client_id', params.clientId);
   url.searchParams.set('redirect_uri', params.redirectUri);
   url.searchParams.set('scope', SCOPES.join(' '));
@@ -94,9 +97,11 @@ async function exchangeCodeForToken(params: {
   code: string;
   codeVerifier: string;
   redirectUri: string;
+  host: string;
 }): Promise<string> {
-  const response = await fetch(ACCESS_TOKEN_URL, {
+  const response = await fetch(`${githubOAuthBase(params.host)}/access_token`, {
     method: 'POST',
+    signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -142,7 +147,8 @@ export function captureGithubOAuthToken(config: GithubOAuthConfig): Promise<{ ac
     const state = randomBytes(16).toString('hex');
     const { codeVerifier, codeChallenge } = createPkcePair();
     const redirectUri = `http://127.0.0.1:${REDIRECT_PORT}/callback`;
-    const authorizationUrl = buildAuthorizationUrl({ clientId, redirectUri, state, codeChallenge });
+    const host = config.host ?? DEFAULT_GITHUB_HOST;
+    const authorizationUrl = buildAuthorizationUrl({ clientId, redirectUri, state, codeChallenge, host });
 
     let settled = false;
     const finish = <T>(fn: (value: T) => void, value: T) => {
@@ -183,7 +189,7 @@ export function captureGithubOAuthToken(config: GithubOAuthConfig): Promise<{ ac
         return;
       }
 
-      exchangeCodeForToken({ clientId, clientSecret, code, codeVerifier, redirectUri })
+      exchangeCodeForToken({ clientId, clientSecret, code, codeVerifier, redirectUri, host })
         .then((accessToken) => {
           finishWithHtml(t('oauth.successTitle'), t('oauth.successMessage'));
           finish(resolve, { accessToken });

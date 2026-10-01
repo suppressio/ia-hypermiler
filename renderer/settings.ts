@@ -242,6 +242,12 @@ function detailElement(id: AccountId): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.account-detail[data-account-id="${CSS.escape(id)}"]`);
 }
 
+// The GitHub domain as typed in the detail (possibly not saved yet): connecting uses
+// it, and the main process validates it (only github.com or <tenant>.ghe.com).
+function githubHostInput(id: AccountId): string {
+  return detailElement(id)?.querySelector<HTMLInputElement>('[data-role="github-host"]')?.value.trim() || 'github.com';
+}
+
 // Dynamic state of a Copilot account row/detail:
 // - company seat → no reliable self-service way to read usage (RESEARCH.md
 //   §2.2/§2.3): "Active" checkbox locked and forced to false, warning shown;
@@ -250,15 +256,6 @@ function applyAccountDetailState(index: number): void {
   const account = accounts()[index];
   if (!account || account.provider !== 'copilot') return;
   const isOrg = account.accountScope === 'organization';
-  const enabled = document.querySelector<HTMLInputElement>(`[data-field="accounts.${index}.enabled"]`);
-  if (enabled) {
-    enabled.disabled = isOrg;
-    enabled.title = isOrg ? t('settings.accounts.orgLocked') : '';
-    if (isOrg && enabled.checked) {
-      enabled.checked = false;
-      setPath(settings as PlainRecord, `accounts.${index}.enabled`, false);
-    }
-  }
   const detail = detailElement(account.id);
   if (!detail) return;
   (detail.querySelector('[data-role="org-warning"]') as HTMLElement).hidden = !isOrg;
@@ -334,7 +331,7 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
         return;
       }
       setDetailStatus(id, t('settings.accounts.checkingToken'));
-      const result = await window.hypermiler.connectCopilot(id, token);
+      const result = await window.hypermiler.connectCopilot(id, token, githubHostInput(id));
       await reloadAfterAccountAction(id);
       showSaveStatus(t('settings.accounts.connectedAs', { name, user: result.username }));
     } else if (action === 'connect-copilot-oauth') {
@@ -346,7 +343,7 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
         return;
       }
       setDetailStatus(id, t('settings.accounts.oauthAuthorize'));
-      const result = await window.hypermiler.connectCopilotOAuth(id, clientId, clientSecret);
+      const result = await window.hypermiler.connectCopilotOAuth(id, clientId, clientSecret, githubHostInput(id));
       await reloadAfterAccountAction(id);
       showSaveStatus(t('settings.accounts.connectedOauthAs', { name, user: result.username }));
     } else if (action === 'disconnect') {

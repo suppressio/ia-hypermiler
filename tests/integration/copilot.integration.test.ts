@@ -7,6 +7,7 @@
 //   HYPERMILER_TEST_COPILOT_TOKEN  — fine-grained PAT with "Plan" (read) permission
 //   HYPERMILER_TEST_COPILOT_SCOPE  — 'personal' (default) or 'organization'
 //                                    to test the best-effort company-seat path
+//   HYPERMILER_TEST_COPILOT_HOST   — github.com (default) or <tenant>.ghe.com
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,19 +15,20 @@ import * as copilotService from '../../services/copilot';
 
 const token = process.env.HYPERMILER_TEST_COPILOT_TOKEN;
 const scope = (process.env.HYPERMILER_TEST_COPILOT_SCOPE || 'personal') as 'personal' | 'organization';
+const host = process.env.HYPERMILER_TEST_COPILOT_HOST || 'github.com';
 
 const skipReason = token
   ? false
   : 'HYPERMILER_TEST_COPILOT_TOKEN not set — see the file header for how to provide it locally';
 
 test('resolveUsername on a real token returns a plausible username', { skip: skipReason }, async () => {
-  const username = await copilotService.resolveUsername(token as string);
+  const username = await copilotService.resolveUsername(token as string, host);
   assert.equal(typeof username, 'string');
   assert.ok(username.length > 0);
 });
 
 test('fetchUsage on a real account returns at least one quota window', { skip: skipReason }, async () => {
-  const result = await copilotService.fetchUsage({ token: token as string, accountScope: scope, manualQuota: 300 });
+  const result = await copilotService.fetchUsage({ token: token as string, accountScope: scope, manualQuota: 300, host });
 
   assert.ok(Array.isArray(result.quotaWindows));
   assert.ok(result.quotaWindows.length > 0);

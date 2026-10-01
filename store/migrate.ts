@@ -11,6 +11,7 @@ import type {
   ProviderId,
 } from '../types/index';
 import { isPlainRecord, mergeWithDefaults } from './merge';
+import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from '../services/githubHost';
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   claude: 'Claude',
@@ -46,6 +47,7 @@ export function defaultCopilotAccount(id: AccountId, label = PROVIDER_DISPLAY_NA
     accountScope: 'personal',
     subscription: { renewalRule: { type: 'dayOfMonth', day: 1 } },
     authMethod: 'pat',
+    host: DEFAULT_GITHUB_HOST,
     credentials: { token: null, username: null },
     oauthApp: { clientId: null },
     // Copilot's billing API does not expose the plan's total quota: value configured
@@ -143,7 +145,9 @@ export function normalizeAccounts(rawAccounts: unknown[]): AccountConfig[] {
       result.push({ ...cfg, id, provider: 'claude', partition: claudePartitionFor(id) });
     } else if (raw.provider === 'copilot') {
       const cfg = mergeWithDefaults(defaultCopilotAccount(id), raw) as CopilotAccountSettings;
-      result.push({ ...cfg, id, provider: 'copilot' });
+      // An unsupported host falls back to github.com: the token is never sent elsewhere.
+      const host = normalizeGithubHost(cfg.host) ?? DEFAULT_GITHUB_HOST;
+      result.push({ ...cfg, id, provider: 'copilot', host });
     }
   }
   return enforceSingleLocalInsights(result);

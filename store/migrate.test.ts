@@ -10,6 +10,7 @@ import {
   enforceSingleLocalInsights,
   migrateAccounts,
   nextAccountLabel,
+  normalizeAccounts,
 } from './migrate';
 import { at } from '../tests/support/at';
 
@@ -99,4 +100,15 @@ test('enforceSingleLocalInsights: at most one Claude account with local insights
   const result = enforceSingleLocalInsights([a, defaultCopilotAccount('c'), b]);
   const flags = result.map((x) => x.provider === 'claude' && x.localInsights);
   assert.deepEqual(flags, [true, false, false]);
+});
+
+test('normalizeAccounts gives Copilot accounts a valid GitHub host', () => {
+  const [kept, fixed, added] = normalizeAccounts([
+    { id: 'a', provider: 'copilot', host: 'https://Acme.ghe.com/' },
+    { id: 'b', provider: 'copilot', host: 'evil.com' },
+    { id: 'c', provider: 'copilot' },
+  ]);
+  assert.equal(kept?.provider === 'copilot' ? kept.host : null, 'acme.ghe.com');
+  assert.equal(fixed?.provider === 'copilot' ? fixed.host : null, 'github.com');
+  assert.equal(added?.provider === 'copilot' ? added.host : null, 'github.com');
 });

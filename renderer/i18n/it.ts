@@ -118,7 +118,6 @@ export const it: Record<MessageKey, string> = {
   'settings.accounts.statusConnectedAs': 'Connesso come {user}',
   'settings.accounts.statusNotConnected': 'Non connesso',
   'settings.accounts.enabledAria': 'Account {name} attivo',
-  'settings.accounts.orgLocked': 'Seat aziendale: monitoraggio non disponibile (vedi Configura)',
   'settings.accounts.detailTitle': 'Configura «{name}»',
   'settings.accounts.detailTitleNew': 'Nuovo account {provider}',
   'settings.accounts.removeConfirm': 'Rimuovere l\'account "{name}"? La sessione salvata verrà cancellata.',
@@ -148,7 +147,9 @@ export const it: Record<MessageKey, string> = {
   'settings.claude.localInsightsHint': 'Legge le sessioni Claude Code locali (CLI ed estensione VS Code — stessa sorgente) per mostrare quanto del tuo utilizzo avviene a contesto molto ampio o in sessioni molto lunghe, quali tool/server MCP usi di più e quanti token produci per ogni punto di quota. Legge solo conteggi di token e nomi di tool — mai il contenuto dei messaggi. Le sessioni locali non dicono a quale account appartengono: attivalo su un solo account Claude, quello che usi con Claude Code. Le sessioni più vecchie di circa 30 giorni non sono più disponibili.',
   'settings.claude.loginHint': 'Il login si apre in una finestra claude.ai dedicata a questo account (funziona anche con SSO aziendale): nessun cookie da incollare a mano.',
 
-  'settings.copilot.orgWarning': "Con un seat aziendale non esiste una via self-service affidabile per il consumo Copilot: l'endpoint interno usato da VS Code non espone più dati di quota, e l'API ufficiale (AI Credits) richiede permessi da amministratore (vedi RESEARCH.md §2.2/§2.3). L'account resta disattivato; il monitoraggio è disponibile con un piano personale.",
+  'settings.copilot.orgWarning': "Seat aziendale: il consumo è letto dall'endpoint non ufficiale usato da VS Code, che può cambiare senza preavviso. Se la tua azienda ha un proprio dominio GitHub (<nome>.ghe.com), impostalo qui sotto e collegati con un account di quel dominio: un account github.com collegato a un'enterprise non ha dati di consumo.",
+  'settings.copilot.host': 'Dominio GitHub',
+  'settings.copilot.hostHint': "github.com, oppure il dominio aziendale (es. acme.ghe.com) se accedi a GitHub da un indirizzo diverso.",
   'settings.copilot.planIndividual': 'Individual (Pro)',
   'settings.copilot.manualQuota': "Quota mensile richieste premium (non esposta dall'API, inseriscila da contratto/piano)",
   'settings.copilot.authMethod': 'Metodo di autenticazione',

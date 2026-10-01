@@ -42,8 +42,8 @@ const bridge: HypermilerBridge = {
   addAccount: (provider) => ipcRenderer.invoke('accounts:add', provider),
   removeAccount: (id) => ipcRenderer.invoke('accounts:remove', id),
   connectClaude: (id) => ipcRenderer.invoke('accounts:connectClaude', id),
-  connectCopilot: (id, token) => ipcRenderer.invoke('accounts:connectCopilot', id, token),
-  connectCopilotOAuth: (id, clientId, clientSecret) => ipcRenderer.invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret }),
+  connectCopilot: (id, token, host) => ipcRenderer.invoke('accounts:connectCopilot', id, token, host),
+  connectCopilotOAuth: (id, clientId, clientSecret, host) => ipcRenderer.invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret, host }),
   disconnectAccount: (id) => ipcRenderer.invoke('accounts:disconnect', id),
 
   // Updates (issue #5): the URL to open is decided by the main process, never by the renderer.

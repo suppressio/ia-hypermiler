@@ -5,10 +5,13 @@
 //
 //   node --env-file=.env.test scripts/probe-copilot-shape.js
 //
-// Uses HYPERMILER_TEST_COPILOT_TOKEN. Output is safe to share: same rule as
-// services/_shape.ts (no numbers, strings or dates), plus the HTTP status.
+// Uses HYPERMILER_TEST_COPILOT_TOKEN, and HYPERMILER_TEST_COPILOT_HOST for a GitHub
+// Enterprise Cloud tenant (e.g. acme.ghe.com; default github.com — same rule as
+// services/githubHost.ts). Output is safe to share: same rule as services/_shape.ts
+// (no numbers, strings or dates), plus the HTTP status.
 
-const ENDPOINT = 'https://api.github.com/copilot_internal/user';
+const HOST = (process.env.HYPERMILER_TEST_COPILOT_HOST || 'github.com').trim().toLowerCase();
+const VALID_HOST = /^(github\.com|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.ghe\.com)$/;
 const TIMEOUT_MS = 10_000;
 const MAX_DEPTH = 8;
 const CREDIT_HINT = /credit|quota|budget|spend|usage|limit|entitlement|remaining|consum/i;
@@ -41,7 +44,12 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  const response = await fetch(ENDPOINT, {
+  if (!VALID_HOST.test(HOST)) {
+    console.error('HYPERMILER_TEST_COPILOT_HOST must be github.com or <tenant>.ghe.com');
+    process.exitCode = 1;
+    return;
+  }
+  const response = await fetch(`https://api.${HOST}/copilot_internal/user`, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',

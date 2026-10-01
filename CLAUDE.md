@@ -75,7 +75,8 @@ ia-hypermiler/
 │   ├── claude.ts                ← Claude usage fetch (+ test)
 │   ├── copilot.ts               ← Copilot usage fetch (+ test)
 │   ├── claudeLocalSessions.ts   ← insights from LOCAL Claude Code sessions, opt-in (+ test)
-│   └── updates.ts               ← new-version check via the GitHub Releases list (+ test)
+│   ├── updates.ts               ← new-version check via the GitHub Releases list (+ test)
+│   └── githubHost.ts            ← github.com or <tenant>.ghe.com: validation + API/OAuth base URLs (+ test)
 ├── diagnostics/githubIssue.ts   ← pre-filled GitHub issue URL for format drift (+ test)
 ├── store/
 │   ├── index.ts                 ← electron-store wrapper: creates the store and normalizes it at startup
@@ -250,7 +251,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
 - **ESM-only SDK in a CommonJS main process**: `require()` and even a TS-compiled `import()` fail with ERR_REQUIRE_ESM inside Electron → `new Function('s', 'return import(s)')` in `services/claudeLocalSessions.ts`.
 - **claude.ai behind Cloudflare**: `sessionKey` alone gets a 403 challenge; the full cookie header (incl. `cf_clearance`) + a browser User-Agent are needed. Usage field names are obfuscated and rotate → windows are recognized by value shape.
-- **Copilot company seats**: no self-service usage data for enterprise-managed seats (`access_type_sku: enterprise_managed`, no `quota_snapshots` with PAT or OAuth token, re-verified 2026-10-01; the github.com usage page shows nothing either and the admin-only metrics API is not available to the user) — `CopilotUsageUnavailableError`, not a drift. Personal accounts with an OAuth token do get token-based-billing snapshots (`credits_used`), read with VS Code's rules (RESEARCH.md §2.2). Do not retry the company case without new evidence.
+- **Copilot company seats**: the seat may live on a GitHub Enterprise Cloud tenant with data residency (`<tenant>.ghe.com`, API on `api.<tenant>.ghe.com`), not on github.com — there `copilot_internal/user` has token-based-billing `quota_snapshots` (`credits_used`, `entitlement`), read with VS Code's rules. A github.com account linked to an enterprise (`access_type_sku: enterprise_managed`) has no data at all → `CopilotUsageUnavailableError`, not a drift. Each Copilot account has a validated `host` (`services/githubHost.ts`): the token is only ever sent to github.com or a `.ghe.com` tenant.
 - **Logout reused the session**: cookies lived in `session.defaultSession` → one partition per Claude account, cleared on disconnect/remove/before login.
 - **`[hidden]` vs author `display`**: a class with `display:flex` overrides `hidden` → global `[hidden] { display: none !important }`.
 - **`build/` in .gitignore**: it is electron-builder's resources dir; icons were never committed (fixed — verify the packaged icon on the next release).

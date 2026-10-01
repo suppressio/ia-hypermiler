@@ -268,6 +268,9 @@ export interface CopilotAccountSettings extends AccountConfigBase {
   // automatically from the method used for the last successful connection — see
   // renderer/settings.ts (applyAccountDetailState) and main.ts (accounts:connectCopilot*).
   authMethod: 'pat' | 'oauth';
+  // "github.com" or a GitHub Enterprise Cloud tenant with data residency
+  // ("<tenant>.ghe.com"), where company seats live — see services/githubHost.ts.
+  host: string;
   credentials: { token: string | null; username: string | null };
   // Client ID of a GitHub OAuth App registered by the user (not a secret — see
   // renderer/settings.ts): experimental alternative to the PAT, see CLAUDE.md.
@@ -369,6 +372,8 @@ export interface CopilotCredentials {
   token: string;
   accountScope?: AccountScope;
   manualQuota?: number | null;
+  /** GitHub host, default "github.com" (services/githubHost.ts). */
+  host?: string;
 }
 
 /** API exposed by the preload to the renderer (`window.hypermiler`). */
@@ -387,8 +392,8 @@ export interface HypermilerBridge {
   addAccount(provider: ProviderId): Promise<AccountId>;
   removeAccount(id: AccountId): Promise<void>;
   connectClaude(id: AccountId): Promise<{ organizationId: string | null }>;
-  connectCopilot(id: AccountId, token: string): Promise<{ username: string }>;
-  connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string): Promise<{ username: string }>;
+  connectCopilot(id: AccountId, token: string, host: string): Promise<{ username: string }>;
+  connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string, host: string): Promise<{ username: string }>;
   disconnectAccount(id: AccountId): Promise<void>;
   getAppVersion(): Promise<string>;
   checkForUpdates(): Promise<UpdateSettings>;

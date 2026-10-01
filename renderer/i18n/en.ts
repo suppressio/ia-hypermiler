@@ -130,7 +130,6 @@ export const en = {
   'settings.accounts.statusConnectedAs': 'Connected as {user}',
   'settings.accounts.statusNotConnected': 'Not connected',
   'settings.accounts.enabledAria': 'Account {name} active',
-  'settings.accounts.orgLocked': 'Company seat: monitoring not available (see Configure)',
   'settings.accounts.detailTitle': 'Configure “{name}”',
   'settings.accounts.detailTitleNew': 'New {provider} account',
   'settings.accounts.removeConfirm': 'Remove the account "{name}"? The saved session will be deleted.',
@@ -163,7 +162,9 @@ export const en = {
   'settings.claude.loginHint': 'Login opens in a claude.ai window dedicated to this account (works with company SSO too): no cookie to paste by hand.',
 
   // --- Settings: Copilot detail -------------------------------------------------
-  'settings.copilot.orgWarning': 'With a company seat there is no reliable self-service way to read Copilot usage: the internal endpoint used by VS Code no longer exposes quota data, and the official API (AI Credits) requires administrator permissions (see RESEARCH.md §2.2/§2.3). The account stays disabled; monitoring is available with a personal plan.',
+  'settings.copilot.orgWarning': 'Company seat: usage is read from the unofficial endpoint VS Code uses, and it may change without notice. If your company has its own GitHub domain (<name>.ghe.com), set it below and connect with an account of that domain: a github.com account linked to an enterprise has no usage data.',
+  'settings.copilot.host': 'GitHub domain',
+  'settings.copilot.hostHint': 'github.com, or your company domain (e.g. acme.ghe.com) if you sign in to GitHub on a different address.',
   'settings.copilot.planIndividual': 'Individual (Pro)',
   'settings.copilot.manualQuota': 'Monthly premium request quota (not exposed by the API, enter it from your contract/plan)',
   'settings.copilot.authMethod': 'Authentication method',

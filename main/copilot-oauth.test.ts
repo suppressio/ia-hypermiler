@@ -46,3 +46,15 @@ test('buildAuthorizationUrl includes every parameter required by GitHub OAuth + 
   assert.equal(url.searchParams.get('code_challenge'), 'challenge-xyz');
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
 });
+
+test('buildAuthorizationUrl points to the tenant for a ghe.com account', () => {
+  const url = new URL(buildAuthorizationUrl({
+    clientId: 'Iv1.test',
+    redirectUri: 'http://127.0.0.1:8123/callback',
+    state: 'abc',
+    codeChallenge: 'xyz',
+    host: 'acme.ghe.com',
+  }));
+  assert.equal(url.origin, 'https://acme.ghe.com');
+  assert.equal(url.pathname, '/login/oauth/authorize');
+});

@@ -16,9 +16,9 @@
 
 import { fetchJson } from './_http';
 import { extractShape, FormatDriftError } from './_shape';
+import { DEFAULT_GITHUB_HOST, githubApiBase } from './githubHost';
 import type { CopilotCredentials, QuotaWindow, RawAccountUsage } from '../types/index';
 
-const API_BASE = 'https://api.github.com';
 const USD_PER_CREDIT = 0.01; // 1 AI credit = $0.01, see RESEARCH.md §2.1
 
 interface GithubUserResponse {
@@ -78,9 +78,9 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 /** Resolves the GitHub username tied to the token (used on "Connect"). */
-export async function resolveUsername(token: string): Promise<string> {
+export async function resolveUsername(token: string, host: string = DEFAULT_GITHUB_HOST): Promise<string> {
   if (!token) throw new Error('Copilot: missing token');
-  const data = await fetchJson<GithubUserResponse | null>(`${API_BASE}/user`, {
+  const data = await fetchJson<GithubUserResponse | null>(`${githubApiBase(host)}/user`, {
     headers: authHeaders(token),
     label: 'api.github.com/user',
   });
@@ -134,29 +134,29 @@ function isBillingNotApplicable(err: unknown): boolean {
  * 401/403, other 400s, …) does not trigger the fallback: it propagates at once, so a
  * credentials problem is not hidden behind a useless second attempt.
  */
-async function fetchBillingUsageReport(username: string, token: string, year: number, month: string): Promise<BillingUsageReport | null> {
+async function fetchBillingUsageReport(apiBase: string, username: string, token: string, year: number, month: string): Promise<BillingUsageReport | null> {
   const headers = authHeaders(token);
   try {
     return await fetchJson<BillingUsageReport | null>(
-      `${API_BASE}/users/${encodeURIComponent(username)}/settings/billing/ai_credit/usage?year=${year}&month=${month}`,
+      `${apiBase}/users/${encodeURIComponent(username)}/settings/billing/ai_credit/usage?year=${year}&month=${month}`,
       { headers, label: 'users/{username}/settings/billing/ai_credit/usage' },
     );
   } catch (err) {
     if (!isBillingNotApplicable(err)) throw err;
     return fetchJson<BillingUsageReport | null>(
-      `${API_BASE}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage?year=${year}&month=${month}`,
+      `${apiBase}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage?year=${year}&month=${month}`,
       { headers, label: 'users/{username}/settings/billing/premium_request/usage (fallback from ai_credit/usage)' },
     );
   }
 }
 
-async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; manualQuota: number | null | undefined; now: Date }): Promise<RawAccountUsage> {
+async function fetchPersonalUsage({ apiBase, host, token, manualQuota, now }: { apiBase: string; host: string; token: string; manualQuota: number | null | undefined; now: Date }): Promise<RawAccountUsage> {
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const username = await resolveUsername(token);
+  const username = await resolveUsername(token, host);
 
   try {
-    const report = await fetchBillingUsageReport(username, token, year, month);
+    const report = await fetchBillingUsageReport(apiBase, username, token, year, month);
     const used = sumCreditsUsed(report);
 
     return {
@@ -184,7 +184,7 @@ async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; 
     // of plan). Last attempt: the same undocumented internal endpoint already used for
     // company seats (RESEARCH.md §2.2) — it powers the VS Code quota indicator for ANY
     // Copilot account, not only company ones, so it might work here too.
-    return fetchCopilotInternalUsage(token, 'personal plan, internal fallback');
+    return fetchCopilotInternalUsage(apiBase, token, 'personal plan, internal fallback');
   }
 }
 
@@ -196,10 +196,10 @@ async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; 
  * 401/403 here is expected: it means the token is not accepted by this internal
  * endpoint.
  */
-async function fetchCopilotInternalUsage(token: string, context: string): Promise<RawAccountUsage> {
+async function fetchCopilotInternalUsage(apiBase: string, token: string, context: string): Promise<RawAccountUsage> {
   let data: CopilotInternalUserResponse | null;
   try {
-    data = await fetchJson<CopilotInternalUserResponse | null>(`${API_BASE}/copilot_internal/user`, {
+    data = await fetchJson<CopilotInternalUserResponse | null>(`${apiBase}/copilot_internal/user`, {
       headers: authHeaders(token),
       label: 'copilot_internal/user (unofficial internal endpoint)',
     });
@@ -257,7 +257,7 @@ type SnapshotReading =
 /**
  * One quota snapshot → one window, with VS Code's rules (getQuotaUsage):
  * - unlimited: only "credits used" (no denominator), nothing when has_quota is false or
- *   credits_used is missing;
+ *   credits_used is missing (nor, here, when it is 0);
  * - entitlement > 0: used = entitlement − quota_remaining (or derived from
  *   percent_remaining), out of the entitlement;
  * - entitlement 0: nothing allocated for this category;
@@ -272,7 +272,9 @@ function readQuotaSnapshot(key: string, entry: CopilotInternalQuotaSnapshot | nu
   const base = { id: key, label: `Copilot — ${key}`, periodType: 'billing-cycle' as const, periodLength: null, resetsAt };
 
   if (entry.unlimited === true) {
-    if (entry.has_quota === false || typeof entry.credits_used !== 'number') return { kind: 'empty' };
+    // Unlike VS Code, an unlimited category with zero credits is not shown: on a company
+    // seat chat and completions are always unlimited and would only add empty rows.
+    if (entry.has_quota === false || typeof entry.credits_used !== 'number' || entry.credits_used <= 0) return { kind: 'empty' };
     return { kind: 'window', window: { ...base, unit: 'count', used: entry.credits_used, total: null } };
   }
   if (entry.entitlement === 0) return { kind: 'empty' };
@@ -289,19 +291,21 @@ function readQuotaSnapshot(key: string, entry: CopilotInternalQuotaSnapshot | nu
   };
 }
 
-async function fetchOrgManagedUsage({ token }: { token: string }): Promise<RawAccountUsage> {
-  return fetchCopilotInternalUsage(token, 'company seat');
+async function fetchOrgManagedUsage({ apiBase, token }: { apiBase: string; token: string }): Promise<RawAccountUsage> {
+  return fetchCopilotInternalUsage(apiBase, token, 'company seat');
 }
 
 export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAccountUsage> {
-  const { token, accountScope, manualQuota } = credentials;
+  const { token, accountScope, manualQuota, host = DEFAULT_GITHUB_HOST } = credentials;
   if (!token) {
     throw new Error('Copilot: missing token — connect the account from Settings');
   }
+  // Throws on an unsupported host before any request: the token goes only to GitHub.
+  const apiBase = githubApiBase(host);
 
   const now = new Date();
   if (accountScope === 'organization') {
-    return fetchOrgManagedUsage({ token });
+    return fetchOrgManagedUsage({ apiBase, token });
   }
-  return fetchPersonalUsage({ token, manualQuota, now });
+  return fetchPersonalUsage({ apiBase, host, token, manualQuota, now });
 }

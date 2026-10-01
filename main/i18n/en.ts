@@ -26,7 +26,8 @@ export const en = {
   'oauth.closeTab': 'You can close this tab and go back to the app.',
 
   'error.sessionExpired': 'Session expired or invalid — reconnect the account from Settings. ({detail})',
-  'error.copilotEnterpriseManaged': 'GitHub does not expose usage data for Copilot seats managed by an enterprise: only enterprise admins can see it.',
+  'error.invalidGithubHost': 'GitHub domain not supported: use github.com or your company domain <name>.ghe.com.',
+  'error.copilotEnterpriseManaged': 'This github.com account has no Copilot usage data. If your company uses its own GitHub domain (<name>.ghe.com), set it in the account and reconnect with an account of that domain.',
 } as const;
 
 export type MainMessageKey = keyof typeof en;

@@ -251,3 +251,87 @@ test('fetchUsage: enterprise-managed seat without quota_snapshots throws Copilot
     (err: unknown) => err instanceof copilotService.CopilotUsageUnavailableError && !(err instanceof FormatDriftError),
   );
 });
+
+// --- 2026-10-01: GitHub Enterprise Cloud with data residency (<tenant>.ghe.com) ---
+
+// Shape of a real company seat on a ghe.com tenant (values invented): unlimited chat and
+// completions with no credits, premium_interactions with a credit budget.
+const GHE_SEAT_RESPONSE = {
+  access_type_sku: 'copilot_for_business_seat_quota',
+  copilot_plan: 'business',
+  quota_reset_date: '2026-11-01',
+  token_based_billing: true,
+  quota_snapshots: {
+    chat: { unlimited: true, has_quota: true, percent_remaining: 100, credits_used: 0, entitlement: 0, quota_remaining: 0, quota_reset_at: 0 },
+    completions: { unlimited: true, has_quota: true, percent_remaining: 100, credits_used: 0, entitlement: 0, quota_remaining: 0, quota_reset_at: 0 },
+    premium_interactions: { unlimited: false, has_quota: true, percent_remaining: 90, credits_used: 800, entitlement: 8000, quota_remaining: 7200, quota_reset_at: 0 },
+  },
+};
+
+test('fetchUsage calls the tenant API host for a ghe.com account', async () => {
+  const calls: string[] = [];
+  installFetchMock(async (url) => {
+    calls.push(url);
+    return jsonResponse(GHE_SEAT_RESPONSE);
+  });
+  await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'acme.ghe.com' });
+  assert.deepEqual(calls, ['https://api.acme.ghe.com/copilot_internal/user']);
+});
+
+test('fetchUsage (personal) uses the tenant host for /user and the billing endpoints too', async () => {
+  const calls: string[] = [];
+  installFetchMock(async (url) => {
+    calls.push(url);
+    if (url.endsWith('/user') && !url.includes('copilot_internal')) return jsonResponse({ login: 'testuser' });
+    return jsonResponse({ usageItems: [{ netAmount: 1 }] });
+  });
+  await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'acme.ghe.com' });
+  assert.ok(calls.length > 0);
+  assert.ok(calls.every((u) => u.startsWith('https://api.acme.ghe.com/')), calls.join(', '));
+});
+
+test('fetchUsage defaults to api.github.com when no host is given', async () => {
+  const calls: string[] = [];
+  installFetchMock(async (url) => {
+    calls.push(url);
+    return jsonResponse(GHE_SEAT_RESPONSE);
+  });
+  await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  assert.deepEqual(calls, ['https://api.github.com/copilot_internal/user']);
+});
+
+test('fetchUsage refuses an unsupported host without calling the network', async () => {
+  let called = false;
+  installFetchMock(async () => {
+    called = true;
+    return jsonResponse({});
+  });
+  await assert.rejects(
+    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'evil.com' }),
+    /not a supported GitHub host/,
+  );
+  assert.equal(called, false);
+});
+
+test('ghe.com seat: credit budget window, no rows for unlimited categories with zero credits, reset from quota_reset_date', async () => {
+  installFetchMock(async () => jsonResponse(GHE_SEAT_RESPONSE));
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'acme.ghe.com' });
+  assert.equal(result.planTier, 'business');
+  assert.equal(result.quotaWindows.length, 1);
+  const win = at(result.quotaWindows, 0);
+  assert.equal(win.id, 'premium_interactions');
+  assert.equal(win.unit, 'count');
+  assert.equal(win.used, 800);
+  assert.equal(win.total, 8000);
+  assert.equal(new Date(win.resetsAt ?? 0).toISOString().slice(0, 10), '2026-11-01');
+});
+
+test('resolveUsername uses the given host', async () => {
+  const calls: string[] = [];
+  installFetchMock(async (url) => {
+    calls.push(url);
+    return jsonResponse({ login: 'testuser' });
+  });
+  assert.equal(await copilotService.resolveUsername('tok-123', 'acme.ghe.com'), 'testuser');
+  assert.deepEqual(calls, ['https://api.acme.ghe.com/user']);
+});
