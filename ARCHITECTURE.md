@@ -62,6 +62,22 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
     subscription: {
       renewalRule: { type: 'dayOfMonth', day: number } | { type: 'rrule', rrule: string },
     },
+    workSchedule: {  // per account since 0.4.6 (it used to be one global setting, inherited by every account on upgrade)
+      enabled: boolean, // when false, every day counts as a full day (pacing not tied to specific days/hours — e.g. a personal account)
+      days: {
+        mon: 'full' | 'half' | 'off',
+        tue: 'full' | 'half' | 'off',
+        wed: 'full' | 'half' | 'off',
+        thu: 'full' | 'half' | 'off',
+        fri: 'full' | 'half' | 'off',
+        sat: 'full' | 'half' | 'off',
+        sun: 'full' | 'half' | 'off',
+      },
+      hoursPerDay: number, // simplified from a start/end range after user feedback (Day 2):
+                           // budget.ts works at day/half-day granularity and does not use exact
+                           // hours yet; reserved for future intra-day pacing (e.g. Claude's
+                           // 5-hour window).
+    },
   } & (
     { // --- provider: 'claude' ---
       authMethod: 'password' | 'google' | 'sso',
@@ -85,22 +101,6 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
     }
   )>,
 
-  workSchedule: {
-    enabled: boolean, // when false, every day counts as a full day (pacing not tied to specific days/hours — e.g. a personal account)
-    days: {
-      mon: 'full' | 'half' | 'off',
-      tue: 'full' | 'half' | 'off',
-      wed: 'full' | 'half' | 'off',
-      thu: 'full' | 'half' | 'off',
-      fri: 'full' | 'half' | 'off',
-      sat: 'full' | 'half' | 'off',
-      sun: 'full' | 'half' | 'off',
-    },
-    hoursPerDay: number, // simplified from a start/end range after user feedback (Day 2):
-                         // budget.ts works at day/half-day granularity and does not use exact
-                         // hours yet; reserved for future intra-day pacing (e.g. Claude's
-                         // 5-hour window).
-  },
 
   ui: {
     language: 'auto' | 'en' | 'it',       // 'auto' follows the system language (see §4c)
@@ -131,7 +131,7 @@ Sections of the Settings panel (separate window `renderer/settings.html`, opened
 
 1. **Accounts and sessions** — *(updated, issue #4)* a **table** of accounts (Name | Provider | Status | Active | actions Configure/Connect/Disconnect/Remove) with "Add account"; "Configure" opens the provider panel below the row (common + specific fields). Original description: for Claude and Copilot, connection status, method (password/SSO/PAT/OAuth device), a "Connect/Reconnect" button opening a login `BrowserWindow` for Claude or the device flow for Copilot, estimated session expiry, a "company seat" toggle with an automatic warning when active on Copilot ("experimental feature, may stop working without notice").
 2. **Plan and renewal** — plan type, subscription renewal day (a simple "day of month" picker; stored as a minimal rule so different recurrences can be added later without changing the schema).
-3. **Work schedule** — 7 day toggles with 3 states (full/half/off) + an optional working-hours switch. Used to compute budget and projections on "remaining working days/hours", not calendar days.
+3. **Work schedule** — *(per account since 0.4.6, inside each account detail)* 7 day selectors with 3 states (full/half/off), an "enabled" switch (off = every day counts as a full day, e.g. a personal account) and hours/day (reserved). Used to compute budget and projections on "remaining working days", not calendar days.
 4. **Appearance** — language (Automatic / English / Italiano), window style (the three skins below), always-on-top, accent color, default chart range (week/month).
 5. **Notifications** — alert percentage threshold (default 80%, as in `CLAUDE.md`, now configurable), possibly per window (e.g. a separate alert for Claude's 5h limit).
 6. **Advanced** — placeholder for future evolutions (see §5): future local server, data export.

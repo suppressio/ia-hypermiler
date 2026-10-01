@@ -101,7 +101,7 @@ ia-hypermiler/
 - `nodeIntegration` always `false`, `contextIsolation` always `true`.
 - The renderer never has direct access to Node.js: everything goes through `preload.ts` via `contextBridge`.
 - API keys and session cookies live only in the main process and in encrypted `electron-store` — never in the renderer, never in localStorage. `settings:get`/`settings:set` redact secrets towards the renderer (`providers.redactSecrets`) and preserve the real values on write (`providers.preserveSecrets`).
-- Every value coming from the renderer through IPC is `unknown` and is validated in the handler (`requireString`/`requireBoolean`/`requireOneOf` in `main.ts`). `settings:set` accepts only renderer-editable sections (`accounts`, `workSchedule`, `ui`, `diagnostics`, `updates`) and normalizes the patch before writing.
+- Every value coming from the renderer through IPC is `unknown` and is validated in the handler (`requireString`/`requireBoolean`/`requireOneOf` in `main.ts`). `settings:set` accepts only renderer-editable sections (`accounts`, `ui`, `diagnostics`, `updates`) and normalizes the patch before writing.
 - URLs opened with `shell.openExternal` come from the main process (store/constants), never from the renderer; update URLs must start with the project repository prefix.
 
 ### Cross-platform
@@ -248,6 +248,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-01 | v0.4.3-beta | Copilot: billing 400 fallback, token-based-billing snapshots (`credits_used`), clear message for enterprise-managed seats (#7) |
 | 2026-10-01 | v0.4.4-beta | Copilot: GitHub domain per account — company seats on a `<tenant>.ghe.com` tenant read with a tenant PAT |
 | 2026-10-01 | v0.4.5-beta | Copilot: personal scope reads the internal quotas first (billing report as fallback), OAuth no longer experimental; Settings tooltips no longer clipped |
+| 2026-10-01 | v0.4.6-beta | Work schedule per account (inside each account detail), the old global one inherited on upgrade |
 
 ### Lessons learned (still relevant)
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
@@ -263,7 +264,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - Next agreed steps: a single shared IPC contract (channels + types for main/preload/renderer, replacing the manual `renderer/types.ts` copy), then extracting a testable core from `main.ts` (EVOLUTION.md 2a) and working test-first.
 - **v0.5: the app is renamed "AIpermiler"** (decided 2026-10-01). Plan it explicitly: name/productName/appId, artifacts, UI strings and docs, GitHub repo; keep the update check working from old installs; migrate or pin the userData path (it derives from the app name) so accounts, sessions and history survive.
 - `agents/advisor.ts` is a stub.
-- `workSchedule.hoursPerDay` is not used by `budget.ts` yet.
+- `workSchedule.hoursPerDay` (per account since 0.4.6) is not used by `budget.ts` yet: pacing on actual working hours is the next step.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).
 - Verify with real use the `consumptionCause` thresholds, and with the next release the packaged icon and the update notification end to end.
 - Measure RAM/CPU in tray-only mode before considering EVOLUTION.md point 5.

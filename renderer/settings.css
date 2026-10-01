@@ -112,6 +112,14 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
   opacity: 1;
 }
 
+/* Work schedule inside an account detail (it used to be a global card). */
+.account-schedule {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 6px 10px 2px;
+  margin: 4px 0 10px;
+}
+.account-schedule legend { font-size: 12px; font-weight: 600; color: #374151; padding: 0 4px; }
 .week-grid { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; align-items: center; margin-bottom: 10px; }
 .week-grid label { flex-direction: row; margin: 0; }
 

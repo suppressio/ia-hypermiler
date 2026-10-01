@@ -62,6 +62,22 @@ Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del fi
     subscription: {
       renewalRule: { type: 'dayOfMonth', day: number } | { type: 'rrule', rrule: string },
     },
+    workSchedule: {  // per account dalla 0.4.6 (prima era un'impostazione globale, ereditata da ogni account all'aggiornamento)
+      enabled: boolean, // se false, ogni giorno vale come giornata piena (pacing non legato a giorni/ore specifici — es. account personale)
+      days: {
+        mon: 'full' | 'half' | 'off',
+        tue: 'full' | 'half' | 'off',
+        wed: 'full' | 'half' | 'off',
+        thu: 'full' | 'half' | 'off',
+        fri: 'full' | 'half' | 'off',
+        sat: 'full' | 'half' | 'off',
+        sun: 'full' | 'half' | 'off',
+      },
+      hoursPerDay: number, // semplificato da intervallo inizio/fine su feedback utente (Giorno 2):
+                           // budget.ts lavora a granularità giorno/mezza-giornata e non usa ancora
+                           // orari puntuali; riservato per un futuro pacing infra-giornaliero (es.
+                           // finestra Claude delle 5 ore).
+    },
   } & (
     { // --- provider: 'claude' ---
       authMethod: 'password' | 'google' | 'sso',
@@ -85,22 +101,6 @@ Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del fi
     }
   )>,
 
-  workSchedule: {
-    enabled: boolean, // se false, ogni giorno vale come giornata piena (pacing non legato a giorni/ore specifici — es. account personale)
-    days: {
-      mon: 'full' | 'half' | 'off',
-      tue: 'full' | 'half' | 'off',
-      wed: 'full' | 'half' | 'off',
-      thu: 'full' | 'half' | 'off',
-      fri: 'full' | 'half' | 'off',
-      sat: 'full' | 'half' | 'off',
-      sun: 'full' | 'half' | 'off',
-    },
-    hoursPerDay: number, // semplificato da intervallo inizio/fine su feedback utente (Giorno 2):
-                         // budget.ts lavora a granularità giorno/mezza-giornata e non usa ancora
-                         // orari puntuali; riservato per un futuro pacing infra-giornaliero (es.
-                         // finestra Claude delle 5 ore).
-  },
 
   ui: {
     language: 'auto' | 'en' | 'it',       // 'auto' segue la lingua del sistema (vedi §4c)
@@ -131,7 +131,7 @@ Sezioni del pannello impostazioni (finestra separata `renderer/settings.html`, a
 
 1. **Account e sessioni** — *(aggiornato, issue #4)* una **tabella** di account (Nome | Provider | Stato | Attivo | azioni Configura/Connetti/Disconnetti/Rimuovi) con "Aggiungi account"; "Configura" apre sotto la riga il pannello del provider (campi comuni + specifici). Descrizione originale: per Claude e Copilot: stato connessione, metodo (password/SSO/PAT/OAuth device), pulsante "Connetti/Riconnetti" che apre una `BrowserWindow` di login per Claude o il device-flow per Copilot, data di scadenza sessione stimata, toggle "seat aziendale" con avviso automatico se attivo su Copilot ("funzionalità sperimentale, può interrompersi senza preavviso").
 2. **Piano e rinnovo** — tipo piano, giorno di rinnovo abbonamento (selettore semplice "giorno del mese"; dietro le quinte salvato come RRULE minimale `FREQ=MONTHLY;BYMONTHDAY=n` così in futuro si possono aggiungere ricorrenze diverse senza cambiare schema).
-3. **Calendario di lavoro** — 7 toggle giorno con 3 stati (pieno/mezza/riposo) + switch opzionale per ore lavorative (inizio/fine). Usato per calcolare budget e proiezioni su "giorni/ore lavorative rimanenti", non su giorni di calendario.
+3. **Calendario di lavoro** — *(per account dalla 0.4.6, dentro il dettaglio di ogni account)* 7 selettori giorno con 3 stati (pieno/mezza/riposo), un interruttore "attivo" (spento = ogni giorno conta come giornata piena, es. account personale) e ore/giorno (riservato). Usato per calcolare budget e proiezioni su "giorni lavorativi rimanenti", non su giorni di calendario.
 4. **Aspetto** — lingua (Automatica / English / Italiano), stile finestra (le tre skin descritte sotto), always-on-top, colore accento, intervallo grafico (settimana/mese) di default.
 5. **Notifiche** — soglia percentuale di allarme (default 80%, come da `CLAUDE.md`, ma ora configurabile), eventualmente per-finestra (es. avviso separato per il limite 5h di Claude).
 6. **Avanzate** — placeholder per le evoluzioni future (vedi §5): abilitazione futura server locale, export dati.

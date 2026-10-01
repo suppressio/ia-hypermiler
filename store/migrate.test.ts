@@ -112,3 +112,11 @@ test('normalizeAccounts gives Copilot accounts a valid GitHub host', () => {
   assert.equal(fixed?.provider === 'copilot' ? fixed.host : null, 'github.com');
   assert.equal(added?.provider === 'copilot' ? added.host : null, 'github.com');
 });
+
+test('new accounts start from the default Monday–Friday schedule', () => {
+  for (const account of [defaultClaudeAccount('x'), defaultCopilotAccount('y')]) {
+    assert.equal(account.workSchedule.enabled, true);
+    assert.equal(account.workSchedule.days.fri, 'full');
+    assert.equal(account.workSchedule.days.sun, 'off');
+  }
+});

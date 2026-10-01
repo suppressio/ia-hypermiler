@@ -304,11 +304,10 @@ function computeWindowSnapshot(
 function computeAccountSnapshot(
   raw: RawAccountUsage & { accountId: AccountId; lastUpdatedAt?: string; stale?: boolean; lastError?: string },
   cfg: AccountConfig,
-  workSchedule: WorkSchedule,
   now: Date,
   localInsights: ClaudeLocalInsights | null,
 ): AccountSnapshot {
-  const subscription = cfg.subscription;
+  const { subscription, workSchedule } = cfg;
   const identity = { accountId: cfg.id, provider: cfg.provider, label: cfg.label };
   const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(cfg.id, w, subscription, workSchedule, now, localInsights));
   const criticalWindow = budget.pickCriticalWindow(raw.quotaWindows);
@@ -473,7 +472,6 @@ function emptyAccountSnapshot(cfg: AccountConfig, lastError: string): AccountSna
 
 async function buildUsageSnapshot(): Promise<UsageSnapshot> {
   const now = new Date();
-  const workSchedule = store.get('workSchedule');
   const snapshot: UsageSnapshot = { generatedAt: now.toISOString(), accounts: [] };
 
   for (const cfg of getAccounts()) {
@@ -484,7 +482,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
     let account: AccountSnapshot;
     try {
       const raw = await fetchAccountOrFallback(cfg.id, cfg.provider, () => providers.fetchUsage(cfg), `history.lastGood.${cfg.id}`);
-      account = computeAccountSnapshot(raw, cfg, workSchedule, now, localInsights);
+      account = computeAccountSnapshot(raw, cfg, now, localInsights);
     } catch (err) {
       const message = friendlyErrorMessage(err);
       console.error(`[main] ${cfg.label} unavailable and no previous data:`, message);
@@ -592,7 +590,7 @@ function requireGithubHost(value: unknown): string {
 
 // Sections the Settings window may write via settings:set: history, meta, caches
 // and the like are owned by the main process only (schema validation: Day 3 backlog).
-const RENDERER_EDITABLE_KEYS = new Set<string>(['accounts', 'workSchedule', 'ui', 'diagnostics', 'updates']);
+const RENDERER_EDITABLE_KEYS = new Set<string>(['accounts', 'ui', 'diagnostics', 'updates']);
 
 function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
   // `updates` is owned by the main process (check results): from the renderer only

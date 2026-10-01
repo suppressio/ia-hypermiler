@@ -148,6 +148,11 @@ interface AccountConfigBase {
   enabled: boolean;
   accountScope: 'personal' | 'organization';
   subscription: { renewalRule: { type: 'dayOfMonth' | 'rrule'; day?: number } };
+  workSchedule: {
+    enabled: boolean;
+    days: Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', 'full' | 'half' | 'off'>;
+    hoursPerDay: number;
+  };
 }
 
 export interface ClaudeAccountConfig extends AccountConfigBase {

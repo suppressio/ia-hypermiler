@@ -81,14 +81,13 @@ function applyLanguage(language: AppSettings['ui']['language']): void {
 
 // Week grid: labels and options carry data-i18n keys, so applyTranslations
 // translates them like the static markup.
-function buildWeekGrid(): void {
-  const grid = byId('week-grid', HTMLElement);
+function buildWeekGrid(grid: HTMLElement): void {
   grid.innerHTML = '';
   for (const day of DAY_KEYS) {
     const labelEl = document.createElement('span');
     labelEl.dataset.i18n = `settings.schedule.${day}`;
     const select = document.createElement('select');
-    select.dataset.field = `workSchedule.days.${day}`;
+    select.dataset.accountField = `workSchedule.days.${day}`;
     for (const status of DAY_STATUSES) {
       const optionEl = document.createElement('option');
       optionEl.value = status;
@@ -98,7 +97,18 @@ function buildWeekGrid(): void {
     grid.appendChild(labelEl);
     grid.appendChild(select);
   }
-  applyTranslations(grid);
+}
+
+// The account's own work schedule (it used to be one global card): one template,
+// cloned into the slot of every provider's detail.
+function fillScheduleSlot(detail: HTMLElement): void {
+  const slot = detail.querySelector<HTMLElement>('[data-role="schedule-slot"]');
+  const root = byId('tpl-work-schedule', HTMLTemplateElement).content.firstElementChild;
+  if (!slot || !(root instanceof HTMLElement)) return;
+  const schedule = root.cloneNode(true) as HTMLElement;
+  const grid = schedule.querySelector<HTMLElement>('[data-role="week-grid"]');
+  if (grid) buildWeekGrid(grid);
+  slot.replaceWith(schedule);
 }
 
 function fieldElements(): (HTMLInputElement | HTMLSelectElement)[] {
@@ -192,6 +202,7 @@ function renderAccountsTable(): void {
       if (!(templateRoot instanceof HTMLElement)) throw new Error(`Empty detail template: ${account.provider}`);
       const detail = templateRoot.cloneNode(true) as HTMLElement;
       detail.dataset.accountId = account.id;
+      fillScheduleSlot(detail);
       applyTranslations(detail);
       const title = document.createElement('h3');
       title.className = 'account-detail-title';
@@ -221,21 +232,18 @@ function populateForm(): void {
     }
   });
   accounts().forEach((_account, index) => { applyAccountDetailState(index); });
-  updateWorkScheduleLock();
 }
 
-// When the work schedule is disabled (personal account, no specific days/hours —
-// user feedback), the day selectors and hours/day no longer affect pacing (see
-// budget.getDayUnit): they are disabled instead of editable without effect.
-function updateWorkScheduleLock(): void {
-  const enabled = getPath(settings, 'workSchedule.enabled') !== false;
-  const hint = byId('work-schedule-disabled-hint', HTMLElement);
-  hint.hidden = enabled;
-  document
-    .querySelectorAll<HTMLSelectElement>('#week-grid select[data-field^="workSchedule.days."]')
+// When an account's work schedule is disabled (e.g. a personal account with no fixed
+// days/hours — user feedback), its day selectors and hours/day no longer affect pacing
+// (see budget.getDayUnit): they are disabled instead of editable without effect.
+function applyScheduleLock(account: AccountConfig, detail: HTMLElement): void {
+  const enabled = account.workSchedule.enabled;
+  const hint = detail.querySelector<HTMLElement>('[data-role="schedule-disabled-hint"]');
+  if (hint) hint.hidden = enabled;
+  detail
+    .querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-field*=".workSchedule.days."], [data-field$=".workSchedule.hoursPerDay"]')
     .forEach((el) => { el.disabled = !enabled; });
-  const hoursInput = document.querySelector<HTMLInputElement>('[data-field="workSchedule.hoursPerDay"]');
-  if (hoursInput) hoursInput.disabled = !enabled;
 }
 
 function detailElement(id: AccountId): HTMLElement | null {
@@ -248,16 +256,18 @@ function githubHostInput(id: AccountId): string {
   return detailElement(id)?.querySelector<HTMLInputElement>('[data-role="github-host"]')?.value.trim() || 'github.com';
 }
 
-// Dynamic state of a Copilot account row/detail:
-// - company seat → no reliable self-service way to read usage (RESEARCH.md
-//   §2.2/§2.3): "Active" checkbox locked and forced to false, warning shown;
-// - PAT/OAuth share the same credentials slot: only one panel visible.
+// Dynamic state of an account detail, re-applied on every change of its fields:
+// - every provider: work schedule fields locked while the schedule is disabled;
+// - Copilot: company-seat note shown for the company scope, and PAT/OAuth share the
+//   same credentials slot, so only one panel is visible.
 function applyAccountDetailState(index: number): void {
   const account = accounts()[index];
-  if (!account || account.provider !== 'copilot') return;
-  const isOrg = account.accountScope === 'organization';
+  if (!account) return;
   const detail = detailElement(account.id);
   if (!detail) return;
+  applyScheduleLock(account, detail);
+  if (account.provider !== 'copilot') return;
+  const isOrg = account.accountScope === 'organization';
   (detail.querySelector('[data-role="org-warning"]') as HTMLElement).hidden = !isOrg;
   (detail.querySelector('[data-role="pat-panel"]') as HTMLElement).hidden = account.authMethod === 'oauth';
   (detail.querySelector('[data-role="oauth-panel"]') as HTMLElement).hidden = account.authMethod !== 'oauth';
@@ -469,7 +479,6 @@ function bindEvents(): void {
       if (accountMatch[2] === 'localInsights' && value === true) enforceSingleLocalInsightsDraft(index);
       applyAccountDetailState(index);
     }
-    if (field === 'workSchedule.enabled') updateWorkScheduleLock();
     // No saving or side effect here: the change stays a draft in the form until
     // the user presses "Save" (or "Cancel" to discard it) — saving on every field
     // used to clash with the "Save settings" button (user feedback).
@@ -519,7 +528,7 @@ function bindEvents(): void {
 
     // A field affecting the budget computation (plan, renewal day, manual quota,
     // work schedule…) must not wait for the next automatic refresh (up to 30 min).
-    if (touchedKeys.has('accounts') || touchedKeys.has('workSchedule')) {
+    if (touchedKeys.has('accounts')) {
       window.hypermiler.requestUsageRefresh();
     }
 
@@ -563,7 +572,6 @@ async function init(): Promise<void> {
   settings = await window.hypermiler.getSettings();
   savedSettings = structuredClone(settings);
   applyLanguage(settings.ui.language);
-  buildWeekGrid();
   populateForm();
   bindEvents();
   byId('app-version', HTMLElement).textContent = await window.hypermiler.getAppVersion();

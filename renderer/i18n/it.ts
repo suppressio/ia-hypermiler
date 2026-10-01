@@ -172,7 +172,7 @@ export const it: Record<MessageKey, string> = {
 
   'settings.schedule.title': 'Calendario di lavoro',
   'settings.schedule.enabled': 'Limita il pacing a giorni/ore specifici della settimana',
-  'settings.schedule.disabledHint': 'Disattivato: ogni giorno conta come giornata lavorativa piena, senza distinzioni tra giorni della settimana — utile per un account personale che non ha orari fissi da rispettare.',
+  'settings.schedule.disabledHint': 'Disattivato per questo account: ogni giorno conta come giornata lavorativa piena, senza distinzioni tra giorni della settimana — utile per un account personale che non ha orari fissi da rispettare.',
   'settings.schedule.hoursPerDay': 'Ore lavorative al giorno (per fine tuning futuro, es. pacing infra-giornaliero)',
   'settings.schedule.mon': 'Lunedì',
   'settings.schedule.tue': 'Martedì',

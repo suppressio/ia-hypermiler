@@ -8,9 +8,12 @@ import type {
   AccountId,
   ClaudeAccountSettings,
   CopilotAccountSettings,
+  DayStatus,
   ProviderId,
+  WorkSchedule,
 } from '../types/index';
 import { isPlainRecord, mergeWithDefaults } from './merge';
+import { DEFAULT_WORK_SCHEDULE } from './defaults';
 import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from '../services/githubHost';
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
@@ -30,6 +33,7 @@ export function defaultClaudeAccount(id: AccountId, label = PROVIDER_DISPLAY_NAM
     enabled: false,
     accountScope: 'personal',
     subscription: { renewalRule: { type: 'dayOfMonth', day: 1 } },
+    workSchedule: structuredClone(DEFAULT_WORK_SCHEDULE),
     authMethod: 'password',
     session: { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null },
     planTier: 'pro',
@@ -46,6 +50,7 @@ export function defaultCopilotAccount(id: AccountId, label = PROVIDER_DISPLAY_NA
     enabled: false,
     accountScope: 'personal',
     subscription: { renewalRule: { type: 'dayOfMonth', day: 1 } },
+    workSchedule: structuredClone(DEFAULT_WORK_SCHEDULE),
     authMethod: 'pat',
     host: DEFAULT_GITHUB_HOST,
     credentials: { token: null, username: null },
@@ -56,6 +61,29 @@ export function defaultCopilotAccount(id: AccountId, label = PROVIDER_DISPLAY_NA
     planTier: 'individual',
     experimentalWarningAcknowledged: false,
   };
+}
+
+const DAY_STATUSES: readonly DayStatus[] = ['full', 'half', 'off'];
+
+/**
+ * Any value → a valid WorkSchedule (a fresh object, never shared between accounts):
+ * missing fields and wrong types from the defaults, unknown day values back to the
+ * default for that day.
+ */
+export function normalizeWorkSchedule(raw: unknown): WorkSchedule {
+  const merged = mergeWithDefaults(structuredClone(DEFAULT_WORK_SCHEDULE), raw) as WorkSchedule;
+  const days = { ...DEFAULT_WORK_SCHEDULE.days };
+  for (const key of Object.keys(days) as (keyof WorkSchedule['days'])[]) {
+    const value = merged.days[key];
+    if (DAY_STATUSES.includes(value)) days[key] = value;
+  }
+  return { enabled: merged.enabled, days, hoursPerDay: merged.hoursPerDay };
+}
+
+// The account's own schedule, or — for stores written before 0.4.6, where the schedule
+// was one global setting — the inherited global one, so the pacing does not change.
+function scheduleFor(raw: Record<string, unknown>, inheritedSchedule: unknown): WorkSchedule {
+  return normalizeWorkSchedule(isPlainRecord(raw.workSchedule) ? raw.workSchedule : inheritedSchedule);
 }
 
 export function defaultAccountFor(provider: ProviderId, id: AccountId, label?: string): AccountConfig {
@@ -80,8 +108,8 @@ export function nextAccountLabel(provider: ProviderId, existing: AccountConfig[]
  * configured (neither enabled nor with credentials) produces no account: the Settings
  * table starts empty instead of with ghost rows.
  */
-export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled: boolean): AccountConfig[] {
-  if (Array.isArray(rawAccounts)) return normalizeAccounts(rawAccounts);
+export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled: boolean, inheritedSchedule?: unknown): AccountConfig[] {
+  if (Array.isArray(rawAccounts)) return normalizeAccounts(rawAccounts, inheritedSchedule);
   if (!isPlainRecord(rawAccounts)) return [];
 
   const result: AccountConfig[] = [];
@@ -95,6 +123,7 @@ export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled
       migrated.provider = 'claude';
       migrated.partition = claudePartitionFor('claude');
       migrated.localInsights = legacyLocalInsightsEnabled;
+      migrated.workSchedule = scheduleFor(claude, inheritedSchedule);
       result.push(migrated);
     }
   }
@@ -106,6 +135,7 @@ export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled
       const migrated = mergeWithDefaults(defaultCopilotAccount('copilot'), copilot) as CopilotAccountSettings;
       migrated.id = 'copilot';
       migrated.provider = 'copilot';
+      migrated.workSchedule = scheduleFor(copilot, inheritedSchedule);
       result.push(migrated);
     }
   }
@@ -135,19 +165,19 @@ export function enforceSingleLocalInsights(accounts: AccountConfig[]): AccountCo
  * `provider`, `id` and (for Claude) `partition` cannot be changed by the content on
  * disk: the partition always derives from the id.
  */
-export function normalizeAccounts(rawAccounts: unknown[]): AccountConfig[] {
+export function normalizeAccounts(rawAccounts: unknown[], inheritedSchedule?: unknown): AccountConfig[] {
   const result: AccountConfig[] = [];
   for (const raw of rawAccounts) {
     if (!isPlainRecord(raw) || typeof raw.id !== 'string' || raw.id === '') continue;
     const id = raw.id;
     if (raw.provider === 'claude') {
       const cfg = mergeWithDefaults(defaultClaudeAccount(id), raw) as ClaudeAccountSettings;
-      result.push({ ...cfg, id, provider: 'claude', partition: claudePartitionFor(id) });
+      result.push({ ...cfg, id, provider: 'claude', partition: claudePartitionFor(id), workSchedule: scheduleFor(raw, inheritedSchedule) });
     } else if (raw.provider === 'copilot') {
       const cfg = mergeWithDefaults(defaultCopilotAccount(id), raw) as CopilotAccountSettings;
       // An unsupported host falls back to github.com: the token is never sent elsewhere.
       const host = normalizeGithubHost(cfg.host) ?? DEFAULT_GITHUB_HOST;
-      result.push({ ...cfg, id, provider: 'copilot', host });
+      result.push({ ...cfg, id, provider: 'copilot', host, workSchedule: scheduleFor(raw, inheritedSchedule) });
     }
   }
   return enforceSingleLocalInsights(result);

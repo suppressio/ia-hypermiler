@@ -32,11 +32,16 @@ export function normalizeSettings(raw: unknown, defaults: AppSettings): AppSetti
     && isPlainRecord(raw.localInsights)
     && isPlainRecord(raw.localInsights.claudeCode)
     && raw.localInsights.claudeCode.enabled === true;
+  // Before 0.4.6 the work schedule was one global setting: it is handed to every account
+  // that has none yet, then dropped.
+  const inheritedSchedule = isPlainRecord(raw) ? raw.workSchedule : undefined;
   const accounts = Array.isArray(rawAccounts)
-    ? normalizeAccounts(rawAccounts)
-    : migrateAccounts(rawAccounts, legacyLocalInsights);
-  // The old global `localInsights` flag (now per account) is not part of AppSettings.
-  const result: AppSettings & { localInsights?: unknown } = { ...merged, accounts };
+    ? normalizeAccounts(rawAccounts, inheritedSchedule)
+    : migrateAccounts(rawAccounts, legacyLocalInsights, inheritedSchedule);
+  // The old global `localInsights` flag and work schedule (now per account) are not part
+  // of AppSettings.
+  const result: AppSettings & { localInsights?: unknown; workSchedule?: unknown } = { ...merged, accounts };
   delete result.localInsights;
+  delete result.workSchedule;
   return result;
 }

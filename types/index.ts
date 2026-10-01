@@ -241,6 +241,9 @@ export interface AccountConfigBase {
   enabled: boolean;
   accountScope: AccountScope;
   subscription: { renewalRule: RenewalRule };
+  // Per account (it used to be one global setting): e.g. a personal account without
+  // constraints next to a company one paced on working days.
+  workSchedule: WorkSchedule;
 }
 
 export interface ClaudeAccountSettings extends AccountConfigBase {
@@ -336,7 +339,6 @@ export interface AppSettings {
   // Registry of N accounts (issue #4) — previously two fixed slots `{ claude, copilot }`,
   // converted at startup by store/normalize.ts → store/migrate.ts.
   accounts: AccountConfig[];
-  workSchedule: WorkSchedule;
   ui: UiSettings;
   history: HistorySettings;
   advisorCache: { generatedAt: string | null; adviceText: string | null };

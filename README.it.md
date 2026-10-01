@@ -13,6 +13,7 @@ Mostra un widget sempre visibile con l'utilizzo corrente, il consumo giornaliero
 ## Funzionalità
 
 - **Più account, di qualunque provider** — per esempio due account Claude e uno Copilot, ognuno con la propria sessione isolata; "Disconnetti" cancella davvero la sessione salvata.
+- **Un ritmo per ogni account** — ogni account ha il suo calendario di lavoro: per esempio un account personale senza vincoli e uno di lavoro calcolato sui giorni lavorativi (intera, mezza o riposo per ogni giorno della settimana).
 - **Una vista propria, non il calco della dashboard del provider** — consumo giorno per giorno rispetto alla quota ideale, lista delle finestre di quota con un verdetto (in linea / a rischio / esaurita), gauge del consumo istantaneo, rating di efficienza.
 - **Valore per token** (Claude, opt-in) — legge le sessioni Claude Code locali (solo conteggi di token e nomi dei tool, mai il contenuto dei messaggi) per mostrare quanti token produci per ogni 1% di quota e, quando il segnale è netto, perché stai consumando più in fretta.
 - **Controllo aggiornamenti** — all'avvio e ogni 24 ore; il pacchetto giusto per il tuo sistema si apre nel browser.

@@ -13,6 +13,7 @@ It shows an always-visible widget with the current usage, daily consumption agai
 ## Features
 
 - **Several accounts, any mix of providers** — e.g. two Claude accounts and one Copilot, each with its own isolated session; "Disconnect" really deletes the saved session.
+- **Your own pace per account** — each account has its own work schedule: e.g. a personal account with no constraints and a work account paced on working days (full, half or off per day of the week).
 - **A view of its own, not a copy of the provider dashboard** — consumption per day against the ideal share, a list of quota windows with a verdict (on track / at risk / exhausted), instant consumption gauge, efficiency rating.
 - **Value per token** (Claude, opt-in) — reads local Claude Code sessions (token counts and tool names only, never message content) to show how many tokens you produce per 1% of quota and, when the signal is clear, why you are consuming faster.
 - **Update check** — at startup and every 24 hours; the right package for your system opens in the browser.

@@ -1,34 +1,36 @@
 // store/defaults.ts — default values of AppSettings (schema in ARCHITECTURE.md §1).
 // Pure module (no electron/electron-store import): usable from tests too.
 
-import type { AppSettings } from '../types/index';
+import type { AppSettings, WorkSchedule } from '../types/index';
+
+// Work schedule a new account starts from (each account has its own since 0.4.6 —
+// it used to be one global setting, migrated by store/normalize.ts).
+export const DEFAULT_WORK_SCHEDULE: WorkSchedule = {
+  // Default true: keeps the behaviour already in use (pacing on the working days
+  // configured below). Can be disabled in Settings for a personal account, where pacing
+  // on specific days/hours makes no sense.
+  enabled: true,
+  days: {
+    mon: 'full',
+    tue: 'full',
+    wed: 'full',
+    thu: 'full',
+    fri: 'full',
+    sat: 'off',
+    sun: 'off',
+  },
+  // Working hours/day: not used yet by budget.ts (which works at day/half-day
+  // granularity), reserved for future intra-day pacing (e.g. Claude's 5-hour window).
+  // See the feedback in CLAUDE.md — simplified from a start/end range to a single number
+  // at the user's request.
+  hoursPerDay: 8,
+};
 
 export const DEFAULTS: AppSettings = {
   // Account registry (issue #4): starts empty, accounts are added from the table in
   // Settings. A legacy `{ claude, copilot }` store is converted by migrateAccounts() —
   // see store/migrate.ts.
   accounts: [],
-
-  workSchedule: {
-    // Default true: keeps the behaviour already in use (pacing on the working days
-    // configured below). Can be disabled in Settings for a personal account, where pacing
-    // on specific days/hours makes no sense.
-    enabled: true,
-    days: {
-      mon: 'full',
-      tue: 'full',
-      wed: 'full',
-      thu: 'full',
-      fri: 'full',
-      sat: 'off',
-      sun: 'off',
-    },
-    // Working hours/day: not used yet by budget.ts (which works at day/half-day
-    // granularity), reserved for future intra-day pacing (e.g. Claude's 5-hour window).
-    // See the feedback in CLAUDE.md — simplified from a start/end range to a single number
-    // at the user's request.
-    hoursPerDay: 8,
-  },
 
   ui: {
     language: 'auto',

@@ -188,7 +188,7 @@ export const en = {
   // --- Settings: work schedule ----------------------------------------------------
   'settings.schedule.title': 'Work schedule',
   'settings.schedule.enabled': 'Limit pacing to specific days/hours of the week',
-  'settings.schedule.disabledHint': 'Disabled: every day counts as a full working day, with no distinction between days of the week — useful for a personal account with no fixed hours to respect.',
+  'settings.schedule.disabledHint': 'Disabled for this account: every day counts as a full working day, with no distinction between days of the week — useful for a personal account with no fixed hours to respect.',
   'settings.schedule.hoursPerDay': 'Working hours per day (for future fine tuning, e.g. intra-day pacing)',
   'settings.schedule.mon': 'Monday',
   'settings.schedule.tue': 'Tuesday',
