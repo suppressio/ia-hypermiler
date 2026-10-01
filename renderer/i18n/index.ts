@@ -113,6 +113,15 @@ export function formatTime(value: Date | string): string {
   return new Date(value).toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
+const WEEKDAY_INDEX = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 } as const;
+
+/** Short weekday name in the active language, capitalized ("Mon", "Lun"). */
+export function formatWeekdayShort(day: keyof typeof WEEKDAY_INDEX): string {
+  // 2024-01-01 was a Monday: a fixed reference week, read at noon to stay clear of DST.
+  const name = new Date(2024, 0, 1 + WEEKDAY_INDEX[day], 12).toLocaleDateString(intlLocale(), { weekday: 'short' });
+  return name.charAt(0).toLocaleUpperCase(intlLocale()) + name.slice(1).replace(/\.$/u, '');
+}
+
 export function formatDateTime(value: Date | string): string {
   return new Date(value).toLocaleString(intlLocale());
 }

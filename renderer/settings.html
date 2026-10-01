@@ -47,10 +47,14 @@
       Cloned by settings.ts for every account: each [data-account-field] becomes
       data-field="accounts.<index>.<field>", reusing the generic form saving.
     -->
-    <!-- Work schedule of one account, cloned into every account detail (schedule-slot). -->
+    <!-- Work schedule of one account, cloned at the end of every account detail
+         (schedule-slot), collapsed with a one-line summary. -->
     <template id="tpl-work-schedule">
-      <fieldset class="account-schedule">
-        <legend data-i18n="settings.schedule.title">Work schedule</legend>
+      <details class="account-schedule">
+        <summary>
+          <span class="account-schedule-title" data-i18n="settings.schedule.title">Work schedule</span>
+          <span class="account-schedule-summary" data-role="schedule-summary"></span>
+        </summary>
         <label>
           <input type="checkbox" data-account-field="workSchedule.enabled" />
           <span data-i18n="settings.schedule.enabled">Limit pacing to specific days/hours of the week</span>
@@ -60,7 +64,7 @@
         <label><span data-i18n="settings.schedule.hoursPerDay">Working hours per day</span>
           <input type="number" min="1" max="24" step="0.5" data-account-field="workSchedule.hoursPerDay" />
         </label>
-      </fieldset>
+      </details>
     </template>
 
     <template id="tpl-detail-claude">
@@ -98,13 +102,13 @@
         <label><span data-i18n="settings.account.renewalDay">Renewal day (of the month)</span>
           <input type="number" min="1" max="31" data-account-field="subscription.renewalRule.day" />
         </label>
-        <div data-role="schedule-slot"></div>
         <label>
           <input type="checkbox" data-account-field="localInsights" data-local-insights />
           <span data-i18n="settings.claude.localInsights">Attribute this machine’s Claude Code sessions to this account</span>
         </label>
         <p class="hint" data-i18n="settings.claude.localInsightsHint"></p>
         <p class="hint" data-i18n="settings.claude.loginHint"></p>
+        <div data-role="schedule-slot"></div>
       </div>
     </template>
 
@@ -143,7 +147,6 @@
         <label><span data-i18n="settings.copilot.manualQuota">Monthly premium request quota</span>
           <input type="number" min="0" data-account-field="manualQuota" />
         </label>
-        <div data-role="schedule-slot"></div>
         <label><span data-i18n="settings.copilot.authMethod">Authentication method</span>
           <select data-account-field="authMethod">
             <option value="pat">Personal Access Token</option>
@@ -200,6 +203,7 @@
             <button type="button" class="btn-secondary" data-action="connect-copilot-oauth" data-i18n="settings.copilot.oauthConnect">Connect with GitHub (OAuth)</button>
           </div>
         </div>
+        <div data-role="schedule-slot"></div>
         <p class="hint" data-role="detail-status"></p>
       </div>
     </template>

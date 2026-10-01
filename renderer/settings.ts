@@ -4,6 +4,7 @@
 import type { AccountConfig, AccountId, AppSettings, HypermilerBridge, ProviderId, UpdateSettings } from './types';
 import { byId } from './dom.js';
 import { applyTranslations, formatDateTime, resolveLocale, setLocale, t, type MessageKey } from './i18n/index.js';
+import { summarizeWorkSchedule } from './schedule.js';
 
 declare global {
   interface Window {
@@ -239,6 +240,8 @@ function populateForm(): void {
 // (see budget.getDayUnit): they are disabled instead of editable without effect.
 function applyScheduleLock(account: AccountConfig, detail: HTMLElement): void {
   const enabled = account.workSchedule.enabled;
+  const summary = detail.querySelector<HTMLElement>('[data-role="schedule-summary"]');
+  if (summary) summary.textContent = summarizeWorkSchedule(account.workSchedule);
   const hint = detail.querySelector<HTMLElement>('[data-role="schedule-disabled-hint"]');
   if (hint) hint.hidden = enabled;
   detail

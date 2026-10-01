@@ -66,6 +66,7 @@ ia-hypermiler/
 │   ├── index.html, style.css, app.ts           ← widget
 │   ├── settings.html, settings.css, settings.ts ← Settings window (accounts table, language, updates, …)
 │   ├── dom.ts                   ← byId(id, ElementType): typed, checked element access
+│   ├── schedule.ts              ← one-line summary of an account work schedule (+ test)
 │   ├── types.ts                 ← reduced local copy of the shared types (renderer tsconfig is isolated)
 │   └── i18n/                    ← UI strings: en.ts (reference), it.ts, index.ts (t, applyTranslations, Intl formatting) (+ test)
 ├── agents/advisor.ts            ← Claude advice agent (stub)

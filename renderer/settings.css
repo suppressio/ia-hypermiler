@@ -112,14 +112,19 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
   opacity: 1;
 }
 
-/* Work schedule inside an account detail (it used to be a global card). */
+/* Work schedule at the end of an account detail (it used to be a global card):
+   collapsed by default, the summary line tells what it is set to. */
 .account-schedule {
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  padding: 6px 10px 2px;
-  margin: 4px 0 10px;
+  padding: 6px 10px;
+  margin: 8px 0 6px;
 }
-.account-schedule legend { font-size: 12px; font-weight: 600; color: #374151; padding: 0 4px; }
+.account-schedule summary { cursor: pointer; font-size: 12px; }
+.account-schedule-title { font-weight: 600; color: #374151; }
+.account-schedule-summary { color: #6b7280; margin-left: 6px; }
+.account-schedule-summary::before { content: '— '; }
+.account-schedule[open] > summary { margin-bottom: 8px; }
 .week-grid { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; align-items: center; margin-bottom: 10px; }
 .week-grid label { flex-direction: row; margin: 0; }
 
