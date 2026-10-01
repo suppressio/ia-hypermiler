@@ -42,6 +42,7 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
         token: cfg.credentials.token as string,
         accountScope: cfg.accountScope,
         manualQuota: cfg.manualQuota,
+        host: cfg.host,
       });
       if (!raw.planTier) raw.planTier = cfg.planTier;
       return raw;

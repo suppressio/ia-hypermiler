@@ -374,8 +374,11 @@ export interface CopilotCredentials {
   token: string;
   accountScope?: AccountScope;
   manualQuota?: number | null;
-  /** GitHub host, default "github.com" (services/githubHost.ts). */
-  host?: string;
+  /**
+   * GitHub host of the account (services/githubHost.ts). Required: a forgotten host used
+   * to fall back to github.com silently, sending a tenant token there (v0.4.4/0.4.5).
+   */
+  host: string;
 }
 
 /** API exposed by the preload to the renderer (`window.hypermiler`). */

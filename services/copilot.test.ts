@@ -30,17 +30,17 @@ afterEach(() => {
 
 test('resolveUsername reads login from the /user response', async () => {
   installFetchMock(async () => jsonResponse({ login: 'testuser' }));
-  const username = await copilotService.resolveUsername('tok-123');
+  const username = await copilotService.resolveUsername('tok-123', 'github.com');
   assert.equal(username, 'testuser');
 });
 
 test('resolveUsername throws an explicit error without token', async () => {
-  await assert.rejects(() => copilotService.resolveUsername(''), /missing token/);
+  await assert.rejects(() => copilotService.resolveUsername('', 'github.com'), /missing token/);
 });
 
 test('resolveUsername throws when login is missing from the response', async () => {
   installFetchMock(async () => jsonResponse({}));
-  await assert.rejects(() => copilotService.resolveUsername('tok-123'), /could not determine the username/);
+  await assert.rejects(() => copilotService.resolveUsername('tok-123', 'github.com'), /could not determine the username/);
 });
 
 test('sumCreditsUsed sums the netAmount of every usage item and converts it to credits', () => {
@@ -63,7 +63,7 @@ test('fetchUsage (personal) sums the report in credits and applies manualQuota a
     return jsonResponse({ usageItems: [{ netAmount: 0.42 }] });
   });
 
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', manualQuota: 300 });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', manualQuota: 300, host: 'github.com' });
 
   assert.equal(result.quotaWindows.length, 1);
   assert.equal(at(result.quotaWindows, 0).id, 'ai_credits');
@@ -79,7 +79,7 @@ test('fetchUsage (personal) falls back to premium_request/usage when ai_credit/u
     throw new Error(`URL inatteso nel test: ${url}`);
   });
 
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'github.com' });
 
   assert.equal(at(result.quotaWindows, 0).used, 30);
 });
@@ -100,7 +100,7 @@ test('fetchUsage (personal) falls back to copilot_internal/user when premium_req
     throw new Error(`URL inatteso nel test: ${url}`);
   });
 
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'github.com' });
 
   assert.equal(result.planTier, 'individual');
   assert.equal(at(result.quotaWindows, 0).used, 20); // 100 - 80
@@ -113,7 +113,7 @@ test('fetchUsage (personal) does not fall back to premium_request/usage on error
   });
 
   await assert.rejects(
-    () => copilotService.fetchUsage({ token: 'tok-invalido', accountScope: 'personal' }),
+    () => copilotService.fetchUsage({ token: 'tok-invalido', accountScope: 'personal', host: 'github.com' }),
     /answered 401/,
   );
 });
@@ -128,7 +128,7 @@ test('fetchUsage (company seat) converts quota_snapshots into percentage windows
     },
   }));
 
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'github.com' });
 
   assert.equal(result.planTier, 'business');
   assert.equal(result.quotaWindows.length, 2);
@@ -139,19 +139,19 @@ test('fetchUsage (company seat) converts quota_snapshots into percentage windows
 test('fetchUsage (company seat) explicitly reports the failure as best-effort', async () => {
   installFetchMock(async () => jsonResponse({ message: 'Bad credentials' }, 401));
   await assert.rejects(
-    () => copilotService.fetchUsage({ token: 'tok-invalido', accountScope: 'organization' }),
+    () => copilotService.fetchUsage({ token: 'tok-invalido', accountScope: 'organization', host: 'github.com' }),
     /best-effort/,
   );
 });
 
 test('fetchUsage throws an explicit error without token', async () => {
-  await assert.rejects(() => copilotService.fetchUsage({ token: '' }), /missing token/);
+  await assert.rejects(() => copilotService.fetchUsage({ token: '', host: 'github.com' }), /missing token/);
 });
 
 test('fetchOrgManagedUsage throws FormatDriftError with the shape (never the values) when quota_snapshots is missing', async () => {
   installFetchMock(async () => jsonResponse({ copilot_plan: 'business', cinder_cove: { used_dollars: 42 } }));
   try {
-    await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+    await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'github.com' });
     assert.fail('should have thrown');
   } catch (err) {
     assert.ok(err instanceof FormatDriftError);
@@ -174,7 +174,7 @@ test('fetchUsage (personal) treats 400 "Unable to get billing usage data." like 
     throw new Error(`Unexpected URL in test: ${url}`);
   });
 
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'github.com' });
 
   assert.ok(calls.some((u) => u.includes('premium_request/usage')));
   assert.equal(at(result.quotaWindows, 0).used, 25);
@@ -186,7 +186,7 @@ test('fetchUsage (personal) does not fall back on any other 400', async () => {
     return jsonResponse({ message: 'Invalid month' }, 400);
   });
   await assert.rejects(
-    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' }),
+    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'github.com' }),
     /answered 400/,
   );
 });
@@ -199,7 +199,7 @@ test('fetchUsage: unlimited snapshot with credits_used becomes a credits-used wi
       premium_interactions: { unlimited: true, has_quota: true, percent_remaining: 100, credits_used: 321, entitlement: 0 },
     },
   }));
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'github.com' });
   assert.equal(result.quotaWindows.length, 1);
   const win = at(result.quotaWindows, 0);
   assert.equal(win.unit, 'count');
@@ -217,7 +217,7 @@ test('fetchUsage: snapshot with an entitlement reports used = entitlement - quot
       },
     },
   }));
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'github.com' });
   const win = at(result.quotaWindows, 0);
   assert.equal(win.unit, 'count');
   assert.equal(win.used, 450);
@@ -234,7 +234,7 @@ test('fetchUsage: snapshots with nothing to show (entitlement 0, unlimited witho
       premium_interactions: { unlimited: false, percent_remaining: 100, entitlement: 0 },
     },
   }));
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'github.com' });
   assert.equal(result.quotaWindows.length, 0);
 });
 
@@ -246,7 +246,7 @@ test('fetchUsage: enterprise-managed seat without quota_snapshots throws Copilot
     organization_list: [],
   }));
   await assert.rejects(
-    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' }),
+    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'github.com' }),
     (err: unknown) => err instanceof copilotService.CopilotUsageUnavailableError && !(err instanceof FormatDriftError),
   );
 });
@@ -289,13 +289,13 @@ test('fetchUsage (personal) uses the tenant host for /user and the billing endpo
   assert.ok(calls.every((u) => u.startsWith('https://api.acme.ghe.com/')), calls.join(', '));
 });
 
-test('fetchUsage defaults to api.github.com when no host is given', async () => {
+test('fetchUsage uses api.github.com for a github.com account', async () => {
   const calls: string[] = [];
   installFetchMock(async (url) => {
     calls.push(url);
     return jsonResponse(GHE_SEAT_RESPONSE);
   });
-  await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'github.com' });
   assert.deepEqual(calls, ['https://api.github.com/copilot_internal/user']);
 });
 
@@ -346,7 +346,7 @@ test('real case — personal Free account under token-based billing (2026-10-01)
       premium_interactions: { unlimited: false, has_quota: false, entitlement: 0, quota_remaining: 0, remaining: 0, percent_remaining: 0, credits_used: 0 },
     },
   }));
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization', host: 'github.com' });
   // premium_interactions has no allotment on Free: not a "100% used" window (VS Code skips it too).
   assert.deepEqual(result.quotaWindows.map((w) => [w.id, w.unit, w.used, w.total]), [
     ['chat', 'count', 0, 200],
@@ -370,7 +370,7 @@ test('fetchUsage (personal) uses the internal quotas when available and skips th
     if (url.includes('copilot_internal/user')) return jsonResponse(FREE_PLAN_SNAPSHOTS);
     throw new Error(`Unexpected URL in test: ${url}`);
   });
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'github.com' });
   assert.deepEqual(calls, ['https://api.github.com/copilot_internal/user']);
   assert.deepEqual(result.quotaWindows.map((w) => [w.id, w.used, w.total]), [['chat', 50, 200]]);
 });
@@ -382,7 +382,7 @@ test('fetchUsage (personal) falls back to the billing report when the internal e
     if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
     throw new Error(`Unexpected URL in test: ${url}`);
   });
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', manualQuota: 300 });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', manualQuota: 300, host: 'github.com' });
   assert.deepEqual(result.quotaWindows.map((w) => [w.id, w.used, w.total]), [['ai_credits', 42, 300]]);
 });
 
@@ -393,7 +393,7 @@ test('fetchUsage (personal) falls back to the billing report when the internal e
     if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
     throw new Error(`Unexpected URL in test: ${url}`);
   });
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'github.com' });
   assert.equal(at(result.quotaWindows, 0).id, 'ai_credits');
 });
 
@@ -406,7 +406,7 @@ test('fetchUsage (personal) keeps a recognized-but-empty internal result when no
     if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
     throw new Error(`Unexpected URL in test: ${url}`);
   });
-  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'github.com' });
   assert.equal(result.quotaWindows.length, 0);
   assert.equal(result.planTier, 'individual');
 });
@@ -419,7 +419,7 @@ test('fetchUsage (personal) reports the internal error when neither source appli
     throw new Error(`Unexpected URL in test: ${url}`);
   });
   await assert.rejects(
-    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' }),
+    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', host: 'github.com' }),
     copilotService.CopilotUsageUnavailableError,
   );
 });

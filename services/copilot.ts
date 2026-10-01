@@ -16,7 +16,7 @@
 
 import { fetchJson } from './_http';
 import { extractShape, FormatDriftError } from './_shape';
-import { DEFAULT_GITHUB_HOST, githubApiBase } from './githubHost';
+import { githubApiBase } from './githubHost';
 import type { CopilotCredentials, QuotaWindow, RawAccountUsage } from '../types/index';
 
 const USD_PER_CREDIT = 0.01; // 1 AI credit = $0.01, see RESEARCH.md §2.1
@@ -78,7 +78,7 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 /** Resolves the GitHub username tied to the token (used on "Connect"). */
-export async function resolveUsername(token: string, host: string = DEFAULT_GITHUB_HOST): Promise<string> {
+export async function resolveUsername(token: string, host: string): Promise<string> {
   if (!token) throw new Error('Copilot: missing token');
   const data = await fetchJson<GithubUserResponse | null>(`${githubApiBase(host)}/user`, {
     headers: authHeaders(token),
@@ -314,7 +314,7 @@ async function fetchOrgManagedUsage({ apiBase, token }: { apiBase: string; token
 }
 
 export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAccountUsage> {
-  const { token, accountScope, manualQuota, host = DEFAULT_GITHUB_HOST } = credentials;
+  const { token, accountScope, manualQuota, host } = credentials;
   if (!token) {
     throw new Error('Copilot: missing token — connect the account from Settings');
   }

@@ -248,7 +248,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-01 | v0.4.3-beta | Copilot: billing 400 fallback, token-based-billing snapshots (`credits_used`), clear message for enterprise-managed seats (#7) |
 | 2026-10-01 | v0.4.4-beta | Copilot: GitHub domain per account — company seats on a `<tenant>.ghe.com` tenant read with a tenant PAT |
 | 2026-10-01 | v0.4.5-beta | Copilot: personal scope reads the internal quotas first (billing report as fallback), OAuth no longer experimental; Settings tooltips no longer clipped |
-| 2026-10-01 | v0.4.6-beta | Work schedule per account (inside each account detail), the old global one inherited on upgrade |
+| 2026-10-01 | v0.4.6-beta | Work schedule per account (inside each account detail), the old global one inherited on upgrade; fix: Copilot sync used github.com instead of the account's `.ghe.com` host |
 
 ### Lessons learned (still relevant)
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
@@ -258,6 +258,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **Logout reused the session**: cookies lived in `session.defaultSession` → one partition per Claude account, cleared on disconnect/remove/before login.
 - **`[hidden]` vs author `display`**: a class with `display:flex` overrides `hidden` → global `[hidden] { display: none !important }`.
 - **`build/` in .gitignore**: it is electron-builder's resources dir; icons were never committed (fixed — verify the packaged icon on the next release).
+- **Optional parameters with a "safe" default hide wiring bugs**: the Copilot host was optional (default github.com) and `main/providers.ts` never passed it, so v0.4.4/0.4.5 sent tenant tokens to api.github.com (401). `CopilotCredentials.host` and `resolveUsername(token, host)` are now required, so the compiler catches a missing host.
 - **Release tags** must start with `v` for CI to run.
 
 ### Open items
