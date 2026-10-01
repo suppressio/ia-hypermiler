@@ -264,7 +264,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 
 ### Open items
 - Next agreed steps: a single shared IPC contract (channels + types for main/preload/renderer, replacing the manual `renderer/types.ts` copy), then extracting a testable core from `main.ts` (EVOLUTION.md 2a) and working test-first.
-- **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), code signing evaluation (#11), architecture review and simplifications (#12, includes the IPC contract and core extraction below).
+- **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), architecture review and simplifications (#12, includes the IPC contract and core extraction below). **Milestone v1.0.0** (out of beta): signed Windows/macOS installers (#11).
 - `agents/advisor.ts` is a stub.
 - `workSchedule.hoursPerDay` (per account since 0.4.6) is not used by `budget.ts` yet: pacing on actual working hours is the next step.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).
