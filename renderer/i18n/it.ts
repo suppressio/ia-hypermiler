@@ -81,6 +81,7 @@ export const it: Record<MessageKey, string> = {
   'windows.seven_day': 'Limite settimanale (tutti i modelli)',
   'windows.seven_day_opus': 'Limite settimanale Opus',
   'windows.ai_credits': 'Credito AI',
+  'windows.spend': 'Limite di spesa',
   'windows.claudeExtraCredit': 'Credito extra Claude ({name})',
   'windows.claudeUndocumented': 'Utilizzo Claude — finestra non documentata ({name})',
   'windows.copilotSnapshot': 'Copilot — {name}',

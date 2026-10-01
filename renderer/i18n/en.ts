@@ -90,6 +90,7 @@ export const en = {
   'windows.seven_day': 'Weekly limit (all models)',
   'windows.seven_day_opus': 'Weekly Opus limit',
   'windows.ai_credits': 'AI credits',
+  'windows.spend': 'Spend limit',
   'windows.claudeExtraCredit': 'Claude extra credit ({name})',
   'windows.claudeUndocumented': 'Claude usage — undocumented window ({name})',
   'windows.copilotSnapshot': 'Copilot — {name}',

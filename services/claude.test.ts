@@ -31,7 +31,7 @@ afterEach(() => {
 test('listOrganizations maps uuid/name from the response', async () => {
   installFetchMock(async () => jsonResponse([{ uuid: 'org-1', name: 'Acme Inc' }, { id: 'org-2' }]));
   const orgs = await claudeService.listOrganizations('sess-abc');
-  assert.deepEqual(orgs, [{ id: 'org-1', name: 'Acme Inc' }, { id: 'org-2', name: 'Organizzazione' }]);
+  assert.deepEqual(orgs, [{ id: 'org-1', name: 'Acme Inc' }, { id: 'org-2', name: 'Organization' }]);
 });
 
 test('listOrganizations throws an explicit error without sessionKey', async () => {
@@ -137,6 +137,91 @@ test('buildQuotaWindows: real case — payload with obfuscated field names (2026
   assert.equal(at(windows, 0).used, 395.166701);
   assert.equal(at(windows, 0).total, 1000);
 });
+
+// Shape of a company (Team/Enterprise seat) account seen on 2026-10-01 (issue #6):
+// every window null, extra_usage.utilization null, the data moved to a new `spend`
+// object with minor-unit amounts. Values here are invented.
+function companySpendPayload(spend: Record<string, unknown>): Record<string, unknown> {
+  return {
+    five_hour: null,
+    seven_day: null,
+    cinder_cove: null,
+    limits: [],
+    member_dashboard_available: true,
+    extra_usage: {
+      credits_ever_enabled: true,
+      currency: 'USD',
+      is_enabled: true,
+      monthly_limit: 5000,
+      used_credits: 1234,
+      utilization: null,
+    },
+    spend,
+  };
+}
+
+test('buildQuotaWindows: real case — company account with only `spend` (2026-10, issue #6)', () => {
+  const windows = claudeService.buildQuotaWindows(companySpendPayload({
+    enabled: true,
+    percent: 24.68,
+    severity: 'normal',
+    used: { amount_minor: 1234, currency: 'USD', exponent: 2 },
+    limit: { amount_minor: 5000, currency: 'USD', exponent: 2 },
+    cap: { credits: { amount_minor: 5000, exponent: 2 }, money: null },
+  }));
+  assert.equal(windows.length, 1);
+  assert.equal(at(windows, 0).id, 'spend');
+  assert.equal(at(windows, 0).unit, 'count');
+  assert.equal(at(windows, 0).used, 12.34);
+  assert.equal(at(windows, 0).total, 50);
+  assert.equal(at(windows, 0).periodType, 'billing-cycle');
+  assert.equal(at(windows, 0).resetsAt, null);
+});
+
+test('buildQuotaWindows: `spend` without usable amounts falls back to its percent', () => {
+  const windows = claudeService.buildQuotaWindows(companySpendPayload({
+    enabled: true,
+    percent: 24.68,
+    used: null,
+    limit: null,
+  }));
+  assert.equal(windows.length, 1);
+  assert.equal(at(windows, 0).unit, 'percentage');
+  assert.equal(at(windows, 0).used, 24.68);
+  assert.equal(at(windows, 0).total, null);
+});
+
+test('buildQuotaWindows: disabled `spend` is a recognized shape with no window, not a format drift', () => {
+  const windows = claudeService.buildQuotaWindows(companySpendPayload({
+    enabled: false,
+    percent: 0,
+    used: { amount_minor: 0, currency: 'USD', exponent: 2 },
+    limit: { amount_minor: 5000, currency: 'USD', exponent: 2 },
+  }));
+  assert.equal(windows.length, 0);
+});
+
+test('buildQuotaWindows: `spend` is not added when a dollar window already reports the extra credit', () => {
+  const windows = claudeService.buildQuotaWindows({
+    cinder_cove: { utilization: 39.5, resets_at: '2026-09-13T14:38:47Z', limit_dollars: 1000, used_dollars: 395 },
+    spend: {
+      enabled: true,
+      percent: 39.5,
+      used: { amount_minor: 39500, currency: 'USD', exponent: 2 },
+      limit: { amount_minor: 100000, currency: 'USD', exponent: 2 },
+    },
+  });
+  assert.equal(windows.length, 1);
+  assert.equal(at(windows, 0).id, 'cinder_cove');
+});
+
+test('buildQuotaWindows: `spend` with an unexpected shape is still a format drift', () => {
+  assert.throws(
+    () => claudeService.buildQuotaWindows(companySpendPayload({ enabled: true, something_else: 1 })),
+    FormatDriftError,
+  );
+});
+
 
 test('fetchUsage uses the given organizationId without calling /organizations', async () => {
   const calledUrls: string[] = [];

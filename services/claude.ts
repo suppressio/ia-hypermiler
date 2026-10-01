@@ -40,8 +40,28 @@ interface ClaudeUsageWindowResponse {
 // real update observed in 2026-07 replaced them with arbitrary names different for
 // each window (e.g. "cinder_cove", "omelette_promotional" — likely intentional
 // obfuscation on Anthropic's side). A typed index signature lets us iterate over ANY
-// key without assuming its name, see below.
-type ClaudeUsageResponse = Record<string, ClaudeUsageWindowResponse | null | undefined>;
+// key without assuming its name, see below. Values are `unknown` and narrowed: besides
+// windows the response carries other objects (extra_usage, spend), arrays (limits) and
+// booleans.
+type ClaudeUsageResponse = Record<string, unknown>;
+
+// A minor-unit amount as found in `spend` (e.g. { amount_minor: 1234, exponent: 2 } = 12.34).
+interface ClaudeMoneyAmount {
+  amount_minor?: unknown;
+  exponent?: unknown;
+}
+
+// `spend` object, seen for the first time on 2026-10-01 on a company (Team/Enterprise
+// seat) account, where every window and extra_usage.utilization were null (issue #6,
+// RESEARCH.md §1 addendum). It carries the extra-usage spend against its limit.
+interface ClaudeSpendResponse {
+  enabled?: unknown;
+  percent?: unknown;
+  used?: ClaudeMoneyAmount | null;
+  limit?: ClaudeMoneyAmount | null;
+}
+
+const SPEND_KEY = 'spend';
 
 // Readable labels only for the known historical names (should they come back):
 // every other unrecognized key gets a generic label at runtime in buildQuotaWindows,
@@ -51,7 +71,52 @@ const KNOWN_LABELS: Record<string, string> = {
   five_hour: '5-hour limit',
   seven_day: 'Weekly limit (all models)',
   seven_day_opus: 'Weekly Opus limit',
+  [SPEND_KEY]: 'Spend limit',
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type ClaudeUsageWindow = ClaudeUsageWindowResponse & { utilization: number };
+
+function asWindow(value: unknown): ClaudeUsageWindow | null {
+  if (!isRecord(value) || typeof value.utilization !== 'number') return null;
+  return { ...(value as ClaudeUsageWindowResponse), utilization: value.utilization };
+}
+
+/** Major-unit value of a minor-unit amount, or null when the shape is not the expected one. */
+function moneyValue(amount: ClaudeMoneyAmount | null | undefined): number | null {
+  if (!amount || typeof amount.amount_minor !== 'number' || typeof amount.exponent !== 'number') return null;
+  return amount.amount_minor / 10 ** amount.exponent;
+}
+
+type SpendReading =
+  | { kind: 'unrecognized' }
+  | { kind: 'disabled' }
+  | { kind: 'window'; window: QuotaWindow };
+
+/**
+ * Reads the `spend` object: real amounts when used/limit are well-formed (limit > 0),
+ * otherwise its `percent`. `enabled: false` is a recognized "no spend limit active"
+ * state, not a format drift.
+ */
+function readSpend(value: unknown): SpendReading {
+  if (!isRecord(value)) return { kind: 'unrecognized' };
+  const spend = value as ClaudeSpendResponse;
+  if (spend.enabled === false) return { kind: 'disabled' };
+
+  const used = moneyValue(spend.used);
+  const limit = moneyValue(spend.limit);
+  const base = { id: SPEND_KEY, label: KNOWN_LABELS[SPEND_KEY] ?? SPEND_KEY, periodType: 'billing-cycle' as const, periodLength: null, resetsAt: null };
+  if (used !== null && limit !== null && limit > 0) {
+    return { kind: 'window', window: { ...base, unit: 'count', used, total: limit } };
+  }
+  if (typeof spend.percent === 'number') {
+    return { kind: 'window', window: { ...base, unit: 'percentage', used: spend.percent, total: null } };
+  }
+  return { kind: 'unrecognized' };
+}
 
 // When a full cookieHeader is available (read fresh from the Electron session,
 // includes cf_clearance) it is used as is; otherwise only the sessionKey is sent —
@@ -85,7 +150,7 @@ export async function listOrganizations(sessionKey: string, cookieHeader?: strin
   // the undefined and the usage call ended up on /organizations/undefined.
   return data.flatMap((org) => {
     const id = org?.uuid || org?.id;
-    return org && id ? [{ id, name: org.name || 'Organizzazione' }] : [];
+    return org && id ? [{ id, name: org.name || 'Organization' }] : [];
   });
 }
 
@@ -107,8 +172,9 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
   // legitimate result, not an error.
   let recognizedAny = false;
 
-  for (const [key, entry] of Object.entries(usage ?? {})) {
-    if (!entry || typeof entry.utilization !== 'number') continue;
+  for (const [key, value] of Object.entries(usage ?? {})) {
+    const entry = asWindow(value);
+    if (!entry) continue;
     recognizedAny = true;
 
     const resetsAt = entry.resets_at ? new Date(entry.resets_at) : null;
@@ -149,6 +215,17 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
       total: hasDollarAmounts ? (entry.limit_dollars as number) : null,
       resetsAt,
     });
+  }
+
+  // `spend` reports the same extra-usage money a dollar window already shows (personal
+  // accounts): it becomes a window only when no such window exists, as on company
+  // seats where it is the only data left (issue #6).
+  if (usage && SPEND_KEY in usage) {
+    const spend = readSpend(usage[SPEND_KEY]);
+    if (spend.kind !== 'unrecognized') recognizedAny = true;
+    if (spend.kind === 'window' && !windows.some((w) => w.unit === 'count')) {
+      windows.push(spend.window);
+    }
   }
 
   if (windows.length === 0 && !recognizedAny) {

@@ -256,6 +256,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 
 ### Open items
 - Next agreed steps: a single shared IPC contract (channels + types for main/preload/renderer, replacing the manual `renderer/types.ts` copy), then extracting a testable core from `main.ts` (EVOLUTION.md 2a) and working test-first.
+- **v0.5: the app is renamed "AIpermiler"** (decided 2026-10-01). Plan it explicitly: name/productName/appId, artifacts, UI strings and docs, GitHub repo; keep the update check working from old installs; migrate or pin the userData path (it derives from the app name) so accounts, sessions and history survive.
 - `agents/advisor.ts` is a stub.
 - `workSchedule.hoursPerDay` is not used by `budget.ts` yet.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).
