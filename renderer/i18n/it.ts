@@ -156,7 +156,7 @@ export const it: Record<MessageKey, string> = {
   'settings.copilot.authOauth': 'GitHub OAuth',
   'settings.copilot.patHelpAria': 'Come ottenere un token',
   'settings.copilot.patHelpFineGrained': 'Fine-grained:',
-  'settings.copilot.patHelpFineGrainedSteps': 'github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → in "Account permissions" assegna "Plan: Read-only".',
+  'settings.copilot.patHelpFineGrainedSteps': 'github.com (o il tuo <nome>.ghe.com) → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → in "Account permissions" assegna "Plan: Read-only".',
   'settings.copilot.patHelpClassic': 'Classic:',
   'settings.copilot.patHelpClassicSteps': 'Developer settings → Personal access tokens (classic) → Generate new token — nessuno scope aggiuntivo richiesto per leggere il proprio consumo personale.',
   'settings.copilot.patPlaceholder': 'github_pat_… oppure ghp_…',

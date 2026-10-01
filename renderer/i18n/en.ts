@@ -171,7 +171,7 @@ export const en = {
   'settings.copilot.authOauth': 'GitHub OAuth',
   'settings.copilot.patHelpAria': 'How to get a token',
   'settings.copilot.patHelpFineGrained': 'Fine-grained:',
-  'settings.copilot.patHelpFineGrainedSteps': 'github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → under "Account permissions" grant "Plan: Read-only".',
+  'settings.copilot.patHelpFineGrainedSteps': 'github.com (or your <name>.ghe.com) → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → under "Account permissions" grant "Plan: Read-only".',
   'settings.copilot.patHelpClassic': 'Classic:',
   'settings.copilot.patHelpClassicSteps': 'Developer settings → Personal access tokens (classic) → Generate new token — no extra scope needed to read your own personal usage.',
   'settings.copilot.patPlaceholder': 'github_pat_… or ghp_…',

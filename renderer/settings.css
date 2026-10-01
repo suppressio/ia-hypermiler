@@ -152,8 +152,13 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
   margin-bottom: 8px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  overflow: hidden;
 }
+/* Rounded corners on the corner cells instead of overflow: hidden on the table, which
+   clipped the ⓘ tooltips inside an open account detail. */
+.accounts-table thead th:first-child { border-top-left-radius: 5px; }
+.accounts-table thead th:last-child { border-top-right-radius: 5px; }
+.accounts-table tbody tr:last-child > td:first-child { border-bottom-left-radius: 5px; }
+.accounts-table tbody tr:last-child > td:last-child { border-bottom-right-radius: 5px; }
 .accounts-table th {
   text-align: left;
   font-weight: 600;
