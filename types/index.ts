@@ -273,7 +273,7 @@ export interface CopilotAccountSettings extends AccountConfigBase {
   host: string;
   credentials: { token: string | null; username: string | null };
   // Client ID of a GitHub OAuth App registered by the user (not a secret — see
-  // renderer/settings.ts): experimental alternative to the PAT, see CLAUDE.md.
+  // renderer/settings.ts): alternative to the PAT, registered on the account's host.
   oauthApp: { clientId: string | null };
   manualQuota: number;
   planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise';

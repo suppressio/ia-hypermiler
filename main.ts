@@ -804,9 +804,9 @@ function registerIpcHandlers(): void {
     return { username };
   });
 
-  // Experimental alternative to a hand-pasted PAT — see CLAUDE.md/RESEARCH.md §2.2:
-  // hypothesis tested and disproved for company seats, kept as an alternative to the PAT
-  // for personal plans.
+  // Alternative to a hand-pasted PAT, through an OAuth App registered by the user on the
+  // account's GitHub domain. Verified on a personal Free account (2026-10-01): with an
+  // OAuth token copilot_internal/user returns the quota snapshots — see RESEARCH.md §2.2.
   ipcMain.handle('accounts:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, rawId: unknown, rawPayload: unknown) => {
     const id = requireString(rawId, 'Account');
     const payloadRecord = isPlainRecord(rawPayload) ? rawPayload : {};
