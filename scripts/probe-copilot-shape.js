@@ -3,7 +3,7 @@
 // whether GitHub exposes AI credits for company seats again (see RESEARCH.md §2.2
 // addenda). Run locally, never paste the token anywhere:
 //
-//   node --env-file=.env.test scripts/probe-copilot-shape.js
+//   node --env-file=.env.test scripts/probe-copilot-shape.js [--quota-values]
 //
 // Uses HYPERMILER_TEST_COPILOT_TOKEN, and HYPERMILER_TEST_COPILOT_HOST for a GitHub
 // Enterprise Cloud tenant (e.g. acme.ghe.com; default github.com — same rule as
@@ -65,6 +65,24 @@ async function main() {
   console.log(`\nFields whose name suggests credits/quota (${hints.length}):`);
   for (const path of hints) console.log(`  ${path}`);
   printSafeSummary(body);
+  if (process.argv.includes('--quota-values')) printQuotaValues(body);
+}
+
+// Opt-in (--quota-values): the quota numbers of each snapshot, to debug how they are
+// read. They are the user's own usage figures — fine to share in a private chat, never
+// in a public issue. No identifiers, login, dates or token.
+const QUOTA_FIELDS = ['unlimited', 'has_quota', 'entitlement', 'quota_remaining', 'remaining', 'percent_remaining',
+  'credits_used', 'overage_count', 'overage_permitted', 'token_based_billing'];
+
+function printQuotaValues(body) {
+  const snapshots = body && typeof body === 'object' ? body.quota_snapshots : null;
+  if (snapshots === null || typeof snapshots !== 'object') return;
+  console.log('\nQuota values (--quota-values, do NOT paste in public issues):');
+  for (const [name, snap] of Object.entries(snapshots)) {
+    if (snap === null || typeof snap !== 'object') continue;
+    const fields = QUOTA_FIELDS.map((key) => `${key}=${JSON.stringify(snap[key])}`).join(' ');
+    console.log(`  ${name}: ${fields}`);
+  }
 }
 
 // Plan names and yes/no flags only: never amounts, percentages, dates or identifiers.

@@ -247,6 +247,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-01 | v0.4.2-beta | Fix: company Claude accounts read the new `spend` object (#6) |
 | 2026-10-01 | v0.4.3-beta | Copilot: billing 400 fallback, token-based-billing snapshots (`credits_used`), clear message for enterprise-managed seats (#7) |
 | 2026-10-01 | v0.4.4-beta | Copilot: GitHub domain per account — company seats on a `<tenant>.ghe.com` tenant read with a tenant PAT |
+| 2026-10-01 | v0.4.5-beta | Copilot: personal scope reads the internal quotas first (billing report as fallback), OAuth no longer experimental; Settings tooltips no longer clipped |
 
 ### Lessons learned (still relevant)
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.

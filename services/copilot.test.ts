@@ -165,12 +165,11 @@ test('fetchUsage (personal) treats 400 "Unable to get billing usage data." like 
   const calls: string[] = [];
   installFetchMock(async (url) => {
     calls.push(url);
-    if (url.includes('copilot_internal/user')) {
-      return jsonResponse({ copilot_plan: 'individual', quota_snapshots: { premium_interactions: { percent_remaining: 75 } } });
-    }
-    if (url.includes('/settings/billing/')) {
+    if (url.includes('copilot_internal/user')) return jsonResponse({ copilot_plan: 'individual' }); // no snapshots
+    if (url.includes('ai_credit/usage')) {
       return jsonResponse({ message: 'Unable to get billing usage data.', status: '400' }, 400);
     }
+    if (url.includes('premium_request/usage')) return jsonResponse({ usageItems: [{ netAmount: 0.25 }] });
     if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
     throw new Error(`Unexpected URL in test: ${url}`);
   });
@@ -334,4 +333,93 @@ test('resolveUsername uses the given host', async () => {
   });
   assert.equal(await copilotService.resolveUsername('tok-123', 'acme.ghe.com'), 'testuser');
   assert.deepEqual(calls, ['https://api.acme.ghe.com/user']);
+});
+
+test('real case — personal Free account under token-based billing (2026-10-01): no premium allotment, chat and completions with their own quota', async () => {
+  installFetchMock(async () => jsonResponse({
+    copilot_plan: 'individual',
+    token_based_billing: true,
+    quota_reset_date: '2026-11-01',
+    quota_snapshots: {
+      chat: { unlimited: false, has_quota: true, entitlement: 200, quota_remaining: 200, remaining: 200, percent_remaining: 100, credits_used: 0 },
+      completions: { unlimited: false, has_quota: true, entitlement: 2000, quota_remaining: 2000, remaining: 2000, percent_remaining: 100, credits_used: 0 },
+      premium_interactions: { unlimited: false, has_quota: false, entitlement: 0, quota_remaining: 0, remaining: 0, percent_remaining: 0, credits_used: 0 },
+    },
+  }));
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  // premium_interactions has no allotment on Free: not a "100% used" window (VS Code skips it too).
+  assert.deepEqual(result.quotaWindows.map((w) => [w.id, w.unit, w.used, w.total]), [
+    ['chat', 'count', 0, 200],
+    ['completions', 'count', 0, 2000],
+  ]);
+});
+
+// --- 2026-10-01: personal scope tries the internal endpoint (real quotas) before the billing report ---
+
+const FREE_PLAN_SNAPSHOTS = {
+  copilot_plan: 'individual',
+  quota_snapshots: {
+    chat: { unlimited: false, has_quota: true, entitlement: 200, quota_remaining: 150, percent_remaining: 75, credits_used: 0 },
+  },
+};
+
+test('fetchUsage (personal) uses the internal quotas when available and skips the billing report', async () => {
+  const calls: string[] = [];
+  installFetchMock(async (url) => {
+    calls.push(url);
+    if (url.includes('copilot_internal/user')) return jsonResponse(FREE_PLAN_SNAPSHOTS);
+    throw new Error(`Unexpected URL in test: ${url}`);
+  });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  assert.deepEqual(calls, ['https://api.github.com/copilot_internal/user']);
+  assert.deepEqual(result.quotaWindows.map((w) => [w.id, w.used, w.total]), [['chat', 50, 200]]);
+});
+
+test('fetchUsage (personal) falls back to the billing report when the internal endpoint has no quotas', async () => {
+  installFetchMock(async (url) => {
+    if (url.includes('copilot_internal/user')) return jsonResponse({ copilot_plan: 'individual' });
+    if (url.includes('ai_credit/usage')) return jsonResponse({ usageItems: [{ netAmount: 0.42 }] });
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    throw new Error(`Unexpected URL in test: ${url}`);
+  });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal', manualQuota: 300 });
+  assert.deepEqual(result.quotaWindows.map((w) => [w.id, w.used, w.total]), [['ai_credits', 42, 300]]);
+});
+
+test('fetchUsage (personal) falls back to the billing report when the internal endpoint refuses the token', async () => {
+  installFetchMock(async (url) => {
+    if (url.includes('copilot_internal/user')) return jsonResponse({ message: 'Forbidden' }, 403);
+    if (url.includes('ai_credit/usage')) return jsonResponse({ usageItems: [{ netAmount: 0.1 }] });
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    throw new Error(`Unexpected URL in test: ${url}`);
+  });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  assert.equal(at(result.quotaWindows, 0).id, 'ai_credits');
+});
+
+test('fetchUsage (personal) keeps a recognized-but-empty internal result when no billing report applies', async () => {
+  installFetchMock(async (url) => {
+    if (url.includes('copilot_internal/user')) {
+      return jsonResponse({ copilot_plan: 'individual', quota_snapshots: { premium_interactions: { unlimited: false, percent_remaining: 0, entitlement: 0 } } });
+    }
+    if (url.includes('/settings/billing/')) return jsonResponse({ message: 'Not Found' }, 404);
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    throw new Error(`Unexpected URL in test: ${url}`);
+  });
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+  assert.equal(result.quotaWindows.length, 0);
+  assert.equal(result.planTier, 'individual');
+});
+
+test('fetchUsage (personal) reports the internal error when neither source applies', async () => {
+  installFetchMock(async (url) => {
+    if (url.includes('copilot_internal/user')) return jsonResponse({ access_type_sku: 'enterprise_managed', copilot_plan: 'individual' });
+    if (url.includes('/settings/billing/')) return jsonResponse({ message: 'Unable to get billing usage data.' }, 400);
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    throw new Error(`Unexpected URL in test: ${url}`);
+  });
+  await assert.rejects(
+    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' }),
+    copilotService.CopilotUsageUnavailableError,
+  );
 });

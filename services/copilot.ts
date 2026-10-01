@@ -150,42 +150,60 @@ async function fetchBillingUsageReport(apiBase: string, username: string, token:
   }
 }
 
+/**
+ * Personal scope: the internal endpoint first, because it has the real quotas per
+ * category (budget, remaining, reset — the same data VS Code shows), then the official
+ * billing report as a fallback, which only has the month's spend in dollars against a
+ * hand-entered total. Observed on 2026-10-01: an OAuth token gets the quotas, a
+ * fine-grained PAT with "Plan" gets the billing report.
+ */
 async function fetchPersonalUsage({ apiBase, host, token, manualQuota, now }: { apiBase: string; host: string; token: string; manualQuota: number | null | undefined; now: Date }): Promise<RawAccountUsage> {
+  let internal: RawAccountUsage | null = null;
+  let internalError: Error | null = null;
+  try {
+    internal = await fetchCopilotInternalUsage(apiBase, token, 'personal plan');
+  } catch (err) {
+    internalError = err instanceof Error ? err : new Error(String(err));
+  }
+  if (internal && internal.quotaWindows.length > 0) return internal;
+
+  try {
+    return await fetchBillingUsage({ apiBase, host, token, manualQuota, now });
+  } catch (err) {
+    // A recognized internal answer with nothing to show (e.g. a Free plan with no
+    // premium allotment) is a legitimate result, whatever the billing report says.
+    if (internal) return internal;
+    // Neither source applies to this account: the internal error says why (enterprise-
+    // managed seat, format drift). Any other billing error (401/403, network) wins: it
+    // is about the token, not the account.
+    if (isBillingNotApplicable(err) && internalError !== null) throw internalError;
+    throw err;
+  }
+}
+
+async function fetchBillingUsage({ apiBase, host, token, manualQuota, now }: { apiBase: string; host: string; token: string; manualQuota: number | null | undefined; now: Date }): Promise<RawAccountUsage> {
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
   const username = await resolveUsername(token, host);
+  const report = await fetchBillingUsageReport(apiBase, username, token, year, month);
+  const used = sumCreditsUsed(report);
 
-  try {
-    const report = await fetchBillingUsageReport(apiBase, username, token, year, month);
-    const used = sumCreditsUsed(report);
-
-    return {
-      planTier: null, // filled in by the caller from the store, not derivable from the response
-      subscriptionRenewsAt: null,
-      quotaWindows: [
-        {
-          id: 'ai_credits',
-          label: 'AI credits',
-          periodType: 'billing-cycle',
-          periodLength: null,
-          unit: 'count',
-          used,
-          total: typeof manualQuota === 'number' ? manualQuota : null,
-          resetsAt: null,
-        },
-      ],
-    };
-  } catch (err) {
-    if (!isBillingNotApplicable(err)) throw err;
-    // Both ai_credit/usage and premium_request/usage answered 404 (observed with a real
-    // personal Free account — see RESEARCH.md §2.1 addendum — although the
-    // github.com/settings/billing page of the same account shows real "Included credits"
-    // consumption: these official REST endpoints evidently do not cover it for this kind
-    // of plan). Last attempt: the same undocumented internal endpoint already used for
-    // company seats (RESEARCH.md §2.2) — it powers the VS Code quota indicator for ANY
-    // Copilot account, not only company ones, so it might work here too.
-    return fetchCopilotInternalUsage(apiBase, token, 'personal plan, internal fallback');
-  }
+  return {
+    planTier: null, // filled in by the caller from the store, not derivable from the response
+    subscriptionRenewsAt: null,
+    quotaWindows: [
+      {
+        id: 'ai_credits',
+        label: 'AI credits',
+        periodType: 'billing-cycle',
+        periodLength: null,
+        unit: 'count',
+        used,
+        total: typeof manualQuota === 'number' ? manualQuota : null,
+        resetsAt: null,
+      },
+    ],
+  };
 }
 
 /**
