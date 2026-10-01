@@ -249,7 +249,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
 - **ESM-only SDK in a CommonJS main process**: `require()` and even a TS-compiled `import()` fail with ERR_REQUIRE_ESM inside Electron → `new Function('s', 'return import(s)')` in `services/claudeLocalSessions.ts`.
 - **claude.ai behind Cloudflare**: `sessionKey` alone gets a 403 challenge; the full cookie header (incl. `cf_clearance`) + a browser User-Agent are needed. Usage field names are obfuscated and rotate → windows are recognized by value shape.
-- **Copilot company seats**: no self-service usage data exists (AI Credits model since 2026-06-01; `copilot_internal/user` no longer has `quota_snapshots`, whatever the token type) — do not retry without new evidence.
+- **Copilot company seats**: no self-service usage data for enterprise-managed seats (`access_type_sku: enterprise_managed`, no `quota_snapshots` with PAT or OAuth token, re-verified 2026-10-01) — `CopilotUsageUnavailableError`, not a drift. Personal accounts with an OAuth token do get token-based-billing snapshots (`credits_used`), read with VS Code's rules (RESEARCH.md §2.2). Do not retry the company case without new evidence.
 - **Logout reused the session**: cookies lived in `session.defaultSession` → one partition per Claude account, cleared on disconnect/remove/before login.
 - **`[hidden]` vs author `display`**: a class with `display:flex` overrides `hidden` → global `[hidden] { display: none !important }`.
 - **`build/` in .gitignore**: it is electron-builder's resources dir; icons were never committed (fixed — verify the packaged icon on the next release).

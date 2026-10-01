@@ -36,16 +36,38 @@ interface BillingUsageReport {
   usageItems?: BillingUsageItem[];
 }
 
+// Field meanings follow VS Code's own reader of this endpoint (chatEntitlementService.ts,
+// getQuotaUsage — see RESEARCH.md §2.2 addendum 2026-10-01). External data: every field
+// is `unknown` and narrowed.
 interface CopilotInternalQuotaSnapshot {
-  percent_remaining?: number;
-  [key: string]: unknown;
+  percent_remaining?: unknown;
+  unlimited?: unknown;
+  has_quota?: unknown;
+  entitlement?: unknown;
+  quota_remaining?: unknown;
+  credits_used?: unknown;
+  quota_reset_at?: unknown; // epoch seconds
 }
 
 interface CopilotInternalUserResponse {
+  access_type_sku?: unknown;
   copilot_plan?: string;
   quota_reset_date?: string;
+  quota_reset_date_utc?: string;
   quota_snapshots?: Record<string, CopilotInternalQuotaSnapshot | null> | null;
 }
+
+/**
+ * The account is recognized but GitHub exposes no usage data for it — observed for
+ * enterprise-managed seats (access_type_sku "enterprise_managed", no quota_snapshots,
+ * whatever the token type, issue #7). A known limit, not a format drift: main.ts shows
+ * a translated explanation instead of opening an issue draft.
+ */
+export class CopilotUsageUnavailableError extends Error {
+  readonly reason = 'enterpriseManagedSeat' as const;
+}
+
+const ENTERPRISE_MANAGED_SKU = 'enterprise_managed';
 
 function authHeaders(token: string): Record<string, string> {
   return {
@@ -87,19 +109,30 @@ export function sumCreditsUsed(report: BillingUsageReport | null): number {
   return Math.round(totalUsd / USD_PER_CREDIT);
 }
 
-function isHttp404(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { status?: number }).status === 404;
+function httpStatus(err: unknown): number | undefined {
+  return typeof err === 'object' && err !== null ? (err as { status?: number }).status : undefined;
+}
+
+// "This billing report does not apply to this account": 404 (observed until 2026-07) or,
+// since 2026-10, 400 with this exact message for accounts without their own billing
+// (company seats). Any other 400 stays an error.
+const BILLING_NOT_APPLICABLE_MESSAGE = 'Unable to get billing usage data';
+
+function isBillingNotApplicable(err: unknown): boolean {
+  const status = httpStatus(err);
+  if (status === 404) return true;
+  return status === 400 && err instanceof Error && err.message.includes(BILLING_NOT_APPLICABLE_MESSAGE);
 }
 
 /**
  * Reads the billing report for the current month. Tries `ai_credit/usage` first
  * (current endpoint, replacing the old "premium requests" model retired on 2026-06-01 —
- * see RESEARCH.md §2.1); on 404 (observed with a real account, cause not yet clear:
- * non-uniform endpoint rollout or account without its own personal plan) it falls back
- * to `premium_request/usage`, which the REST docs describe with exactly the same
- * response shape — same parsing, no duplicated logic. A non-404 failure (network,
- * 401/403, …) does not trigger the fallback: it propagates at once, so a credentials
- * problem is not hidden behind a useless second attempt.
+ * see RESEARCH.md §2.1); when the report does not apply to the account (404, or since
+ * 2026-10 a 400 "Unable to get billing usage data." — see isBillingNotApplicable) it
+ * falls back to `premium_request/usage`, which the REST docs describe with exactly the
+ * same response shape — same parsing, no duplicated logic. Any other failure (network,
+ * 401/403, other 400s, …) does not trigger the fallback: it propagates at once, so a
+ * credentials problem is not hidden behind a useless second attempt.
  */
 async function fetchBillingUsageReport(username: string, token: string, year: number, month: string): Promise<BillingUsageReport | null> {
   const headers = authHeaders(token);
@@ -109,10 +142,10 @@ async function fetchBillingUsageReport(username: string, token: string, year: nu
       { headers, label: 'users/{username}/settings/billing/ai_credit/usage' },
     );
   } catch (err) {
-    if (!isHttp404(err)) throw err;
+    if (!isBillingNotApplicable(err)) throw err;
     return fetchJson<BillingUsageReport | null>(
       `${API_BASE}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage?year=${year}&month=${month}`,
-      { headers, label: 'users/{username}/settings/billing/premium_request/usage (fallback from ai_credit/usage 404)' },
+      { headers, label: 'users/{username}/settings/billing/premium_request/usage (fallback from ai_credit/usage)' },
     );
   }
 }
@@ -143,7 +176,7 @@ async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; 
       ],
     };
   } catch (err) {
-    if (!isHttp404(err)) throw err;
+    if (!isBillingNotApplicable(err)) throw err;
     // Both ai_credit/usage and premium_request/usage answered 404 (observed with a real
     // personal Free account — see RESEARCH.md §2.1 addendum — although the
     // github.com/settings/billing page of the same account shows real "Included credits"
@@ -179,6 +212,11 @@ async function fetchCopilotInternalUsage(token: string, context: string): Promis
   }
 
   if (!data?.quota_snapshots) {
+    if (data?.access_type_sku === ENTERPRISE_MANAGED_SKU) {
+      throw new CopilotUsageUnavailableError(
+        `Copilot (${context}): GitHub exposes no usage data for enterprise-managed seats (no quota_snapshots) — see RESEARCH.md §2.2`,
+      );
+    }
     throw new FormatDriftError(
       `Copilot (${context}, best-effort): response without quota_snapshots — format changed or token not valid for this endpoint`,
       'copilot_internal/user',
@@ -186,22 +224,17 @@ async function fetchCopilotInternalUsage(token: string, context: string): Promis
     );
   }
 
+  const fallbackReset = data.quota_reset_date_utc || data.quota_reset_date;
   const windows: QuotaWindow[] = [];
+  let recognizedAny = false;
   for (const [key, entry] of Object.entries(data.quota_snapshots)) {
-    if (!entry || typeof entry.percent_remaining !== 'number') continue;
-    windows.push({
-      id: key,
-      label: `Copilot — ${key}`,
-      periodType: 'billing-cycle',
-      periodLength: null,
-      unit: 'percentage',
-      used: Math.round((100 - entry.percent_remaining) * 10) / 10,
-      total: null,
-      resetsAt: data.quota_reset_date ? new Date(data.quota_reset_date) : null,
-    });
+    const reading = readQuotaSnapshot(key, entry, fallbackReset ? new Date(fallbackReset) : null);
+    if (reading.kind === 'unrecognized') continue;
+    recognizedAny = true;
+    if (reading.kind === 'window') windows.push(reading.window);
   }
 
-  if (windows.length === 0) {
+  if (!recognizedAny) {
     throw new FormatDriftError(
       `Copilot (${context}, best-effort): no quota window recognized in the response`,
       'copilot_internal/user',
@@ -213,6 +246,46 @@ async function fetchCopilotInternalUsage(token: string, context: string): Promis
     planTier: data.copilot_plan || null,
     subscriptionRenewsAt: data.quota_reset_date ? new Date(data.quota_reset_date) : null,
     quotaWindows: windows,
+  };
+}
+
+type SnapshotReading =
+  | { kind: 'unrecognized' }
+  | { kind: 'empty' }
+  | { kind: 'window'; window: QuotaWindow };
+
+/**
+ * One quota snapshot → one window, with VS Code's rules (getQuotaUsage):
+ * - unlimited: only "credits used" (no denominator), nothing when has_quota is false or
+ *   credits_used is missing;
+ * - entitlement > 0: used = entitlement − quota_remaining (or derived from
+ *   percent_remaining), out of the entitlement;
+ * - entitlement 0: nothing allocated for this category;
+ * - otherwise the percentage, as before token-based billing.
+ */
+function readQuotaSnapshot(key: string, entry: CopilotInternalQuotaSnapshot | null | undefined, fallbackReset: Date | null): SnapshotReading {
+  if (!entry || typeof entry.percent_remaining !== 'number') return { kind: 'unrecognized' };
+  const percentRemaining = Math.min(100, Math.max(0, entry.percent_remaining));
+  const resetsAt = typeof entry.quota_reset_at === 'number' && entry.quota_reset_at > 0
+    ? new Date(entry.quota_reset_at * 1000)
+    : fallbackReset;
+  const base = { id: key, label: `Copilot — ${key}`, periodType: 'billing-cycle' as const, periodLength: null, resetsAt };
+
+  if (entry.unlimited === true) {
+    if (entry.has_quota === false || typeof entry.credits_used !== 'number') return { kind: 'empty' };
+    return { kind: 'window', window: { ...base, unit: 'count', used: entry.credits_used, total: null } };
+  }
+  if (entry.entitlement === 0) return { kind: 'empty' };
+  if (typeof entry.entitlement === 'number' && entry.entitlement > 0) {
+    const total = entry.entitlement;
+    const used = typeof entry.quota_remaining === 'number'
+      ? total - entry.quota_remaining
+      : total * (100 - percentRemaining) / 100;
+    return { kind: 'window', window: { ...base, unit: 'count', used: Math.max(0, used), total } };
+  }
+  return {
+    kind: 'window',
+    window: { ...base, unit: 'percentage', used: Math.round((100 - percentRemaining) * 10) / 10, total: null },
   };
 }
 

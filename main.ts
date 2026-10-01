@@ -373,6 +373,9 @@ function friendlyErrorMessage(err: unknown): string {
   if (error.status === 401 || error.status === 403) {
     return t('error.sessionExpired', { detail: error.message });
   }
+  if (err instanceof copilotService.CopilotUsageUnavailableError) {
+    return t('error.copilotEnterpriseManaged');
+  }
   return error.message;
 }
 

@@ -25,4 +25,5 @@ export const it: Record<MainMessageKey, string> = {
   'oauth.closeTab': "Puoi chiudere questa scheda e tornare all'app.",
 
   'error.sessionExpired': "Sessione scaduta o non valida — riconnetti l'account da Impostazioni. ({detail})",
+  'error.copilotEnterpriseManaged': "GitHub non espone i dati di consumo per i seat Copilot gestiti da un'enterprise: li vedono solo gli amministratori dell'enterprise.",
 };

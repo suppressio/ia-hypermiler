@@ -93,6 +93,9 @@ export const en = {
   'windows.spend': 'Spend limit',
   'windows.claudeExtraCredit': 'Claude extra credit ({name})',
   'windows.claudeUndocumented': 'Claude usage — undocumented window ({name})',
+  'windows.premium_interactions': 'Copilot AI credits',
+  'windows.chat': 'Copilot chat',
+  'windows.completions': 'Copilot code completions',
   'windows.copilotSnapshot': 'Copilot — {name}',
 
   // --- Units -----------------------------------------------------------------

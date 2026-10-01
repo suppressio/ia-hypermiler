@@ -84,6 +84,9 @@ export const it: Record<MessageKey, string> = {
   'windows.spend': 'Limite di spesa',
   'windows.claudeExtraCredit': 'Credito extra Claude ({name})',
   'windows.claudeUndocumented': 'Utilizzo Claude — finestra non documentata ({name})',
+  'windows.premium_interactions': 'Crediti AI Copilot',
+  'windows.chat': 'Chat Copilot',
+  'windows.completions': 'Completamento codice Copilot',
   'windows.copilotSnapshot': 'Copilot — {name}',
 
   'unit.days': '{n} gg',

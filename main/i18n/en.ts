@@ -26,6 +26,7 @@ export const en = {
   'oauth.closeTab': 'You can close this tab and go back to the app.',
 
   'error.sessionExpired': 'Session expired or invalid — reconnect the account from Settings. ({detail})',
+  'error.copilotEnterpriseManaged': 'GitHub does not expose usage data for Copilot seats managed by an enterprise: only enterprise admins can see it.',
 } as const;
 
 export type MainMessageKey = keyof typeof en;

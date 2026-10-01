@@ -158,3 +158,96 @@ test('fetchOrgManagedUsage throws FormatDriftError with the shape (never the val
     assert.ok(!JSON.stringify(err.shape).includes('42'));
   }
 });
+
+// --- 2026-10-01: billing endpoints answer 400, token-based-billing snapshots, enterprise-managed seats (#7) ---
+
+test('fetchUsage (personal) treats 400 "Unable to get billing usage data." like 404 and moves on', async () => {
+  const calls: string[] = [];
+  installFetchMock(async (url) => {
+    calls.push(url);
+    if (url.includes('copilot_internal/user')) {
+      return jsonResponse({ copilot_plan: 'individual', quota_snapshots: { premium_interactions: { percent_remaining: 75 } } });
+    }
+    if (url.includes('/settings/billing/')) {
+      return jsonResponse({ message: 'Unable to get billing usage data.', status: '400' }, 400);
+    }
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    throw new Error(`Unexpected URL in test: ${url}`);
+  });
+
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' });
+
+  assert.ok(calls.some((u) => u.includes('premium_request/usage')));
+  assert.equal(at(result.quotaWindows, 0).used, 25);
+});
+
+test('fetchUsage (personal) does not fall back on any other 400', async () => {
+  installFetchMock(async (url) => {
+    if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
+    return jsonResponse({ message: 'Invalid month' }, 400);
+  });
+  await assert.rejects(
+    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'personal' }),
+    /answered 400/,
+  );
+});
+
+test('fetchUsage: unlimited snapshot with credits_used becomes a credits-used window without total', async () => {
+  installFetchMock(async () => jsonResponse({
+    copilot_plan: 'individual',
+    token_based_billing: true,
+    quota_snapshots: {
+      premium_interactions: { unlimited: true, has_quota: true, percent_remaining: 100, credits_used: 321, entitlement: 0 },
+    },
+  }));
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  assert.equal(result.quotaWindows.length, 1);
+  const win = at(result.quotaWindows, 0);
+  assert.equal(win.unit, 'count');
+  assert.equal(win.used, 321);
+  assert.equal(win.total, null);
+});
+
+test('fetchUsage: snapshot with an entitlement reports used = entitlement - quota_remaining', async () => {
+  installFetchMock(async () => jsonResponse({
+    copilot_plan: 'individual',
+    quota_snapshots: {
+      premium_interactions: {
+        unlimited: false, percent_remaining: 70, entitlement: 1500, quota_remaining: 1050, credits_used: 450,
+        quota_reset_at: 1793491200,
+      },
+    },
+  }));
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  const win = at(result.quotaWindows, 0);
+  assert.equal(win.unit, 'count');
+  assert.equal(win.used, 450);
+  assert.equal(win.total, 1500);
+  assert.equal(new Date(win.resetsAt ?? 0).getTime(), 1793491200 * 1000);
+});
+
+test('fetchUsage: snapshots with nothing to show (entitlement 0, unlimited without credits) are not a format drift', async () => {
+  installFetchMock(async () => jsonResponse({
+    copilot_plan: 'individual',
+    quota_snapshots: {
+      chat: { unlimited: true, has_quota: false, percent_remaining: 100, credits_used: 0 },
+      completions: { unlimited: true, percent_remaining: 100 },
+      premium_interactions: { unlimited: false, percent_remaining: 100, entitlement: 0 },
+    },
+  }));
+  const result = await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
+  assert.equal(result.quotaWindows.length, 0);
+});
+
+test('fetchUsage: enterprise-managed seat without quota_snapshots throws CopilotUsageUnavailableError, not a format drift', async () => {
+  installFetchMock(async () => jsonResponse({
+    access_type_sku: 'enterprise_managed',
+    copilot_plan: 'individual',
+    chat_enabled: true,
+    organization_list: [],
+  }));
+  await assert.rejects(
+    () => copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' }),
+    (err: unknown) => err instanceof copilotService.CopilotUsageUnavailableError && !(err instanceof FormatDriftError),
+  );
+});
