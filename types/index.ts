@@ -37,9 +37,9 @@ export interface WorkSchedule {
   // feedback).
   enabled: boolean;
   days: WorkScheduleDays;
-  // Hours of a full working day: today's elapsed part is the time since the first
-  // activity of the day over these hours (budget.todayElapsedUnits), and the
-  // sustainable %/h is spread over remaining working hours.
+  // Hours of a full working day: today's elapsed part is the span worked today, from
+  // the day's samples, over these hours (budget.todayActivitySpan/todayElapsedUnits),
+  // and the sustainable %/h is spread over remaining working hours.
   hoursPerDay: number;
 }
 
@@ -69,10 +69,9 @@ export interface DailyUsagePoint {
   accountId: AccountId;
   windowId: string;
   used: number;
-  // Consumption at the start of the day and first refresh of the day where it rose
-  // (see budget.updateDailyPoint). Missing on points recorded before they existed.
+  // Consumption at the start of the day (see budget.updateDailyPoint). Missing on
+  // points recorded before it existed.
   dayStartUsed?: number;
-  firstActivityAt?: string;
   meta?: Record<string, unknown>;
 }
 
@@ -193,6 +192,9 @@ export interface ClaudeLocalInsights {
   topTools: ToolUsageShare[];
   // Output tokens per day (a session is attributed to the day it was last modified).
   daily: LocalDailyTokens[];
+  // Earliest session start (ISO) per local day — start of the working day. Optional:
+  // a cache written before it existed lacks it and is recomputed (main.ts).
+  firstSessionStartByDay?: Record<string, string>;
 }
 
 export interface LocalDailyTokens {

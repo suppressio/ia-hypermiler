@@ -181,16 +181,26 @@ async function fetchPersonalUsage({ apiBase, host, token, manualQuota, now }: { 
   }
 }
 
+/**
+ * Reset of the billing report count: the report covers the UTC calendar month it is
+ * queried for, so by its own definition the count restarts on the 1st of the next
+ * month at 00:00 UTC — derived from the report, no date field needed.
+ */
+export function billingReportResetsAt(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
 async function fetchBillingUsage({ apiBase, host, token, manualQuota, now }: { apiBase: string; host: string; token: string; manualQuota: number | null | undefined; now: Date }): Promise<RawAccountUsage> {
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
   const username = await resolveUsername(token, host);
   const report = await fetchBillingUsageReport(apiBase, username, token, year, month);
   const used = sumCreditsUsed(report);
+  const nextMonthUtc = billingReportResetsAt(now);
 
   return {
     planTier: null, // filled in by the caller from the store, not derivable from the response
-    subscriptionRenewsAt: null,
+    subscriptionRenewsAt: nextMonthUtc,
     quotaWindows: [
       {
         id: 'ai_credits',
@@ -200,7 +210,7 @@ async function fetchBillingUsage({ apiBase, host, token, manualQuota, now }: { a
         unit: 'count',
         used,
         total: typeof manualQuota === 'number' ? manualQuota : null,
-        resetsAt: null,
+        resetsAt: nextMonthUtc,
       },
     ],
   };

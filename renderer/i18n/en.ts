@@ -194,6 +194,8 @@ export const en = {
   // --- Settings: work schedule ----------------------------------------------------
   'settings.schedule.title': 'Work schedule',
   'settings.schedule.enabled': 'Limit pacing to specific days/hours of the week',
+  'settings.account.renewalFromProvider': 'Reset dates come from the provider (next: {date}): the renewal day is not needed for this account.',
+  'settings.account.renewalManual': 'The provider does not report when this quota renews: enter the renewal day by hand.',
   'settings.schedule.disabledHint': 'Disabled for this account: every day counts as a full working day, with no distinction between days of the week — useful for a personal account with no fixed hours to respect.',
   'settings.schedule.hoursPerDay': 'Working hours per day (for future fine tuning, e.g. intra-day pacing)',
   'settings.schedule.summaryOff': 'No constraints: every day counts',

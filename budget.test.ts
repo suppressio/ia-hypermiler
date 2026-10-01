@@ -166,26 +166,58 @@ test('elapsedWorkingUnits: a non-working current day adds nothing, before the pe
 });
 
 // ---------------------------------------------------------------------------
-// todayElapsedUnits — actual working hours from the first activity of the day
+// todayActivitySpan / todayElapsedUnits — the working day from the day's samples
 // ---------------------------------------------------------------------------
+
+function sample(hour: number, minute: number, used: number, day = 13) {
+  return { timestamp: new Date(2026, 6, day, hour, minute), used };
+}
+
+test('todayActivitySpan: from the sample before the first increase to the last increase', () => {
+  const samples = [
+    sample(8, 30, 10), sample(9, 0, 10), sample(9, 30, 11), sample(10, 0, 12),
+    sample(11, 30, 14), sample(12, 0, 14), sample(15, 0, 14), // flat after 11:30
+  ];
+  const span = budget.todayActivitySpan(samples, 10, new Date(2026, 6, 13, 20, 0), null);
+  assert.deepEqual(span, { start: new Date(2026, 6, 13, 9, 0), end: new Date(2026, 6, 13, 11, 30) });
+});
+
+test('todayActivitySpan: nothing rose today → null; a drop (reset) is not activity', () => {
+  const now = new Date(2026, 6, 13, 18);
+  assert.equal(budget.todayActivitySpan([sample(9, 0, 10), sample(12, 0, 10)], 10, now, null), null);
+  assert.equal(budget.todayActivitySpan([sample(9, 0, 80), sample(9, 30, 0)], 80, now, null), null);
+});
+
+test('todayActivitySpan: first sample of the day already above the baseline → starts there', () => {
+  // App opened at 10:00 after working since earlier: the start is the first sample seen.
+  const span = budget.todayActivitySpan([sample(10, 0, 15), sample(12, 0, 18)], 12, new Date(2026, 6, 13, 18), null);
+  assert.deepEqual(span, { start: new Date(2026, 6, 13, 10, 0), end: new Date(2026, 6, 13, 12, 0) });
+});
+
+test("todayActivitySpan: an earlier local session moves the start back; yesterday's samples are ignored", () => {
+  const samples = [sample(17, 0, 5, 12), sample(18, 0, 9, 12), sample(10, 0, 15), sample(12, 0, 18)];
+  const now = new Date(2026, 6, 13, 18);
+  const span = budget.todayActivitySpan(samples, 12, now, new Date(2026, 6, 13, 8, 45));
+  assert.deepEqual(span, { start: new Date(2026, 6, 13, 8, 45), end: new Date(2026, 6, 13, 12, 0) });
+  // A session of another day is not today's start.
+  const other = budget.todayActivitySpan(samples, 12, now, new Date(2026, 6, 12, 8, 0));
+  assert.deepEqual(other?.start, new Date(2026, 6, 13, 10, 0));
+});
 
 test('todayElapsedUnits: no activity yet today → 0 (today still entirely ahead)', () => {
   assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 13, 10), null, FULL_WEEK_SCHEDULE), 0);
-  // An activity of another day does not count.
-  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 14, 10), new Date(2026, 6, 13, 9), FULL_WEEK_SCHEDULE), 0);
 });
 
-test('todayElapsedUnits: hours since the first activity over hoursPerDay, capped at the day unit', () => {
-  const start = new Date(2026, 6, 13, 9, 0);
-  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 13, 13, 0), start, FULL_WEEK_SCHEDULE), 0.5); // 4h of 8
-  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 13, 20, 0), start, FULL_WEEK_SCHEDULE), 1); // capped
+test('todayElapsedUnits: the hours worked over hoursPerDay, capped at the day unit', () => {
+  // Worked 9–12, looked at 20:00: 3 hours, not 11 — stopping work stops the clock.
+  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 13, 20, 0), 3, FULL_WEEK_SCHEDULE), 0.375);
+  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 13, 21, 0), 11, FULL_WEEK_SCHEDULE), 1); // capped
   const halfFriday = { ...FULL_WEEK_SCHEDULE, days: { ...FULL_WEEK_SCHEDULE.days, fri: 'half' as const } };
-  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 17, 16, 0), new Date(2026, 6, 17, 9, 0), halfFriday), 0.5);
+  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 17, 16, 0), 7, halfFriday), 0.5);
 });
 
 test('todayElapsedUnits: at least 2 hours once work started (no absurd pace after one refresh)', () => {
-  const start = new Date(2026, 6, 13, 9, 0);
-  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 13, 9, 15), start, FULL_WEEK_SCHEDULE), 0.25);
+  assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 13, 9, 30), 0.5, FULL_WEEK_SCHEDULE), 0.25);
 });
 
 test('todayElapsedUnits: schedule disabled → fraction of the calendar day', () => {
@@ -243,26 +275,24 @@ function point(date: string, used: number, extra: Partial<DailyUsagePoint> = {})
   return { date, accountId: 'acc', windowId: 'w', used, ...extra };
 }
 
-test('updateDailyPoint: new day → baseline from the previous point, first activity when it rises', () => {
+test('updateDailyPoint: new day → baseline from the previous point, kept for the whole day', () => {
   const morning = new Date(2026, 6, 14, 8, 0);
   const created = budget.updateDailyPoint({
     today: undefined, previous: point('2026-07-13', 12), accountId: 'acc', windowId: 'w', used: 12, periodStart: P_START, now: morning,
   });
   assert.equal(created.date, '2026-07-14');
   assert.equal(created.dayStartUsed, 12);
-  assert.equal(created.firstActivityAt, undefined);
 
   const later = new Date(2026, 6, 14, 9, 30);
   const active = budget.updateDailyPoint({
     today: created, previous: point('2026-07-13', 12), accountId: 'acc', windowId: 'w', used: 13.5, periodStart: P_START, now: later,
   });
   assert.equal(active.dayStartUsed, 12);
-  assert.equal(active.firstActivityAt, later.toISOString());
 
   const evening = budget.updateDailyPoint({
     today: active, previous: point('2026-07-13', 12), accountId: 'acc', windowId: 'w', used: 20, periodStart: P_START, now: new Date(2026, 6, 14, 18),
   });
-  assert.equal(evening.firstActivityAt, later.toISOString()); // set once
+  assert.equal(evening.dayStartUsed, 12); // set once
   assert.equal(evening.used, 20);
 });
 
@@ -272,7 +302,6 @@ test('updateDailyPoint: reset since the previous point → baseline 0; no histor
     today: undefined, previous: point('2026-07-10', 80), accountId: 'acc', windowId: 'w', used: 85, periodStart: P_START, now,
   });
   assert.equal(afterReset.dayStartUsed, 0); // period started after the previous point
-  assert.equal(afterReset.firstActivityAt, now.toISOString());
   const dropped = budget.updateDailyPoint({
     today: undefined, previous: point('2026-07-13', 80), accountId: 'acc', windowId: 'w', used: 4, periodStart: new Date(2026, 6, 1), now: new Date(2026, 6, 14, 10),
   });
@@ -281,7 +310,6 @@ test('updateDailyPoint: reset since the previous point → baseline 0; no histor
     today: undefined, previous: undefined, accountId: 'acc', windowId: 'w', used: 30, periodStart: P_START, now,
   });
   assert.equal(first.dayStartUsed, 30);
-  assert.equal(first.firstActivityAt, undefined);
 });
 
 test('dailyDeltas uses the day baseline: the reset day and the first day get a real bar', () => {

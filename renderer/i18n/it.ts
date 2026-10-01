@@ -178,6 +178,8 @@ export const it: Record<MessageKey, string> = {
 
   'settings.schedule.title': 'Calendario di lavoro',
   'settings.schedule.enabled': 'Limita il pacing a giorni/ore specifici della settimana',
+  'settings.account.renewalFromProvider': 'Le date di reset arrivano dal provider (prossima: {date}): il giorno di rinnovo non serve per questo account.',
+  'settings.account.renewalManual': 'Il provider non indica quando si rinnova questa quota: inserisci il giorno di rinnovo a mano.',
   'settings.schedule.disabledHint': 'Disattivato per questo account: ogni giorno conta come giornata lavorativa piena, senza distinzioni tra giorni della settimana — utile per un account personale che non ha orari fissi da rispettare.',
   'settings.schedule.hoursPerDay': 'Ore lavorative al giorno (per fine tuning futuro, es. pacing infra-giornaliero)',
   'settings.schedule.summaryOff': 'Nessun vincolo: conta ogni giorno',

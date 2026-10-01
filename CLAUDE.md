@@ -165,7 +165,7 @@ When a service receives a response whose format no longer matches the expected o
 Implemented in `budget.ts` (do not duplicate it here: update this section only if the model changes). Public API, all pure functions tested in `budget.test.ts`:
 
 - `workingUnitsBetween(start, end, workSchedule)` — working units (1/0.5/0 per day) between two dates; with `workSchedule.enabled === false` every day counts 1
-- `todayElapsedUnits`, `elapsedWorkingUnits`, `remainingWorkingUnits` — actual working hours: today's elapsed part = hours since the first activity of the day (`DailyUsagePoint.firstActivityAt`) / `hoursPerDay`, at least 2h, capped at the day unit; calendar fraction of the day with the schedule disabled. Elapsed + remaining = the whole period
+- `todayActivitySpan`, `todayElapsedUnits`, `elapsedWorkingUnits`, `remainingWorkingUnits` — actual working hours: today's span = first to last increase among the day's samples (`history.recentSamples` keeps the whole day), started earlier by today's first local Claude Code session; today's elapsed part = span / `hoursPerDay`, at least 2h, capped at the day unit; calendar fraction of the day with the schedule disabled. Elapsed + remaining = the whole period
 - `localDateKey` / `parseDateKey` — LOCAL `YYYY-MM-DD` keys of the history (never `toISOString().slice(0, 10)`, which is the UTC day)
 - `updateDailyPoint` — today's history point with its baseline (`dayStartUsed`) and first activity
 - `normalizedUtilization(window)` — 0-100 percentage, or `null`
@@ -177,7 +177,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - `dailyDeltas`, `deltaStats`, `windowVerdict` — daily consumption chart, peak/average/streak, per-window verdict
 - `tokenYield`, `consumptionCause` — value per token (Claude local insights; a cause is stated only with a clear signal)
 - `generateDailyTip` — `{ key, params }` from explicit conditions on the metrics above, never a generic tip
-- `resolveRenewalDate(renewalRule, referenceDate)` — only `{ type: 'dayOfMonth', day }`; `rrule` throws "not supported"
+- `resolveRenewalDate(renewalRule, referenceDate)` — only `{ type: 'dayOfMonth', day }`; `rrule` throws "not supported". Only a fallback: the period end is the window's `resetsAt`, then the provider's `subscriptionRenewsAt`, then the manual day (`main.ts resolvePeriodBounds`); Settings locks the manual field when the provider reports every paced window's reset (`renderer/renewal.ts`)
 
 ### Threshold and pace notifications
 - System notification when usage passes the configured threshold (default **80%**) of the critical window, at most once per day per account (flag in `store.meta.notifiedToday`).

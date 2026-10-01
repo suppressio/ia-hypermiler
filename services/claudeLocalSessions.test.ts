@@ -136,3 +136,26 @@ test('computeClaudeLocalInsights groups tokens by the day the session was last m
     { date: today, outputTokens: 150, highContextOutputTokens: 100 },
   ]);
 });
+
+test('computeClaudeLocalInsights records the earliest session start of each day (start of the working day)', async () => {
+  const day = new Date(2026, 6, 13);
+  const at9 = new Date(2026, 6, 13, 9, 0).getTime();
+  const at11 = new Date(2026, 6, 13, 11, 0).getTime();
+  const now = new Date(2026, 6, 13, 18, 0).getTime();
+  const deps = makeDeps(
+    [
+      session({ sessionId: 'late', createdAt: at11, lastModified: now }),
+      session({ sessionId: 'early', createdAt: at9, lastModified: at11 }),
+      { sessionId: 'unknown', summary: 'test', lastModified: now }, // no createdAt: ignored
+    ],
+    { late: [assistantMessage({ output_tokens: 10 })], early: [assistantMessage({ output_tokens: 10 })], unknown: [assistantMessage({ output_tokens: 10 })] },
+  );
+  const original = Date.now;
+  Date.now = () => now; // sessions of 13 July within the window
+  try {
+    const result = await computeClaudeLocalInsights(7, deps);
+    assert.deepEqual(result?.firstSessionStartByDay, { [localDateKey(day)]: new Date(at9).toISOString() });
+  } finally {
+    Date.now = original;
+  }
+});

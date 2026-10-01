@@ -74,9 +74,10 @@ Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del fi
         sun: 'full' | 'half' | 'off',
       },
       hoursPerDay: number, // un solo numero, non un intervallo inizio/fine (feedback utente, Giorno 2):
-                           // l'inizio della giornata è ricavato dai dati (primo aggiornamento del
-                           // giorno con consumo in aumento), parte di oggi trascorsa = ore da allora
-                           // / hoursPerDay (budget.todayElapsedUnits, almeno 2h).
+                           // l'arco lavorato si legge dai campioni del giorno, dal primo all'ultimo
+                           // aumento (budget.todayActivitySpan, anticipato dalla prima sessione
+                           // Claude Code locale di oggi); parte di oggi trascorsa = arco /
+                           // hoursPerDay (budget.todayElapsedUnits, almeno 2h).
     },
   } & (
     { // --- provider: 'claude' ---
@@ -130,7 +131,7 @@ Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del fi
 Sezioni del pannello impostazioni (finestra separata `renderer/settings.html`, aperta dal tray o da un'icona ingranaggio nel widget):
 
 1. **Account e sessioni** — *(aggiornato, issue #4)* una **tabella** di account (Nome | Provider | Stato | Attivo | azioni Configura/Connetti/Disconnetti/Rimuovi) con "Aggiungi account"; "Configura" apre sotto la riga il pannello del provider (campi comuni + specifici). Descrizione originale: per Claude e Copilot: stato connessione, metodo (password/SSO/PAT/OAuth device), pulsante "Connetti/Riconnetti" che apre una `BrowserWindow` di login per Claude o il device-flow per Copilot, data di scadenza sessione stimata, toggle "seat aziendale" con avviso automatico se attivo su Copilot ("funzionalità sperimentale, può interrompersi senza preavviso").
-2. **Piano e rinnovo** — tipo piano, giorno di rinnovo abbonamento (selettore semplice "giorno del mese"; dietro le quinte salvato come RRULE minimale `FREQ=MONTHLY;BYMONTHDAY=n` così in futuro si possono aggiungere ricorrenze diverse senza cambiare schema).
+2. **Piano e rinnovo** — tipo piano, giorno di rinnovo abbonamento (selettore semplice "giorno del mese"; dietro le quinte salvato come RRULE minimale `FREQ=MONTHLY;BYMONTHDAY=n` così in futuro si possono aggiungere ricorrenze diverse senza cambiare schema). *(Da 2026-10:)* il giorno manuale è solo un ripiego — la fine periodo di una finestra è il suo `resetsAt`, poi il `subscriptionRenewsAt` del provider (Copilot `quota_reset_date`; il report di fatturazione riparte per definizione il 1° del mese UTC successivo), poi il giorno manuale. Le Impostazioni bloccano il campo e mostrano la data del provider quando ogni finestra con pacing ne ha una (`renderer/renewal.ts`); oggi serve solo per il limite di spesa Claude aziendale.
 3. **Calendario di lavoro** — *(per account dalla 0.4.6: ultima sezione del dettaglio di ogni account, compressa con un riassunto di una riga)* 7 selettori giorno con 3 stati (pieno/mezza/riposo), un interruttore "attivo" (spento = ogni giorno conta come giornata piena, es. account personale) e ore/giorno (riservato). Usato per calcolare budget e proiezioni su "giorni lavorativi rimanenti", non su giorni di calendario.
 4. **Aspetto** — lingua (Automatica / English / Italiano), stile finestra (le tre skin descritte sotto), always-on-top, colore accento, intervallo grafico (settimana/mese) di default.
 5. **Notifiche** — soglia percentuale di allarme (default 80%, come da `CLAUDE.md`, ma ora configurabile), eventualmente per-finestra (es. avviso separato per il limite 5h di Claude).

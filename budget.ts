@@ -109,27 +109,60 @@ export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | n
 const MIN_OBSERVED_WORK_HOURS = 2;
 
 /**
+ * Today's working span, from the day's own data (user feedback: "from the first data
+ * point of the day to the last"), not from a single recorded start up to `now`:
+ * - an increase is a sample whose `used` is above the previous one; the first sample of
+ *   the day is compared with `dayStartUsed` (yesterday's value, 0 after a reset). A
+ *   drop is a reset, not activity;
+ * - `start`: the sample just before the first increase, when it is from today (work
+ *   began after it); otherwise the first increase itself (work began before the app
+ *   saw it). Moved earlier to `sessionStart` (first local Claude Code session of the
+ *   day) when that is earlier;
+ * - `end`: the last increase — once work stops the span stops growing.
+ * Null when nothing rose today. Samples of other days are ignored.
+ */
+export function todayActivitySpan(
+  samples: { timestamp: Date | string; used: number }[],
+  dayStartUsed: number | null,
+  now: Date,
+  sessionStart: Date | null,
+): { start: Date; end: Date } | null {
+  const todayKey = localDateKey(now);
+  const today = samples
+    .map((s) => ({ time: new Date(s.timestamp), used: s.used }))
+    .filter((s) => localDateKey(s.time) === todayKey && s.time <= now)
+    .sort((a, b) => a.time.getTime() - b.time.getTime());
+
+  let start: Date | null = null;
+  let end: Date | null = null;
+  for (const [i, sample] of today.entries()) {
+    const previous = today[i - 1];
+    const base = previous ? previous.used : dayStartUsed;
+    if (base === null || sample.used <= base) continue;
+    start ??= previous ? previous.time : sample.time;
+    end = sample.time;
+  }
+  if (!start || !end) return null;
+  const sessionToday = sessionStart && localDateKey(sessionStart) === todayKey ? sessionStart : null;
+  return { start: sessionToday && sessionToday < start ? sessionToday : start, end };
+}
+
+/**
  * Working units of TODAY already spent, from the actual working hours:
- * - schedule enabled: hours since the first activity of the day (first refresh where
- *   consumption rose, see updateDailyPoint) over `hoursPerDay`, at least
- *   MIN_OBSERVED_WORK_HOURS once work started, capped at the day unit (0.5 on a half
- *   day). No activity yet → 0: before work starts, today is still entirely ahead.
+ * - schedule enabled: the hours worked today (todayActivitySpan) over `hoursPerDay`, at
+ *   least MIN_OBSERVED_WORK_HOURS once work started, capped at the day unit (0.5 on a
+ *   half day). No activity yet → 0: before work starts, today is still entirely ahead.
  * - schedule disabled (calendar days, e.g. a personal account): the fraction of the
  *   calendar day elapsed, no working hours to infer.
- * The start is the refresh that OBSERVED the activity (every 30 min), not its exact
- * beginning: the pace is overestimated by at most one refresh interval.
  */
-export function todayElapsedUnits(now: Date, firstActivityAt: Date | string | null, workSchedule: WorkSchedule): number {
+export function todayElapsedUnits(now: Date, workedHours: number | null, workSchedule: WorkSchedule): number {
   if (!workSchedule.enabled) {
     return (now.getTime() - startOfDay(now).getTime()) / (24 * 3600 * 1000);
   }
   const unit = getDayUnit(now, workSchedule);
-  if (unit === 0 || !firstActivityAt) return 0;
-  const start = new Date(firstActivityAt);
-  if (localDateKey(start) !== localDateKey(now) || start > now) return 0;
+  if (unit === 0 || workedHours === null) return 0;
   if (workSchedule.hoursPerDay <= 0) return unit;
-  const hours = Math.max(MIN_OBSERVED_WORK_HOURS, (now.getTime() - start.getTime()) / (3600 * 1000));
-  return Math.min(unit, hours / workSchedule.hoursPerDay);
+  return Math.min(unit, Math.max(MIN_OBSERVED_WORK_HOURS, workedHours) / workSchedule.hoursPerDay);
 }
 
 /** Working unit of the current day, 0 when the day is outside [periodStart, periodEnd). */
@@ -454,10 +487,8 @@ export function dailyDeltas(
  * - `dayStartUsed` (set once, when the day's point is created): the previous point's
  *   value when it belongs to the current period; 0 when the period started after it
  *   or the value dropped (reset in between); the current value when there is no
- *   history at all (consumption before the first refresh is unknown);
- * - `firstActivityAt` (set once): the first refresh of the day where consumption is
- *   above `dayStartUsed` — the start of today's work for todayElapsedUnits.
- * An older point of today without a baseline (recorded before these fields existed)
+ *   history at all (consumption before the first refresh is unknown).
+ * An older point of today without a baseline (recorded before the field existed)
  * gets one computed the same way.
  */
 export function updateDailyPoint(args: {
@@ -476,10 +507,7 @@ export function updateDailyPoint(args: {
     else if (previous.used > used || isBefore(parseDateKey(previous.date), startOfDay(new Date(periodStart)))) dayStartUsed = 0;
     else dayStartUsed = previous.used;
   }
-  const point: DailyUsagePoint = { date: localDateKey(now), accountId, windowId, used, dayStartUsed };
-  const firstActivityAt = today?.firstActivityAt ?? (used > dayStartUsed ? now.toISOString() : undefined);
-  if (firstActivityAt !== undefined) point.firstActivityAt = firstActivityAt;
-  return point;
+  return { date: localDateKey(now), accountId, windowId, used, dayStartUsed };
 }
 
 /**

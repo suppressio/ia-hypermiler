@@ -203,9 +203,17 @@ export interface UpdateSettings {
   notifiedVersion: string | null;
 }
 
+export interface LastGoodUsage {
+  subscriptionRenewsAt: string | null;
+  quotaWindows: QuotaWindow[];
+}
+
 export interface AppSettings {
   accounts: AccountConfig[];
   updates?: UpdateSettings;
+  // Sent by settings:get with the rest of the store; only the last good usage of each
+  // account is read here (renewal day read from the provider, renderer/renewal.ts).
+  history?: { lastGood?: Partial<Record<AccountId, LastGoodUsage>> };
   ui: {
     language: 'auto' | 'en' | 'it';
     windowStyle: 'filled' | 'filled-dark' | 'transparent-digital';

@@ -70,6 +70,16 @@ test('fetchUsage (personal) sums the report in credits and applies manualQuota a
   assert.equal(at(result.quotaWindows, 0).used, 42);
   assert.equal(at(result.quotaWindows, 0).total, 300);
   assert.equal(at(result.quotaWindows, 0).periodLength, 1); // monthly report: pacing enabled
+  // Renewal derived from the report's own month: no manual renewal day needed.
+  const resetsAt = new Date(at(result.quotaWindows, 0).resetsAt ?? 0);
+  assert.equal(resetsAt.getUTCDate(), 1);
+  assert.equal(resetsAt.getUTCHours(), 0);
+  assert.equal(String(result.subscriptionRenewsAt), String(at(result.quotaWindows, 0).resetsAt));
+});
+
+test('billingReportResetsAt: 1st of the next UTC month, December rolls over to January', () => {
+  assert.equal(copilotService.billingReportResetsAt(new Date(Date.UTC(2026, 9, 1, 8))).toISOString(), '2026-11-01T00:00:00.000Z');
+  assert.equal(copilotService.billingReportResetsAt(new Date(Date.UTC(2026, 11, 31, 23, 59))).toISOString(), '2027-01-01T00:00:00.000Z');
 });
 
 test('fetchUsage (personal) falls back to premium_request/usage when ai_credit/usage answers 404', async () => {

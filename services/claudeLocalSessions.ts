@@ -105,9 +105,19 @@ export async function computeClaudeLocalInsights(
   // approximation stated in the UI. Dates as LOCAL YYYY-MM-DD, the same convention as
   // history.dailyUsage (main.ts, budget.localDateKey).
   const daily = new Map<string, LocalDailyTokens>();
+  // Earliest session start per local day: the start of the working day when the app
+  // was opened after work had begun (budget.todayActivitySpan).
+  const firstSessionStartByDay: Record<string, string> = {};
 
   for (const session of inWindow) {
     const durationMs = typeof session.createdAt === 'number' ? session.lastModified - session.createdAt : null;
+    if (typeof session.createdAt === 'number') {
+      const startDay = localDateKey(new Date(session.createdAt));
+      const known = firstSessionStartByDay[startDay];
+      if (known === undefined || session.createdAt < new Date(known).getTime()) {
+        firstSessionStartByDay[startDay] = new Date(session.createdAt).toISOString();
+      }
+    }
     const day = localDateKey(new Date(session.lastModified));
     const dayBucket = daily.get(day) ?? { date: day, outputTokens: 0, highContextOutputTokens: 0 };
     daily.set(day, dayBucket);
@@ -169,5 +179,6 @@ export async function computeClaudeLocalInsights(
     longSessionSharePercent: Math.round((longSessionOutputTokens / totalOutputTokens) * 1000) / 10,
     topTools,
     daily: [...daily.values()].filter((d) => d.outputTokens > 0).sort((a, b) => a.date.localeCompare(b.date)),
+    firstSessionStartByDay,
   };
 }

@@ -3,8 +3,9 @@
 
 import type { AccountConfig, AccountId, AppSettings, HypermilerBridge, ProviderId, UpdateSettings } from './types';
 import { byId } from './dom.js';
-import { applyTranslations, formatDateTime, resolveLocale, setLocale, t, type MessageKey } from './i18n/index.js';
+import { applyTranslations, formatDate, formatDateTime, formatTime, resolveLocale, setLocale, t, type MessageKey } from './i18n/index.js';
 import { summarizeWorkSchedule } from './schedule.js';
+import { renewalFromProvider } from './renewal.js';
 
 declare global {
   interface Window {
@@ -249,6 +250,29 @@ function applyScheduleLock(account: AccountConfig, detail: HTMLElement): void {
     .forEach((el) => { el.disabled = !enabled; });
 }
 
+// The renewal day entered by hand is only a fallback (main.ts resolvePeriodBounds):
+// when the provider reports the reset of every paced window (Claude 5h/7d windows,
+// Copilot quotas and billing report) the field is locked and shows the date read; it
+// stays editable when some window has no date anywhere (e.g. the Claude company spend
+// limit) or before the first successful sync.
+function applyRenewalLock(account: AccountConfig, detail: HTMLElement): void {
+  const source = renewalFromProvider(settings?.history?.lastGood?.[account.id]);
+  const input = detail.querySelector<HTMLInputElement>('[data-account-field="subscription.renewalRule.day"]');
+  if (input) input.disabled = !source.needsManual;
+  const hint = detail.querySelector<HTMLElement>('[data-role="renewal-hint"]');
+  if (!hint) return;
+  const hasData = settings?.history?.lastGood?.[account.id] !== undefined;
+  if (!source.needsManual && source.next) {
+    hint.textContent = t('settings.account.renewalFromProvider', { date: `${formatDate(source.next)} ${formatTime(source.next)}` });
+    hint.hidden = false;
+  } else if (source.needsManual && hasData) {
+    hint.textContent = t('settings.account.renewalManual');
+    hint.hidden = false;
+  } else {
+    hint.hidden = true;
+  }
+}
+
 function detailElement(id: AccountId): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.account-detail[data-account-id="${CSS.escape(id)}"]`);
 }
@@ -269,6 +293,7 @@ function applyAccountDetailState(index: number): void {
   const detail = detailElement(account.id);
   if (!detail) return;
   applyScheduleLock(account, detail);
+  applyRenewalLock(account, detail);
   if (account.provider !== 'copilot') return;
   const isOrg = account.accountScope === 'organization';
   (detail.querySelector('[data-role="org-warning"]') as HTMLElement).hidden = !isOrg;

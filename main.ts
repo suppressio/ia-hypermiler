@@ -140,19 +140,21 @@ function getDailyHistory(accountId: AccountId, windowId: string, days: number): 
     .slice(-days);
 }
 
-// Ample margin above the 3h lookback used by budget.instantaneousRate: the buffer
-// stays tiny anyway (one append every 30 min, never more than ~8 samples per window);
-// unlike history.dailyUsage it needs no real configurable retention.
-const RECENT_SAMPLES_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+// Samples are kept for the whole current day (the working span comes from the day's
+// samples, budget.todayActivitySpan) and at least this long (margin above the 3h
+// lookback of budget.instantaneousRate, also right after midnight). Still tiny: one
+// append every 30 min, at most ~48 samples per window.
+const RECENT_SAMPLES_MIN_AGE_MS = 4 * 60 * 60 * 1000;
 
-function recordRecentSample(accountId: AccountId, window: QuotaWindow): void {
+function recordRecentSample(accountId: AccountId, window: QuotaWindow, now: Date): void {
   const utilization = budget.normalizedUtilization(window);
   if (utilization === null) return;
 
   const samples = store.get('history').recentSamples;
-  samples.push({ timestamp: new Date().toISOString(), accountId, windowId: window.id, used: Math.round(utilization * 100) / 100 });
+  samples.push({ timestamp: now.toISOString(), accountId, windowId: window.id, used: Math.round(utilization * 100) / 100 });
 
-  const cutoff = Date.now() - RECENT_SAMPLES_MAX_AGE_MS;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const cutoff = Math.min(startOfToday, now.getTime() - RECENT_SAMPLES_MIN_AGE_MS);
   const pruned = samples.filter((s) => new Date(s.timestamp).getTime() >= cutoff);
   store.set('history.recentSamples', pruned);
 }
@@ -176,8 +178,10 @@ async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | nul
   const windowDays = (store.get('ui').chartRange === 'month' ? 30 : 7) + 1;
   const cached = store.get('localInsightsCache').claudeCode;
   const cacheAgeMs = cached ? Date.now() - new Date(cached.computedAt).getTime() : Infinity;
-  // Previous cache without `daily` (before point 4) or for another window: recompute.
-  if (cached && Array.isArray(cached.daily) && cached.windowDays === windowDays && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
+  // Previous cache without `daily` (before point 4) or `firstSessionStartByDay`, or for
+  // another window: recompute.
+  const complete = cached !== null && Array.isArray(cached.daily) && cached.firstSessionStartByDay !== undefined;
+  if (cached && complete && cached.windowDays === windowDays && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
 
   try {
     const result = await computeClaudeLocalInsights(windowDays);
@@ -194,8 +198,9 @@ async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | nul
 // ---------------------------------------------------------------------------
 // Period bounds for efficiency/projection/reset:
 // - the period end is the window's own resetsAt when it has one (Claude rolling
-//   windows, Copilot quota snapshots), otherwise the configured renewalRule (e.g. a
-//   Claude spend limit or the Copilot billing report, which carry no reset date);
+//   windows, Copilot quotas and billing report), then the renewal date reported by
+//   the provider (subscriptionRenewsAt), and only then the renewal day entered by hand
+//   (renewalRule — e.g. the Claude spend limit, which carries no date);
 // - the period start subtracts the window length from the end: hours or days for
 //   rolling windows, calendar months for a billing cycle (months differ in length).
 // NOTE: for Claude's "five_hour" window the day/half-day granularity of budget.ts is
@@ -206,10 +211,12 @@ async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | nul
 function resolvePeriodBounds(
   criticalWindow: QuotaWindow | null,
   subscription: { renewalRule: RenewalRule },
+  providerRenewsAt: Date | string | null,
   now: Date,
 ): { periodStart: Date; periodEnd: Date } {
-  const periodEnd = criticalWindow?.resetsAt
-    ? new Date(criticalWindow.resetsAt)
+  const providerEnd = criticalWindow?.resetsAt ?? providerRenewsAt;
+  const periodEnd = providerEnd
+    ? new Date(providerEnd)
     : budget.resolveRenewalDate(subscription.renewalRule, now);
   if (criticalWindow && criticalWindow.periodType !== 'billing-cycle') {
     const spanMs = criticalWindow.periodType === 'rolling-hours'
@@ -240,13 +247,14 @@ function computeWindowSnapshot(
   accountId: AccountId,
   window: QuotaWindow,
   subscription: { renewalRule: RenewalRule },
+  providerRenewsAt: Date | string | null,
   workSchedule: WorkSchedule,
   now: Date,
   localInsights: ClaudeLocalInsights | null,
 ): QuotaWindowSnapshot {
-  const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, now);
+  const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, providerRenewsAt, now);
   const todayPoint = recordDailyUsage(accountId, window, periodStart, now);
-  recordRecentSample(accountId, window);
+  recordRecentSample(accountId, window, now);
   const chartDays = store.get('ui').chartRange === 'month' ? 30 : 7;
   // chartDays + 1 points: N+1 cumulative values are needed for N daily deltas
   // (consumption-per-day chart and rating) — the rating used to see only N-1.
@@ -262,10 +270,16 @@ function computeWindowSnapshot(
   const dailyDeltasForWindow = isRollingHours
     ? []
     : budget.dailyDeltas(dailyHistory, workSchedule, pacingAvailable ? totalPeriodWorkingUnits : 0);
-  // Actual working hours: the part of today already worked starts at the first
-  // activity of the day (budget.todayElapsedUnits); the recent pace sharpens
-  // projection and autonomy (budget.recentPacePerUnit).
-  const todayElapsedUnits = budget.todayElapsedUnits(now, todayPoint?.firstActivityAt ?? null, workSchedule);
+  // Actual working hours: today's span from the first to the last increase among the
+  // day's samples, started earlier by today's first local Claude Code session when
+  // known (budget.todayActivitySpan); the recent pace sharpens projection and autonomy
+  // (budget.recentPacePerUnit).
+  const sessionStartIso = localInsights?.firstSessionStartByDay?.[budget.localDateKey(now)];
+  const span = budget.todayActivitySpan(
+    recentSamples, todayPoint?.dayStartUsed ?? null, now, sessionStartIso ? new Date(sessionStartIso) : null,
+  );
+  const workedHours = span ? (span.end.getTime() - span.start.getTime()) / (3600 * 1000) : null;
+  const todayElapsedUnits = budget.todayElapsedUnits(now, workedHours, workSchedule);
   const ctx = {
     window, workSchedule, periodStart, periodEnd, now, todayElapsedUnits,
     recentPacePerUnit: budget.recentPacePerUnit(dailyDeltasForWindow, workSchedule, now),
@@ -346,7 +360,7 @@ function computeAccountSnapshot(
 ): AccountSnapshot {
   const { subscription, workSchedule } = cfg;
   const identity = { accountId: cfg.id, provider: cfg.provider, label: cfg.label };
-  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(cfg.id, w, subscription, workSchedule, now, localInsights));
+  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(cfg.id, w, subscription, raw.subscriptionRenewsAt, workSchedule, now, localInsights));
   const criticalWindow = budget.pickCriticalWindow(raw.quotaWindows);
   const criticalSnapshot = criticalWindow ? windows.find((w) => w.window.id === criticalWindow.id) : undefined;
 

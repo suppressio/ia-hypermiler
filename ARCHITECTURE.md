@@ -74,9 +74,10 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
         sun: 'full' | 'half' | 'off',
       },
       hoursPerDay: number, // a single number, not a start/end range (user feedback, Day 2): the
-                           // start of the working day is inferred from the data (first refresh of
-                           // the day where consumption rose), today's elapsed part = hours since
-                           // then / hoursPerDay (budget.todayElapsedUnits, at least 2h).
+                           // working span is read from the day's samples, first to last increase
+                           // (budget.todayActivitySpan, started earlier by today's first local
+                           // Claude Code session); today's elapsed part = span / hoursPerDay
+                           // (budget.todayElapsedUnits, at least 2h).
     },
   } & (
     { // --- provider: 'claude' ---
@@ -130,7 +131,7 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
 Sections of the Settings panel (separate window `renderer/settings.html`, opened from the tray or a gear icon in the widget):
 
 1. **Accounts and sessions** — *(updated, issue #4)* a **table** of accounts (Name | Provider | Status | Active | actions Configure/Connect/Disconnect/Remove) with "Add account"; "Configure" opens the provider panel below the row (common + specific fields). Original description: for Claude and Copilot, connection status, method (password/SSO/PAT/OAuth device), a "Connect/Reconnect" button opening a login `BrowserWindow` for Claude or the device flow for Copilot, estimated session expiry, a "company seat" toggle with an automatic warning when active on Copilot ("experimental feature, may stop working without notice").
-2. **Plan and renewal** — plan type, subscription renewal day (a simple "day of month" picker; stored as a minimal rule so different recurrences can be added later without changing the schema).
+2. **Plan and renewal** — plan type, subscription renewal day (a simple "day of month" picker; stored as a minimal rule so different recurrences can be added later without changing the schema). *(Since 2026-10:)* the manual day is only a fallback — a window's period end is its own `resetsAt`, then the provider's `subscriptionRenewsAt` (Copilot `quota_reset_date`; the billing report restarts on the 1st of the next UTC month by definition), then the manual day. Settings locks the field and shows the provider's date when every paced window has one (`renderer/renewal.ts`); today only the Claude company `spend` limit needs it.
 3. **Work schedule** — *(per account since 0.4.6: last section of each account detail, collapsed with a one-line summary)* 7 day selectors with 3 states (full/half/off), an "enabled" switch (off = every day counts as a full day, e.g. a personal account) and hours/day (reserved). Used to compute budget and projections on "remaining working days", not calendar days.
 4. **Appearance** — language (Automatic / English / Italiano), window style (the three skins below), always-on-top, accent color, default chart range (week/month).
 5. **Notifications** — alert percentage threshold (default 80%, as in `CLAUDE.md`, now configurable), possibly per window (e.g. a separate alert for Claude's 5h limit).

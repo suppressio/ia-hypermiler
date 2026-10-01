@@ -102,6 +102,7 @@
         <label><span data-i18n="settings.account.renewalDay">Renewal day (of the month)</span>
           <input type="number" min="1" max="31" data-account-field="subscription.renewalRule.day" />
         </label>
+        <p class="hint" data-role="renewal-hint" hidden></p>
         <label>
           <input type="checkbox" data-account-field="localInsights" data-local-insights />
           <span data-i18n="settings.claude.localInsights">Attribute this machine’s Claude Code sessions to this account</span>
@@ -144,6 +145,7 @@
             <input type="number" min="1" max="31" data-account-field="subscription.renewalRule.day" />
           </label>
         </div>
+        <p class="hint" data-role="renewal-hint" hidden></p>
         <label><span data-i18n="settings.copilot.manualQuota">Monthly premium request quota</span>
           <input type="number" min="0" data-account-field="manualQuota" />
         </label>
