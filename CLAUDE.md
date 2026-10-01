@@ -250,6 +250,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-01 | v0.4.4-beta | Copilot: GitHub domain per account — company seats on a `<tenant>.ghe.com` tenant read with a tenant PAT |
 | 2026-10-01 | v0.4.5-beta | Copilot: personal scope reads the internal quotas first (billing report as fallback), OAuth no longer experimental; Settings tooltips no longer clipped |
 | 2026-10-01 | v0.4.6-beta | Work schedule per account (inside each account detail), the old global one inherited on upgrade; fix: Copilot sync used github.com instead of the account's `.ghe.com` host |
+| 2026-10-01 | v0.4.7-beta | Work schedule as the last, collapsed section of each account detail, with a one-line summary |
 
 ### Lessons learned (still relevant)
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
