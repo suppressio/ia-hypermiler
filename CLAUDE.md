@@ -244,6 +244,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-01 | v0.4.0-beta | Robustness: stricter TS, type-aware ESLint gating CI, store normalization, IPC validation, unhandled promises, packaged icon fix; English/Italian UI; code in English; bilingual docs |
 | 2026-10-01 | v0.4.1-beta | MIT license (packages metadata included) |
 | 2026-10-01 | v0.4.2-beta | Fix: company Claude accounts read the new `spend` object (#6) |
+| 2026-10-01 | v0.4.3-beta | Copilot: billing 400 fallback, token-based-billing snapshots (`credits_used`), clear message for enterprise-managed seats (#7) |
 
 ### Lessons learned (still relevant)
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
