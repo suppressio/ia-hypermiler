@@ -11,6 +11,7 @@ export const it: Record<MainMessageKey, string> = {
   'tray.updateAvailable': 'Aggiornamento disponibile ({version})…',
 
   'notify.threshold': "{account}: hai superato il {threshold}% del budget.",
+  'notify.pace': "{account}: oggi hai usato il {used}% della quota, a fronte di un budget giornaliero del {budget}%. Rallenta per arrivare al rinnovo.",
   'notify.formatDrift': 'Il formato della risposta {provider} sembra cambiato: ho aperto una bozza di segnalazione nel browser (da rivedere e confermare tu).',
   'notify.updateAvailable': 'È disponibile la versione {version}: apri Impostazioni → Aggiornamenti per scaricarla.',
 

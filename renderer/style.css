@@ -320,11 +320,14 @@ body.style-transparent-digital .account-tabs button.active {
 .metric-label { font-size: 11px; opacity: 0.65; }
 .metric-value { font-size: 16px; font-weight: 600; }
 .metric-hint { font-size: 10px; opacity: 0.6; }
+/* Today's consumption above today's budget: same warning colour as an at-risk window. */
+.metric-value.over-budget { color: var(--warning); }
 
 /* Efficiency index + star rating kept together (same concept, two different time
    windows — user feedback: "they should stay next to the efficiency index"), across
    the full grid width to make room for the row of stars. */
-.metric-efficiency-block { grid-column: 1 / -1; }
+.metric-efficiency-block,
+.metric-today { grid-column: 1 / -1; }
 .efficiency-rating {
   display: flex;
   align-items: center;

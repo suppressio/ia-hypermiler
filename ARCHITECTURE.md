@@ -73,10 +73,10 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
         sat: 'full' | 'half' | 'off',
         sun: 'full' | 'half' | 'off',
       },
-      hoursPerDay: number, // simplified from a start/end range after user feedback (Day 2):
-                           // budget.ts works at day/half-day granularity and does not use exact
-                           // hours yet; reserved for future intra-day pacing (e.g. Claude's
-                           // 5-hour window).
+      hoursPerDay: number, // a single number, not a start/end range (user feedback, Day 2): the
+                           // start of the working day is inferred from the data (first refresh of
+                           // the day where consumption rose), today's elapsed part = hours since
+                           // then / hoursPerDay (budget.todayElapsedUnits, at least 2h).
     },
   } & (
     { // --- provider: 'claude' ---
@@ -161,17 +161,17 @@ Central body — big "current usage" number: the most critical quota window righ
 
 Below it, a chart, selectable week/month, with the ideal budget line (linear pacing) to see at a glance whether usage is above or below.
 
-*(Implemented this way after EVOLUTION.md point 1 — the chart used to show the cumulative % per day, a copy of the provider dashboard.)* Each bar is **that day's consumption** (`budget.dailyDeltas`: difference with the previous day, resets excluded), with a tick for the day's ideal share (0 on non-working days); bars above the share use `--warning`. Not shown for `rolling-hours` windows. When the account has several quota windows, a **list with a verdict** computed by the app (`budget.windowVerdict`: exhausted / at risk / on track / no pacing) sits above the current value, the critical one first, replacing tabs that only lined up the provider's metrics.
+*(Implemented this way after EVOLUTION.md point 1 — the chart used to show the cumulative % per day, a copy of the provider dashboard.)* Each bar is **that day's consumption** (`budget.dailyDeltas`: difference with the day's baseline `dayStartUsed`, or with the previous day for older points, resets excluded), with a tick for the day's ideal share (0 on non-working days); bars above the share use `--warning`. Not shown for `rolling-hours` windows. When the account has several quota windows, a **list with a verdict** computed by the app (`budget.windowVerdict`: exhausted / at risk / on track / no pacing) sits above the current value, the critical one first, replacing tabs that only lined up the provider's metrics.
 
 **Value per token** *(EVOLUTION.md point 4, Claude accounts with local insights only)*: "Yield" = output tokens of local Claude Code sessions per 1% of quota used (`budget.tokenYield`, with trend), and a causal tip about large context (`budget.consumptionCause`) shown **only** when the signal is clear. Stated limit: the SDK does not expose per-message times, every session is attributed to the day it was last modified.
 
 Metrics panel:
 
-- **Tokens (or % of quota) per current working day** — requested
+- **Tokens (or % of quota) per current working day** — requested. *(Implemented as "Today: used / budget", `budget.todayBudget`:)* today's budget = what was left at the start of the day spread over the working units from today on, fixed for the day; today's consumption is measured from the day's own baseline (`DailyUsagePoint.dayStartUsed`, exact also on a reset day). Above `PACE_ALERT_RATIO` (1.5×) a system notification fires, at most once a day per account — the 80% threshold alone came too late (real case: 10.3% on day one of the month, no warning).
 - **Weekly trend** — requested (the chart above)
 - **Efficiency index** — requested. Formula: ratio between the ideal and actual consumption pace, computed on elapsed **working units** (not calendar days):
   `efficiencyIndex = idealPace / actualPace` where `idealPace = 100% / totalWorkingUnitsInPeriod` and `actualPace = currentUtilization / elapsedWorkingUnits`. Around 1 = on track; >1 = using less than planned (room to use more); <1 = consuming faster than sustainable.
-- **Projection** — requested: projected usage at the end of the period, extrapolating the actual average pace over the remaining working units.
+- **Projection** — requested: projected usage at the end of the period, extrapolating the pace over the remaining working units. The pace blends 50/50 the period average with the last 3 completed working days (`budget.recentPacePerUnit`), so a change of habit shows at once; not capped at 100% (e.g. "227%" says how far over the pace leads). Elapsed time counts the part of today already worked (`budget.todayElapsedUnits`). With fewer than 2 working units elapsed, projection, autonomy and verdict are marked as a *preliminary estimate*.
 - **Days to reset** — requested: both calendar days and remaining **working** days (often more useful).
 - **Estimated autonomy days** *(added)* — after how many working days the quota runs out at the current pace; useful when it is < days to reset (a more direct risk signal than the efficiency index alone).
 - **Peak vs daily average** *(added; computed on daily deltas, `budget.deltaStats`)* — to tell whether problems are concentrated on unusual days or spread out.

@@ -19,10 +19,9 @@ export const DEFAULT_WORK_SCHEDULE: WorkSchedule = {
     sat: 'off',
     sun: 'off',
   },
-  // Working hours/day: not used yet by budget.ts (which works at day/half-day
-  // granularity), reserved for future intra-day pacing (e.g. Claude's 5-hour window).
-  // See the feedback in CLAUDE.md — simplified from a start/end range to a single number
-  // at the user's request.
+  // Hours of a full working day: today's elapsed part = time since the first activity
+  // of the day over these hours (budget.todayElapsedUnits). A single number, not a
+  // start/end range (user feedback): the start of the day is inferred from the data.
   hoursPerDay: 8,
 };
 

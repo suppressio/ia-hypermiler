@@ -12,6 +12,7 @@ export const en = {
   'tray.updateAvailable': 'Update available ({version})…',
 
   'notify.threshold': '{account}: you have passed {threshold}% of the budget.',
+  'notify.pace': '{account}: today you have used {used}% of the quota, against a daily budget of {budget}%. Slow down to make it last until renewal.',
   'notify.formatDrift': 'The format of the {provider} response seems to have changed: a report draft opened in your browser (for you to review and confirm).',
   'notify.updateAvailable': 'Version {version} is available: open Settings → Updates to download it.',
 

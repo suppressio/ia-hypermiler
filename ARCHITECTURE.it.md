@@ -73,10 +73,10 @@ Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del fi
         sat: 'full' | 'half' | 'off',
         sun: 'full' | 'half' | 'off',
       },
-      hoursPerDay: number, // semplificato da intervallo inizio/fine su feedback utente (Giorno 2):
-                           // budget.ts lavora a granularità giorno/mezza-giornata e non usa ancora
-                           // orari puntuali; riservato per un futuro pacing infra-giornaliero (es.
-                           // finestra Claude delle 5 ore).
+      hoursPerDay: number, // un solo numero, non un intervallo inizio/fine (feedback utente, Giorno 2):
+                           // l'inizio della giornata è ricavato dai dati (primo aggiornamento del
+                           // giorno con consumo in aumento), parte di oggi trascorsa = ore da allora
+                           // / hoursPerDay (budget.todayElapsedUnits, almeno 2h).
     },
   } & (
     { // --- provider: 'claude' ---
@@ -161,17 +161,17 @@ Corpo centrale — numero grande "current usage": la finestra di quota più crit
 
 Sotto, un grafico a barre/linea dei **picchi giornalieri**, selezionabile settimana/mese, con overlay della linea di budget ideale (pacing lineare) per vedere a colpo d'occhio se si è sopra o sotto.
 
-*(Implementato così dopo EVOLUTION.md punto 1 — prima il grafico mostrava la % cumulata per giorno, un calco della dashboard del provider.)* Ogni barra è il **consumo di quel giorno** (`budget.dailyDeltas`: differenza col giorno precedente, reset esclusi), con un trattino per la quota ideale del giorno (0 nei giorni non lavorativi); barre oltre la quota in `--warning`. Non mostrato per finestre `rolling-hours`. Se l'account ha più finestre di quota, sopra al valore corrente c'è una **lista con verdetto** calcolato dall'app (`budget.windowVerdict`: esaurita / a rischio / in linea / nessun pacing), la critica per prima, al posto delle tab che affiancavano solo le metriche del provider.
+*(Implementato così dopo EVOLUTION.md punto 1 — prima il grafico mostrava la % cumulata per giorno, un calco della dashboard del provider.)* Ogni barra è il **consumo di quel giorno** (`budget.dailyDeltas`: differenza con la base del giorno `dayStartUsed`, o col giorno precedente per i punti più vecchi, reset esclusi), con un trattino per la quota ideale del giorno (0 nei giorni non lavorativi); barre oltre la quota in `--warning`. Non mostrato per finestre `rolling-hours`. Se l'account ha più finestre di quota, sopra al valore corrente c'è una **lista con verdetto** calcolato dall'app (`budget.windowVerdict`: esaurita / a rischio / in linea / nessun pacing), la critica per prima, al posto delle tab che affiancavano solo le metriche del provider.
 
 **Valore per token** *(EVOLUTION.md punto 4, solo account Claude con insight locali)*: "Resa" = token di output delle sessioni Claude Code locali per 1% di quota consumata (`budget.tokenYield`, con trend), e un consiglio causale su contesto ampio (`budget.consumptionCause`) mostrato **solo** se il segnale è netto. Limite dichiarato: l'SDK non espone l'orario dei singoli messaggi, ogni sessione è attribuita al giorno di ultima modifica.
 
 Riquadro metriche:
 
-- **Token (o % quota)/giorno lavorativo corrente** — richiesto
+- **Token (o % quota)/giorno lavorativo corrente** — richiesto. *(Implementato come "Oggi: usato / budget", `budget.todayBudget`:)* budget di oggi = quanto restava a inizio giornata diviso sulle unità lavorative da oggi in poi, fisso per la giornata; il consumo di oggi è misurato dalla base del giorno (`DailyUsagePoint.dayStartUsed`, esatta anche nel giorno di un reset). Oltre `PACE_ALERT_RATIO` (1,5×) parte una notifica di sistema, al massimo una al giorno per account — la sola soglia dell'80% arrivava troppo tardi (caso reale: 10,3% il primo giorno del mese, nessun avviso).
 - **Andamento settimanale** — richiesto (il grafico sopra)
 - **Indice di efficienza** — richiesto. Proposta di formula: rapporto tra ritmo di consumo ideale e ritmo reale, calcolato sulle **unità lavorative** trascorse (non giorni di calendario):
   `efficiencyIndex = (idealPace) / (actualPace)` dove `idealPace = 100% / unitàLavorativeTotaliNelPeriodo` e `actualPace = utilizationAttuale / unitàLavorativeTrascorse`. Valore intorno a 1 = in linea; >1 = si sta usando meno del previsto (margine per usare di più); <1 = si sta consumando più veloce del sostenibile.
-- **Previsionale** — richiesto: proiezione dell'utilizzo a fine periodo, estrapolando il ritmo medio reale sulle unità lavorative rimanenti.
+- **Previsionale** — richiesto: proiezione dell'utilizzo a fine periodo, estrapolando il ritmo sulle unità lavorative rimanenti. Il ritmo mescola al 50% la media del periodo con gli ultimi 3 giorni lavorativi completati (`budget.recentPacePerUnit`), così un cambio di abitudini si vede subito; non limitato a 100% (es. "227%" dice di quanto si sforerebbe). Il tempo trascorso conta la parte di oggi già lavorata (`budget.todayElapsedUnits`). Con meno di 2 unità lavorative trascorse previsionale, autonomia e verdetto sono indicati come *stima preliminare*.
 - **Giorni alla scadenza** — richiesto: sia giorni di calendario sia giorni **lavorativi** rimanenti (spesso più utile).
 - **Giorni di autonomia stimati** *(aggiunta)* — a quanti giorni lavorativi si esaurirà la quota mantenendo il ritmo attuale, utile quando è < giorni alla scadenza (segnale di rischio più diretto del solo indice di efficienza).
 - **Picco massimo vs media giornaliera** *(aggiunta; calcolato sui delta giornalieri, `budget.deltaStats`)* — per capire se i problemi sono concentrati in giornate anomale o distribuiti.

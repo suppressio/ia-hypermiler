@@ -39,4 +39,9 @@ export function t(key: MainMessageKey, params: Record<string, string | number> =
   return interpolate(DICTIONARIES[currentLocale][key], params);
 }
 
+/** Number in the active locale (e.g. 10.3 → "10,3" in Italian), at most `digits` decimals. */
+export function formatNumber(value: number, digits = 1): string {
+  return new Intl.NumberFormat(currentLocale, { maximumFractionDigits: digits }).format(value);
+}
+
 export const dictionaries: Readonly<Record<Locale, Readonly<Record<MainMessageKey, string>>>> = DICTIONARIES;

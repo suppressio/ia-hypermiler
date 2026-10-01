@@ -22,7 +22,7 @@ import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost'
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
 import { buildFormatDriftIssueUrl } from './diagnostics/githubIssue';
-import { resolveLocale, setLocale, t } from './main/i18n/index';
+import { formatNumber, resolveLocale, setLocale, t } from './main/i18n/index';
 import { randomUUID } from 'crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import type {
@@ -105,14 +105,23 @@ function startWindowHoverPolling(): void {
 // RESEARCH.md), so we build it ourselves, one point per day, on every successful
 // refresh.
 // ---------------------------------------------------------------------------
-function recordDailyUsage(accountId: AccountId, window: QuotaWindow): void {
+// Returns today's point (with its baseline and first activity, see
+// budget.updateDailyPoint), or null when utilization cannot be computed.
+function recordDailyUsage(accountId: AccountId, window: QuotaWindow, periodStart: Date, now: Date): DailyUsagePoint | null {
   const utilization = budget.normalizedUtilization(window);
-  if (utilization === null) return;
+  if (utilization === null) return null;
 
-  const today = budget.localDateKey(new Date());
+  const todayKey = budget.localDateKey(now);
   const history = store.get('history').dailyUsage;
-  const idx = history.findIndex((h) => h.date === today && h.accountId === accountId && h.windowId === window.id);
-  const entry: DailyUsagePoint = { date: today, accountId, windowId: window.id, used: Math.round(utilization * 10) / 10 };
+  const own = history
+    .filter((h) => h.accountId === accountId && h.windowId === window.id)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const today = own.find((h) => h.date === todayKey);
+  const previous = own.filter((h) => h.date < todayKey).at(-1);
+  const entry = budget.updateDailyPoint({
+    today, previous, accountId, windowId: window.id, used: Math.round(utilization * 10) / 10, periodStart, now,
+  });
+  const idx = history.findIndex((h) => h.date === todayKey && h.accountId === accountId && h.windowId === window.id);
   if (idx >= 0) history[idx] = entry;
   else history.push(entry);
 
@@ -121,6 +130,7 @@ function recordDailyUsage(accountId: AccountId, window: QuotaWindow): void {
   cutoff.setDate(cutoff.getDate() - retentionDays);
   const pruned = history.filter((h) => new Date(h.date) >= cutoff);
   store.set('history.dailyUsage', pruned);
+  return entry;
 }
 
 function getDailyHistory(accountId: AccountId, windowId: string, days: number): DailyUsagePoint[] {
@@ -212,6 +222,10 @@ function resolvePeriodBounds(
   return { periodStart, periodEnd };
 }
 
+// Below this many working units elapsed, projection and autonomy are extrapolated from
+// too little data: the widget marks them as a preliminary estimate.
+const PRELIMINARY_WORKING_UNITS = 2;
+
 // A "billing-cycle" window with an unknown periodLength (e.g. credits recognized
 // only by the shape of the value in services/claude.ts, both recurring and one-off:
 // there is no way to tell them apart without guessing an undocumented format) has no
@@ -230,7 +244,8 @@ function computeWindowSnapshot(
   now: Date,
   localInsights: ClaudeLocalInsights | null,
 ): QuotaWindowSnapshot {
-  recordDailyUsage(accountId, window);
+  const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, now);
+  const todayPoint = recordDailyUsage(accountId, window, periodStart, now);
   recordRecentSample(accountId, window);
   const chartDays = store.get('ui').chartRange === 'month' ? 30 : 7;
   // chartDays + 1 points: N+1 cumulative values are needed for N daily deltas
@@ -238,10 +253,23 @@ function computeWindowSnapshot(
   const dailyHistory = getDailyHistory(accountId, window.id, chartDays + 1);
   const recentSamples = getRecentSamples(accountId, window.id);
 
-  const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, now);
-  const ctx = { window, workSchedule, periodStart, periodEnd, now };
   const pacingAvailable = canEstimatePacing(window);
   const totalPeriodWorkingUnits = budget.workingUnitsBetween(periodStart, periodEnd, workSchedule);
+  const isRollingHours = window.periodType === 'rolling-hours';
+  // Same gate as the rating: on a window of a few hours a "daily" delta spans several
+  // resets and measures nothing. Without pacing the deltas remain, but with no ideal
+  // share (idealShare null).
+  const dailyDeltasForWindow = isRollingHours
+    ? []
+    : budget.dailyDeltas(dailyHistory, workSchedule, pacingAvailable ? totalPeriodWorkingUnits : 0);
+  // Actual working hours: the part of today already worked starts at the first
+  // activity of the day (budget.todayElapsedUnits); the recent pace sharpens
+  // projection and autonomy (budget.recentPacePerUnit).
+  const todayElapsedUnits = budget.todayElapsedUnits(now, todayPoint?.firstActivityAt ?? null, workSchedule);
+  const ctx = {
+    window, workSchedule, periodStart, periodEnd, now, todayElapsedUnits,
+    recentPacePerUnit: budget.recentPacePerUnit(dailyDeltasForWindow, workSchedule, now),
+  };
   // The star rating is based on daily deltas over a window of `chartDays` days (7/30,
   // the same view chosen by the user for the chart — consistency between indicators): it
   // makes no sense for a window renewing every few hours (e.g. Claude's "five_hour", see
@@ -254,26 +282,29 @@ function computeWindowSnapshot(
   const efficiencyIndex = pacingAvailable ? budget.efficiencyIndex(ctx) : null;
   const projectedUsage = pacingAvailable ? budget.projectedUsage(ctx) : null;
   const daysUntilReset = budget.daysUntilReset(periodEnd, now);
-  const workingDaysUntilReset = budget.workingDaysUntilReset(periodEnd, workSchedule, now);
+  const workingDaysUntilReset = budget.workingDaysUntilReset(periodEnd, workSchedule, now, todayElapsedUnits);
   const estimatedAutonomyWorkingDays = pacingAvailable ? budget.estimatedAutonomyWorkingDays(ctx) : null;
   // Not gated by pacingAvailable when the window has its own resetsAt: knowing the
   // reset is enough, even with an unknown period start (e.g. one-off credits) — see
   // budget.sustainableHourlyRate. Without one, the renewal-rule period end is used
-  // only for windows known to follow the billing cycle (pacingAvailable).
+  // only for windows known to follow the billing cycle (pacingAvailable). Spread over
+  // the remaining WORKING hours when a schedule applies (not on the 5-hour window).
   const instantRate = budget.instantaneousRate(recentSamples, now);
-  const sustainableRate = budget.sustainableHourlyRate(window, window.resetsAt ?? (pacingAvailable ? periodEnd : null), now);
+  const workingHoursLeft = workSchedule.enabled && !isRollingHours
+    ? budget.remainingWorkingUnits(periodEnd, now, workSchedule, todayElapsedUnits) * workSchedule.hoursPerDay
+    : null;
+  const sustainableRate = budget.sustainableHourlyRate(window, window.resetsAt ?? (pacingAvailable ? periodEnd : null), now, workingHoursLeft);
   const efficiencyRating = ratingAvailable
     ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, chartDays)
     : null;
-  // Same gate as the rating: on a window of a few hours a "daily" delta spans several
-  // resets and measures nothing. Without pacing the deltas remain, but with no ideal
-  // share (idealShare null).
   // Value per token (EVOLUTION.md point 4): only when the account has local insights
   // enabled — crosses tokens per day with this window's deltas.
   const localDaily = localInsights?.daily ?? null;
-  const dailyDeltasForWindow = window.periodType === 'rolling-hours'
-    ? []
-    : budget.dailyDeltas(dailyHistory, workSchedule, pacingAvailable ? totalPeriodWorkingUnits : 0);
+  const todayBudget = pacingAvailable && !isRollingHours
+    ? budget.todayBudget(ctx, todayPoint?.dayStartUsed ?? null)
+    : null;
+  const preliminary = pacingAvailable
+    && budget.elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule, todayElapsedUnits) < PRELIMINARY_WORKING_UNITS;
 
   return {
     window,
@@ -286,6 +317,8 @@ function computeWindowSnapshot(
     daysUntilReset,
     workingDaysUntilReset,
     estimatedAutonomyWorkingDays,
+    todayBudget,
+    preliminary,
     instantRate,
     sustainableRate,
     efficiencyRating,
@@ -499,13 +532,19 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
   return snapshot;
 }
 
+// Per-day notification flags ("<account>:<day>", "<account>:pace:<day>"): only
+// today's are kept, older ones are dropped instead of piling up in the store.
+function flagsOfToday(todayKey: string): Record<string, boolean> {
+  return Object.fromEntries(Object.entries(store.get('meta').notifiedToday).filter(([key]) => key.endsWith(`:${todayKey}`)));
+}
+
 // ---------------------------------------------------------------------------
 // Threshold notifications (default 80%, configurable) — at most once a day
 // ---------------------------------------------------------------------------
 function maybeNotifyThreshold(snapshot: UsageSnapshot): void {
   const threshold = store.get('ui').notificationThresholdPercent;
   const todayKey = budget.localDateKey(new Date());
-  const notifiedToday = { ...store.get('meta').notifiedToday };
+  const notifiedToday = flagsOfToday(todayKey);
 
   for (const account of snapshot.accounts) {
     if (!account.criticalWindow) continue;
@@ -526,6 +565,35 @@ function maybeNotifyThreshold(snapshot: UsageSnapshot): void {
   store.set('meta.notifiedToday', notifiedToday);
 }
 
+// ---------------------------------------------------------------------------
+// Pace notification — today's consumption well above today's budget
+// (budget.PACE_ALERT_RATIO), at most once a day per account. The absolute threshold
+// above fires only near the end of the quota; this one fires on the day the pace
+// goes wrong, while there is still time to adjust.
+// ---------------------------------------------------------------------------
+function maybeNotifyPace(snapshot: UsageSnapshot): void {
+  const todayKey = budget.localDateKey(new Date());
+  const notifiedToday = flagsOfToday(todayKey);
+
+  for (const account of snapshot.accounts) {
+    const flagKey = `${account.accountId}:pace:${todayKey}`;
+    if (notifiedToday[flagKey]) continue;
+    const over = account.windows
+      .map((w) => w.todayBudget)
+      .find((b) => b !== null && b.budget > 0 && b.usedToday > b.budget * budget.PACE_ALERT_RATIO);
+    if (!over) continue;
+
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'IA Hypermiler',
+        body: t('notify.pace', { account: account.label, used: formatNumber(over.usedToday), budget: formatNumber(over.budget) }),
+      }).show();
+    }
+    notifiedToday[flagKey] = true;
+  }
+  store.set('meta.notifiedToday', notifiedToday);
+}
+
 async function refreshAndBroadcast(): Promise<void> {
   let snapshot: UsageSnapshot;
   try {
@@ -535,6 +603,7 @@ async function refreshAndBroadcast(): Promise<void> {
     return;
   }
   maybeNotifyThreshold(snapshot);
+  maybeNotifyPace(snapshot);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('usage:update', snapshot);
   }

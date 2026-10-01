@@ -37,8 +37,9 @@ export interface WorkSchedule {
   // feedback).
   enabled: boolean;
   days: WorkScheduleDays;
-  // Reserved for future intra-day pacing (see CLAUDE.md): not used yet by the budget
-  // logic, which works at day/half-day granularity.
+  // Hours of a full working day: today's elapsed part is the time since the first
+  // activity of the day over these hours (budget.todayElapsedUnits), and the
+  // sustainable %/h is spread over remaining working hours.
   hoursPerDay: number;
 }
 
@@ -68,7 +69,17 @@ export interface DailyUsagePoint {
   accountId: AccountId;
   windowId: string;
   used: number;
+  // Consumption at the start of the day and first refresh of the day where it rose
+  // (see budget.updateDailyPoint). Missing on points recorded before they existed.
+  dayStartUsed?: number;
+  firstActivityAt?: string;
   meta?: Record<string, unknown>;
+}
+
+/** Today's budget vs today's consumption, quota percentage points (budget.todayBudget). */
+export interface TodayBudget {
+  budget: number;
+  usedToday: number;
 }
 
 /**
@@ -138,6 +149,11 @@ export interface QuotaWindowSnapshot {
   daysUntilReset: number | null;
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
+  // Today's budget and consumption (budget.todayBudget), null without pacing.
+  todayBudget: TodayBudget | null;
+  // Fewer than 2 working units elapsed in the period: projection and autonomy rest on
+  // too little data and are shown as a preliminary estimate.
+  preliminary: boolean;
   // Instant consumption (%/h, from recent samples) and sustainable hourly pace to
   // reach exactly 100% at the reset — see budget.instantaneousRate /
   // budget.sustainableHourlyRate.

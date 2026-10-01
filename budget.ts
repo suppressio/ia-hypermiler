@@ -21,6 +21,7 @@ import type {
   TokenYield,
   DailyTip,
   ConsumptionCause,
+  TodayBudget,
 } from './types/index';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -102,28 +103,66 @@ export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | n
   return top ? top.window : first;
 }
 
+// Shortest stretch of work a day is assumed to have covered once activity is seen:
+// right after the first refresh with consumption a few minutes of work would turn a
+// normal first increment into an absurd pace (2% in 15 min → "out of quota by noon").
+const MIN_OBSERVED_WORK_HOURS = 2;
+
 /**
- * Working units already spent in the period at `now`: the full days before today plus
- * the current day, counted as elapsed in full. Counting today only once it is over (as
- * `workingUnitsBetween(periodStart, now)` does) left 0 elapsed units on the first day
- * of a period, so projection/autonomy/efficiency ignored a whole day of heavy use.
- * Counting it in full underestimates the pace while the day is still running — the
- * cautious side: it never raises a false alarm. 0 before the period starts or on a
- * non-working day that opens the period.
+ * Working units of TODAY already spent, from the actual working hours:
+ * - schedule enabled: hours since the first activity of the day (first refresh where
+ *   consumption rose, see updateDailyPoint) over `hoursPerDay`, at least
+ *   MIN_OBSERVED_WORK_HOURS once work started, capped at the day unit (0.5 on a half
+ *   day). No activity yet → 0: before work starts, today is still entirely ahead.
+ * - schedule disabled (calendar days, e.g. a personal account): the fraction of the
+ *   calendar day elapsed, no working hours to infer.
+ * The start is the refresh that OBSERVED the activity (every 30 min), not its exact
+ * beginning: the pace is overestimated by at most one refresh interval.
  */
-export function elapsedWorkingUnits(periodStart: Date | string, periodEnd: Date | string, now: Date, workSchedule: WorkSchedule): number {
+export function todayElapsedUnits(now: Date, firstActivityAt: Date | string | null, workSchedule: WorkSchedule): number {
+  if (!workSchedule.enabled) {
+    return (now.getTime() - startOfDay(now).getTime()) / (24 * 3600 * 1000);
+  }
+  const unit = getDayUnit(now, workSchedule);
+  if (unit === 0 || !firstActivityAt) return 0;
+  const start = new Date(firstActivityAt);
+  if (localDateKey(start) !== localDateKey(now) || start > now) return 0;
+  if (workSchedule.hoursPerDay <= 0) return unit;
+  const hours = Math.max(MIN_OBSERVED_WORK_HOURS, (now.getTime() - start.getTime()) / (3600 * 1000));
+  return Math.min(unit, hours / workSchedule.hoursPerDay);
+}
+
+/** Working unit of the current day, 0 when the day is outside [periodStart, periodEnd). */
+function todayUnitInPeriod(periodStart: Date | string, periodEnd: Date | string, now: Date, workSchedule: WorkSchedule): number {
   const today = startOfDay(now);
   if (isBefore(today, startOfDay(new Date(periodStart)))) return 0;
-  const todayUnit = isBefore(today, startOfDay(new Date(periodEnd))) ? getDayUnit(today, workSchedule) : 0;
-  return workingUnitsBetween(periodStart, today, workSchedule) + todayUnit;
+  if (!isBefore(today, startOfDay(new Date(periodEnd)))) return 0;
+  return getDayUnit(today, workSchedule);
 }
 
 /**
- * Working units left in the period after the current day (see elapsedWorkingUnits:
- * today is already counted as elapsed, so elapsed + remaining = the whole period).
+ * Working units already spent in the period at `now`: the full days before today plus
+ * the part of today already worked (`todayElapsed`, see todayElapsedUnits). Counting
+ * today only once it is over left 0 elapsed units on the first day of a period, so
+ * projection/autonomy/efficiency ignored a whole day of heavy use. 0 before the
+ * period starts.
  */
-export function remainingWorkingUnits(periodEnd: Date | string, now: Date, workSchedule: WorkSchedule): number {
-  return workingUnitsBetween(addDays(startOfDay(now), 1), periodEnd, workSchedule);
+export function elapsedWorkingUnits(periodStart: Date | string, periodEnd: Date | string, now: Date, workSchedule: WorkSchedule, todayElapsed: number): number {
+  const today = startOfDay(now);
+  if (isBefore(today, startOfDay(new Date(periodStart)))) return 0;
+  const todayPart = Math.min(todayElapsed, todayUnitInPeriod(periodStart, periodEnd, now, workSchedule));
+  return workingUnitsBetween(periodStart, today, workSchedule) + todayPart;
+}
+
+/**
+ * Working units left in the period: what remains of today plus the days after it
+ * (elapsed + remaining = the whole period, see elapsedWorkingUnits).
+ */
+export function remainingWorkingUnits(periodEnd: Date | string, now: Date, workSchedule: WorkSchedule, todayElapsed: number): number {
+  const today = startOfDay(now);
+  const todayUnit = isBefore(today, startOfDay(new Date(periodEnd))) ? getDayUnit(today, workSchedule) : 0;
+  const todayLeft = Math.max(0, todayUnit - todayElapsed);
+  return todayLeft + workingUnitsBetween(addDays(today, 1), periodEnd, workSchedule);
 }
 
 export interface PeriodContext {
@@ -132,19 +171,26 @@ export interface PeriodContext {
   periodStart: Date | string;
   periodEnd: Date | string;
   now?: Date;
+  // Part of today already worked (todayElapsedUnits). Required: a "safe" default
+  // would hide a missing wiring (see CLAUDE.md, lessons learned).
+  todayElapsedUnits: number;
+  // Pace of the last completed working days (recentPacePerUnit), null when there are
+  // not enough of them — projection and autonomy blend it with the period average.
+  recentPacePerUnit: number | null;
 }
 
 /**
  * Efficiency index: ratio between the ideal pace and the actual pace, computed on
  * working units (not calendar days). ~1 = on budget; >1 = consuming less than planned;
  * <1 = consuming more than sustainable. Returns null when it cannot be computed.
+ * Cumulative since the period start by definition: no blending with the recent pace.
  */
-export function efficiencyIndex({ window, workSchedule, periodStart, periodEnd, now = new Date() }: PeriodContext): number | null {
+export function efficiencyIndex({ window, workSchedule, periodStart, periodEnd, now = new Date(), todayElapsedUnits: todayElapsed }: PeriodContext): number | null {
   const utilization = normalizedUtilization(window);
   if (utilization === null) return null;
 
   const totalUnits = workingUnitsBetween(periodStart, periodEnd, workSchedule);
-  const elapsedUnits = elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule);
+  const elapsedUnits = elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule, todayElapsed);
   if (totalUnits <= 0 || elapsedUnits <= 0) return null;
 
   const idealPace = 100 / totalUnits;
@@ -154,21 +200,55 @@ export function efficiencyIndex({ window, workSchedule, periodStart, periodEnd, 
   return Math.round((idealPace / actualPace) * 100) / 100;
 }
 
+const RECENT_PACE_DAYS = 3;
+const RECENT_PACE_MIN_DAYS = 2;
+
 /**
- * Projected usage (%) at the end of the period, extrapolating the actual average
- * pace over the remaining working units. Capped at 100.
+ * Pace (% per working unit) of the last RECENT_PACE_DAYS COMPLETED working days
+ * (today excluded: still running), from the daily deltas. Null with fewer than
+ * RECENT_PACE_MIN_DAYS usable days (non-working days and resets without a baseline are
+ * skipped).
  */
-export function projectedUsage({ window, workSchedule, periodStart, periodEnd, now = new Date() }: PeriodContext): number | null {
+export function recentPacePerUnit(deltas: DailyDelta[], workSchedule: WorkSchedule, now: Date): number | null {
+  const todayKey = localDateKey(now);
+  const usable = deltas
+    .filter((d): d is DailyDelta & { delta: number } => d.delta !== null && d.date < todayKey)
+    .map((d) => ({ delta: d.delta, unit: getDayUnit(parseDateKey(d.date), workSchedule) }))
+    .filter((d) => d.unit > 0)
+    .slice(-RECENT_PACE_DAYS);
+  if (usable.length < RECENT_PACE_MIN_DAYS) return null;
+  const units = usable.reduce((sum, d) => sum + d.unit, 0);
+  return usable.reduce((sum, d) => sum + d.delta, 0) / units;
+}
+
+/**
+ * Pace used by projection and autonomy: the period average, blended 50/50 with the
+ * recent pace when available — the average alone reacts slowly to a change of habit
+ * (a heavy week late in the period barely moves it). Null when no pace is measurable
+ * yet (nothing elapsed).
+ */
+function blendedPacePerUnit(ctx: PeriodContext, utilization: number, now: Date): number | null {
+  const elapsedUnits = elapsedWorkingUnits(ctx.periodStart, ctx.periodEnd, now, ctx.workSchedule, ctx.todayElapsedUnits);
+  if (elapsedUnits <= 0) return ctx.recentPacePerUnit;
+  const average = utilization / elapsedUnits;
+  return ctx.recentPacePerUnit === null ? average : (average + ctx.recentPacePerUnit) / 2;
+}
+
+/**
+ * Projected usage (%) at the end of the period, extrapolating the pace
+ * (blendedPacePerUnit) over the remaining working units. NOT capped at 100: "227%"
+ * says how far over the limit the current pace leads, and windowVerdict needs the
+ * value above 100 to flag the risk.
+ */
+export function projectedUsage(ctx: PeriodContext): number | null {
+  const { window, workSchedule, periodEnd, now = new Date(), todayElapsedUnits: todayElapsed } = ctx;
   const utilization = normalizedUtilization(window);
   if (utilization === null) return null;
 
-  const elapsedUnits = elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule);
-  const remainingUnits = remainingWorkingUnits(periodEnd, now, workSchedule);
-  if (elapsedUnits <= 0) return Math.min(100, utilization);
-
-  const avgPacePerUnit = utilization / elapsedUnits;
-  const projected = utilization + avgPacePerUnit * remainingUnits;
-  return Math.round(Math.min(100, projected) * 10) / 10;
+  const pace = blendedPacePerUnit(ctx, utilization, now);
+  if (pace === null) return round1(utilization);
+  const remainingUnits = remainingWorkingUnits(periodEnd, now, workSchedule, todayElapsed);
+  return round1(utilization + pace * remainingUnits);
 }
 
 /** Calendar days left until the reset (>= 0). */
@@ -177,44 +257,54 @@ export function daysUntilReset(resetsAt: Date | string, now: Date = new Date()):
 }
 
 /**
- * Working days/units left until the reset (>= 0), after the current day — the same
- * horizon `estimatedAutonomyWorkingDays` is compared with (today counts as elapsed,
- * see elapsedWorkingUnits).
+ * Working days/units left until the reset (>= 0): what remains of today plus the days
+ * after it — the same horizon `estimatedAutonomyWorkingDays` is compared with.
  */
-export function workingDaysUntilReset(resetsAt: Date | string, workSchedule: WorkSchedule, now: Date = new Date()): number {
-  return remainingWorkingUnits(resetsAt, now, workSchedule);
+export function workingDaysUntilReset(resetsAt: Date | string, workSchedule: WorkSchedule, now: Date, todayElapsed: number): number {
+  return round1(remainingWorkingUnits(resetsAt, now, workSchedule, todayElapsed));
 }
 
 /**
- * Estimated remaining autonomy in working units at the current average pace
- * (how many working units are left before reaching 100%).
- * Returns Infinity when the current pace is ~0 (no consumption observed).
+ * Estimated remaining autonomy in working units at the current pace
+ * (blendedPacePerUnit, the same one as projectedUsage): how many working units are
+ * left before reaching 100%. Returns Infinity when the pace is ~0 (no consumption
+ * observed).
  */
-export function estimatedAutonomyWorkingDays({ window, workSchedule, periodStart, periodEnd, now = new Date() }: PeriodContext): number | null {
-  const utilization = normalizedUtilization(window);
+export function estimatedAutonomyWorkingDays(ctx: PeriodContext): number | null {
+  const utilization = normalizedUtilization(ctx.window);
   if (utilization === null) return null;
   if (utilization >= 100) return 0;
 
-  const elapsedUnits = elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule);
-  if (elapsedUnits <= 0) return Infinity;
+  const pace = blendedPacePerUnit(ctx, utilization, ctx.now ?? new Date());
+  if (pace === null || pace <= 0) return Infinity;
 
-  const avgPacePerUnit = utilization / elapsedUnits;
-  if (avgPacePerUnit <= 0) return Infinity;
-
-  const remainingPercent = 100 - utilization;
-  return Math.round((remainingPercent / avgPacePerUnit) * 10) / 10;
+  return round1((100 - utilization) / pace);
 }
 
+/** Ratio of today's consumption to today's budget above which the pace notification fires. */
+export const PACE_ALERT_RATIO = 1.5;
+
 /**
- * For count-based windows (e.g. Copilot premium requests): how many remaining
- * units can be afforded per remaining working unit. Null when not applicable.
+ * Today's budget: the share of the quota today can use so that the rest lasts until
+ * the reset — what was left at the START of the day spread over the working units
+ * from today on, times today's unit. Fixed for the whole day (consuming does not
+ * shrink it while the day runs), recomputed every new day from what is left.
+ * `usedToday` is the consumption since the start of the day (a reset during the day
+ * leaves the new count only). Null without a baseline, on a non-working day or when
+ * no working unit is left.
  */
-export function remainingBudgetPerWorkingDay({ window, workSchedule, periodEnd, now = new Date() }: Omit<PeriodContext, 'periodStart'>): number | null {
-  if (window.unit !== 'count' || typeof window.total !== 'number') return null;
-  const remaining = Math.max(0, window.total - window.used);
-  const remainingUnits = workingUnitsBetween(now, periodEnd, workSchedule);
-  if (remainingUnits <= 0) return remaining;
-  return Math.floor(remaining / remainingUnits);
+export function todayBudget(ctx: Omit<PeriodContext, 'todayElapsedUnits' | 'recentPacePerUnit'>, dayStartUsed: number | null): TodayBudget | null {
+  const { window, workSchedule, periodStart, periodEnd, now = new Date() } = ctx;
+  const utilization = normalizedUtilization(window);
+  if (utilization === null || dayStartUsed === null) return null;
+  const todayUnit = todayUnitInPeriod(periodStart, periodEnd, now, workSchedule);
+  if (todayUnit <= 0) return null;
+  const unitsFromToday = remainingWorkingUnits(periodEnd, now, workSchedule, 0);
+  if (unitsFromToday <= 0) return null;
+
+  const budget = (Math.max(0, 100 - dayStartUsed) / unitsFromToday) * todayUnit;
+  const usedToday = utilization >= dayStartUsed ? utilization - dayStartUsed : utilization;
+  return { budget: round2(budget), usedToday: round2(usedToday) };
 }
 
 /**
@@ -255,20 +345,31 @@ export function instantaneousRate(
 /**
  * Maximum sustainable hourly pace (%/h) to reach exactly 100% at the window
  * reset — the "target" marker of the instant consumption gauge. Needs only the reset
- * moment, not `periodStart`/`workSchedule`: unlike `efficiencyIndex`/`projectedUsage`
- * it also works for windows with an unknown reference period (e.g. one-off credits
- * with their own `resetsAt`, see main.ts canEstimatePacing), because knowing when the
- * period started is not needed to know how much time is left. `resetsAt` is passed
- * explicitly: a window without its own (e.g. a monthly spend limit) resets at the end
- * of the billing period resolved by the caller.
+ * moment, not `periodStart`: unlike `efficiencyIndex`/`projectedUsage` it also works
+ * for windows with an unknown reference period (e.g. one-off credits with their own
+ * `resetsAt`, see main.ts canEstimatePacing), because knowing when the period started
+ * is not needed to know how much time is left. `resetsAt` is passed explicitly: a
+ * window without its own (e.g. a monthly spend limit) resets at the end of the
+ * billing period resolved by the caller.
+ * `workingHoursLeft` (remaining working units × hoursPerDay, from the caller) spreads
+ * the remainder over the hours actually worked: the instant rate is measured while
+ * working, so a target spread over nights and weekends too was several times too
+ * strict. Null = calendar hours (5-hour window, schedule disabled); 0 or less also
+ * falls back to calendar hours (no working time left before the reset).
  * Returns null when `resetsAt` is missing or utilization cannot be computed.
  */
-export function sustainableHourlyRate(window: QuotaWindow, resetsAt: Date | string | null, now: Date = new Date()): number | null {
+export function sustainableHourlyRate(
+  window: QuotaWindow,
+  resetsAt: Date | string | null,
+  now: Date,
+  workingHoursLeft: number | null,
+): number | null {
   const utilization = normalizedUtilization(window);
   if (utilization === null || !resetsAt) return null;
 
-  const hoursUntilReset = (new Date(resetsAt).getTime() - now.getTime()) / (3600 * 1000);
-  if (hoursUntilReset <= 0) return 0;
+  const calendarHours = (new Date(resetsAt).getTime() - now.getTime()) / (3600 * 1000);
+  if (calendarHours <= 0) return 0;
+  const hoursUntilReset = workingHoursLeft !== null && workingHoursLeft > 0 ? workingHoursLeft : calendarHours;
 
   const remainingPercent = Math.max(0, 100 - utilization);
   return Math.round((remainingPercent / hoursUntilReset) * 100) / 100;
@@ -311,15 +412,15 @@ export function efficiencyRating(
 }
 
 /**
- * Consumption of each day (difference with the previous history point, in quota
- * percentage points) next to that day's ideal share — EVOLUTION.md point 1: the
+ * Consumption of each day (difference with the day's baseline `dayStartUsed`, or with
+ * the previous history point for older points, in quota percentage points) next to that day's ideal share — EVOLUTION.md point 1: the
  * widget chart shows this, no longer the cumulative % per day that mirrored the
  * provider dashboard.
  * - `delta` null: the window was reset in between (negative delta), the value is not
  *   attributable to that day's usage (same rule as instantaneousRate);
  * - `idealShare` null: pacing not available (period of unknown length,
  *   totalPeriodWorkingUnits <= 0); 0 on a non-working day.
- * The first history point has no predecessor and produces no delta.
+ * The first history point produces a delta only when it carries its own `dayStartUsed`.
  */
 export function dailyDeltas(
   dailyHistory: DailyUsagePoint[],
@@ -331,8 +432,11 @@ export function dailyDeltas(
   const result: DailyDelta[] = [];
   let prev: DailyUsagePoint | undefined;
   for (const curr of sorted) {
-    if (prev) {
-      const rawDelta = curr.used - prev.used;
+    // The day's own baseline (updateDailyPoint) when recorded: exact even on the day
+    // of a reset, and for the first day of history. Older points: previous point.
+    const base = curr.dayStartUsed ?? prev?.used;
+    if (base !== undefined) {
+      const rawDelta = curr.used - base;
       const idealShare = totalPeriodWorkingUnits > 0
         ? round2(getDayUnit(parseDateKey(curr.date), workSchedule) * (100 / totalPeriodWorkingUnits))
         : null;
@@ -341,6 +445,41 @@ export function dailyDeltas(
     prev = curr;
   }
   return result;
+}
+
+/**
+ * Next value of TODAY's history point for a window, given the point already recorded
+ * today (if any), the last point of an earlier day (if any) and the current
+ * utilization (already rounded by the caller):
+ * - `dayStartUsed` (set once, when the day's point is created): the previous point's
+ *   value when it belongs to the current period; 0 when the period started after it
+ *   or the value dropped (reset in between); the current value when there is no
+ *   history at all (consumption before the first refresh is unknown);
+ * - `firstActivityAt` (set once): the first refresh of the day where consumption is
+ *   above `dayStartUsed` — the start of today's work for todayElapsedUnits.
+ * An older point of today without a baseline (recorded before these fields existed)
+ * gets one computed the same way.
+ */
+export function updateDailyPoint(args: {
+  today: DailyUsagePoint | undefined;
+  previous: DailyUsagePoint | undefined;
+  accountId: DailyUsagePoint['accountId'];
+  windowId: string;
+  used: number;
+  periodStart: Date | string;
+  now: Date;
+}): DailyUsagePoint {
+  const { today, previous, accountId, windowId, used, periodStart, now } = args;
+  let dayStartUsed = today?.dayStartUsed;
+  if (dayStartUsed === undefined) {
+    if (!previous) dayStartUsed = today?.used ?? used;
+    else if (previous.used > used || isBefore(parseDateKey(previous.date), startOfDay(new Date(periodStart)))) dayStartUsed = 0;
+    else dayStartUsed = previous.used;
+  }
+  const point: DailyUsagePoint = { date: localDateKey(now), accountId, windowId, used, dayStartUsed };
+  const firstActivityAt = today?.firstActivityAt ?? (used > dayStartUsed ? now.toISOString() : undefined);
+  if (firstActivityAt !== undefined) point.firstActivityAt = firstActivityAt;
+  return point;
 }
 
 /**

@@ -167,7 +167,9 @@ function windowLabel(win: QuotaWindow, provider: ProviderId): string {
 function formatTip(tip: DailyTip, win: QuotaWindow, provider: ProviderId): string {
   const window = windowLabel(win, provider);
   const reset = win.resetsAt ? formatDate(win.resetsAt) : t('tips.nextReset');
-  const params = { ...tip.params, window, reset };
+  // Numbers in the active locale ("6,5" in Italian, not "6.5"): the tip carries raw values.
+  const numbers = Object.fromEntries(Object.entries(tip.params).map(([k, v]) => [k, formatNumber(v, 2)]));
+  const params = { ...numbers, window, reset };
   switch (tip.key) {
     case 'none': return t('tips.none');
     case 'autonomy': return t('tips.autonomy', params);
@@ -189,6 +191,29 @@ function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
       return t('verdict.atRiskProjection', { value: formatPercent(verdict.projectedUsage) });
     case 'on-track': return t('verdict.onTrack');
     case 'no-pacing': return moment ? t('verdict.noPacingReset', { moment }) : t('verdict.noPacing');
+  }
+}
+
+// Today's budget (budget.todayBudget): today's consumption against the share of the
+// quota today can use, with what is left or how far over. Shown in the warning colour
+// once over budget.
+function renderTodayBudget(winSnap: QuotaWindowSnapshot | undefined): void {
+  const valueEl = byId('metric-today', HTMLElement);
+  const hintEl = byId('metric-today-hint', HTMLElement);
+  const today = winSnap?.todayBudget ?? null;
+  valueEl.classList.remove('over-budget');
+  if (!today) {
+    valueEl.textContent = '--';
+    hintEl.textContent = '';
+    return;
+  }
+  valueEl.textContent = `${formatPercent(today.usedToday)} / ${formatPercent(today.budget)}`;
+  const diff = today.budget - today.usedToday;
+  if (diff < 0) {
+    valueEl.classList.add('over-budget');
+    hintEl.textContent = t('widget.metric.todayOver', { value: formatPercent(-diff) });
+  } else {
+    hintEl.textContent = t('widget.metric.todayLeft', { value: formatPercent(diff) });
   }
 }
 
@@ -529,7 +554,12 @@ function renderWindowList(account: AccountSnapshot): void {
     pct.textContent = formatPercent(utilization);
     const verdict = document.createElement('span');
     verdict.className = 'window-row-verdict';
-    verdict.textContent = formatVerdict(winSnap.verdict, winSnap.window);
+    const verdictText = formatVerdict(winSnap.verdict, winSnap.window);
+    // A verdict resting on projection/autonomy is flagged while they are preliminary.
+    const pacedVerdict = winSnap.verdict.kind === 'at-risk' || winSnap.verdict.kind === 'on-track';
+    verdict.textContent = pacedVerdict && winSnap.preliminary
+      ? t('verdict.preliminary', { verdict: verdictText })
+      : verdictText;
 
     row.append(dot, label, bar, pct, verdict);
     row.addEventListener('click', () => {
@@ -603,7 +633,12 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
 
   byId('metric-efficiency').textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
   byId('metric-efficiency-hint').textContent = formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
+  renderTodayBudget(winSnap);
   byId('metric-projected').textContent = formatPercent(winSnap?.projectedUsage ?? null);
+  // Projection and autonomy extrapolated from less than two working days.
+  const preliminaryHint = winSnap?.preliminary ? t('widget.metric.preliminary') : '';
+  byId('metric-projected-hint').textContent = preliminaryHint;
+  byId('metric-autonomy-hint').textContent = preliminaryHint;
   byId('metric-days-left').textContent = t('widget.metric.daysLeftValue', {
     days: winSnap?.daysUntilReset ?? '--',
     working: formatDays(winSnap?.workingDaysUntilReset ?? null),

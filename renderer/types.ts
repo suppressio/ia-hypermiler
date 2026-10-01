@@ -20,6 +20,11 @@ export interface QuotaWindow {
   resetsAt: string | null;
 }
 
+export interface TodayBudget {
+  budget: number;
+  usedToday: number;
+}
+
 export interface DailyUsagePoint {
   date: string;
   accountId: AccountId;
@@ -70,6 +75,8 @@ export interface QuotaWindowSnapshot {
   daysUntilReset: number | null;
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
+  todayBudget: TodayBudget | null;
+  preliminary: boolean;
   instantRate: number | null;
   sustainableRate: number | null;
   efficiencyRating: EfficiencyRating | null;

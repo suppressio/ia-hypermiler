@@ -53,6 +53,11 @@
     </section>
 
     <section class="metrics-grid" id="metrics-grid">
+      <div class="metric metric-today" data-i18n-title="widget.metric.todayHelp">
+        <span class="metric-label" data-i18n="widget.metric.today">Today: used / budget</span>
+        <span class="metric-value" id="metric-today">--</span>
+        <span class="metric-hint" id="metric-today-hint"></span>
+      </div>
       <div class="metric metric-efficiency-block">
         <span class="metric-label" data-i18n="widget.metric.efficiency">Efficiency index</span>
         <span class="metric-value" id="metric-efficiency">--</span>
@@ -65,6 +70,7 @@
       <div class="metric">
         <span class="metric-label" data-i18n="widget.metric.projected">Projection</span>
         <span class="metric-value" id="metric-projected">--%</span>
+        <span class="metric-hint" id="metric-projected-hint"></span>
       </div>
       <div class="metric">
         <span class="metric-label" data-i18n="widget.metric.daysLeft">Days to reset</span>
@@ -73,6 +79,7 @@
       <div class="metric">
         <span class="metric-label" data-i18n="widget.metric.autonomy">Estimated autonomy</span>
         <span class="metric-value" id="metric-autonomy">--</span>
+        <span class="metric-hint" id="metric-autonomy-hint"></span>
       </div>
       <div class="metric">
         <span class="metric-label" data-i18n="widget.metric.peakAvg">Daily peak / average</span>

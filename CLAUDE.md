@@ -165,18 +165,23 @@ When a service receives a response whose format no longer matches the expected o
 Implemented in `budget.ts` (do not duplicate it here: update this section only if the model changes). Public API, all pure functions tested in `budget.test.ts`:
 
 - `workingUnitsBetween(start, end, workSchedule)` — working units (1/0.5/0 per day) between two dates; with `workSchedule.enabled === false` every day counts 1
+- `todayElapsedUnits`, `elapsedWorkingUnits`, `remainingWorkingUnits` — actual working hours: today's elapsed part = hours since the first activity of the day (`DailyUsagePoint.firstActivityAt`) / `hoursPerDay`, at least 2h, capped at the day unit; calendar fraction of the day with the schedule disabled. Elapsed + remaining = the whole period
+- `localDateKey` / `parseDateKey` — LOCAL `YYYY-MM-DD` keys of the history (never `toISOString().slice(0, 10)`, which is the UTC day)
+- `updateDailyPoint` — today's history point with its baseline (`dayStartUsed`) and first activity
 - `normalizedUtilization(window)` — 0-100 percentage, or `null`
 - `pickCriticalWindow(quotaWindows)` — the window with the highest utilization
-- `efficiencyIndex`, `projectedUsage`, `estimatedAutonomyWorkingDays` — pacing on working units, not calendar days
+- `efficiencyIndex`, `projectedUsage`, `estimatedAutonomyWorkingDays` — pacing on working units, not calendar days; projection and autonomy blend the period average 50/50 with `recentPacePerUnit` (last 3 completed working days); projection NOT capped at 100
+- `todayBudget` — today's budget (what was left at the start of the day over the working units from today on) vs today's consumption; `PACE_ALERT_RATIO`
 - `daysUntilReset` / `workingDaysUntilReset`
-- `instantaneousRate`, `sustainableHourlyRate`, `efficiencyRating` — instant gauge and star rating
+- `instantaneousRate`, `sustainableHourlyRate`, `efficiencyRating` — instant gauge (sustainable %/h spread over remaining WORKING hours when a schedule applies) and star rating
 - `dailyDeltas`, `deltaStats`, `windowVerdict` — daily consumption chart, peak/average/streak, per-window verdict
 - `tokenYield`, `consumptionCause` — value per token (Claude local insights; a cause is stated only with a clear signal)
 - `generateDailyTip` — `{ key, params }` from explicit conditions on the metrics above, never a generic tip
 - `resolveRenewalDate(renewalRule, referenceDate)` — only `{ type: 'dayOfMonth', day }`; `rrule` throws "not supported"
 
-### Threshold notification
+### Threshold and pace notifications
 - System notification when usage passes the configured threshold (default **80%**) of the critical window, at most once per day per account (flag in `store.meta.notifiedToday`).
+- Pace notification when today's consumption of any window exceeds `PACE_ALERT_RATIO` (1.5×) today's budget, at most once per day per account (`<account>:pace:<day>` flag). Only today's flags are kept.
 
 ### Auto-refresh
 - The main process refreshes every **30 minutes** via `setInterval`, also with the window closed (tray only). After each successful fetch the data is stored and sent to the renderer (`usage:update`).
@@ -262,12 +267,13 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **`build/` in .gitignore**: it is electron-builder's resources dir; icons were never committed (fixed — verify the packaged icon on the next release).
 - **Optional parameters with a "safe" default hide wiring bugs**: the Copilot host was optional (default github.com) and `main/providers.ts` never passed it, so v0.4.4/0.4.5 sent tenant tokens to api.github.com (401). `CopilotCredentials.host` and `resolveUsername(token, host)` are now required, so the compiler catches a missing host.
 - **Release tags** must start with `v` for CI to run.
+- **`periodLength: null` silently disabled pacing**: the Claude company `spend` window and every Copilot window had it, so efficiency/projection/autonomy/verdict/tips were always empty there (noticed only on 2026-10-01, 10.3% on day one with no warning). Billing-cycle windows known to be monthly declare `periodLength: 1` (months). Also: the current day only counted once over, so day one of a period had 0 elapsed units.
+- **UTC day keys**: `toISOString().slice(0, 10)` is the UTC day, `new Date('YYYY-MM-DD')` is UTC midnight — both wrong for local working days → `localDateKey`/`parseDateKey`.
 
 ### Open items
 - Next agreed steps: a single shared IPC contract (channels + types for main/preload/renderer, replacing the manual `renderer/types.ts` copy), then extracting a testable core from `main.ts` (EVOLUTION.md 2a) and working test-first.
 - **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), architecture review and simplifications (#12, includes the IPC contract and core extraction below). **Milestone v1.0.0** (out of beta): signed Windows/macOS installers (#11).
 - `agents/advisor.ts` is a stub.
-- `workSchedule.hoursPerDay` (per account since 0.4.6) is not used by `budget.ts` yet: pacing on actual working hours is the next step.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).
-- Verify with real use the `consumptionCause` thresholds, and with the next release the packaged icon and the update notification end to end.
+- Verify with real use the pacing constants (`PACE_ALERT_RATIO` 1.5×, 2h minimum of observed work, 50/50 recent-pace blend, preliminary below 2 working units) and the `consumptionCause` thresholds, and with the next release the packaged icon and the update notification end to end.
 - Measure RAM/CPU in tray-only mode before considering EVOLUTION.md point 5.
