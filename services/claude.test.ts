@@ -175,6 +175,7 @@ test('buildQuotaWindows: real case — company account with only `spend` (2026-1
   assert.equal(at(windows, 0).used, 12.34);
   assert.equal(at(windows, 0).total, 50);
   assert.equal(at(windows, 0).periodType, 'billing-cycle');
+  assert.equal(at(windows, 0).periodLength, 1); // monthly: pacing on the renewal rule
   assert.equal(at(windows, 0).resetsAt, null);
 });
 

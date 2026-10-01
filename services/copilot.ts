@@ -196,7 +196,7 @@ async function fetchBillingUsage({ apiBase, host, token, manualQuota, now }: { a
         id: 'ai_credits',
         label: 'AI credits',
         periodType: 'billing-cycle',
-        periodLength: null,
+        periodLength: 1, // the billing report covers the current calendar month
         unit: 'count',
         used,
         total: typeof manualQuota === 'number' ? manualQuota : null,
@@ -287,7 +287,8 @@ function readQuotaSnapshot(key: string, entry: CopilotInternalQuotaSnapshot | nu
   const resetsAt = typeof entry.quota_reset_at === 'number' && entry.quota_reset_at > 0
     ? new Date(entry.quota_reset_at * 1000)
     : fallbackReset;
-  const base = { id: key, label: `Copilot — ${key}`, periodType: 'billing-cycle' as const, periodLength: null, resetsAt };
+  // Monthly quotas: periodLength 1 (month) enables pacing up to resetsAt.
+  const base = { id: key, label: `Copilot — ${key}`, periodType: 'billing-cycle' as const, periodLength: 1, resetsAt };
 
   if (entry.unlimited === true) {
     // Unlike VS Code, an unlimited category with zero credits is not shown: on a company

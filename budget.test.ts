@@ -79,11 +79,11 @@ test('pickCriticalWindow returns null on an empty list', () => {
 });
 
 test('efficiencyIndex ~1 when the actual pace equals the ideal one', () => {
-  // Period of 10 working days (2 Mon-Fri weeks), halfway (5 working days elapsed) at
-  // 50% usage: pace exactly on track.
+  // Period of 10 working days (2 Mon-Fri weeks), halfway (5 working days elapsed, the
+  // current one included) at 50% usage: pace exactly on track.
   const periodStart = new Date(2026, 6, 13); // Monday
   const periodEnd = new Date(2026, 6, 27); // two Mondays later (10 working days)
-  const now = new Date(2026, 6, 20); // middle Monday (5 working days elapsed)
+  const now = new Date(2026, 6, 17, 15, 0); // first Friday afternoon (Mon-Fri elapsed)
   const result = budget.efficiencyIndex({ window: pctWindow(50), workSchedule: FULL_WEEK_SCHEDULE, periodStart, periodEnd, now });
   assert.equal(result, 1);
 });
@@ -121,8 +121,44 @@ test('daysUntilReset is never negative', () => {
 test('estimatedAutonomyWorkingDays returns 0 when already at 100%', () => {
   const periodStart = new Date(2026, 6, 13);
   const now = new Date(2026, 6, 20);
-  const result = budget.estimatedAutonomyWorkingDays({ window: pctWindow(100), workSchedule: FULL_WEEK_SCHEDULE, periodStart, now });
+  const periodEnd = new Date(2026, 6, 27);
+  const result = budget.estimatedAutonomyWorkingDays({ window: pctWindow(100), workSchedule: FULL_WEEK_SCHEDULE, periodStart, periodEnd, now });
   assert.equal(result, 0);
+});
+
+// The current day counts as elapsed: on the first day of a period a heavy use must
+// already show in projection, autonomy and efficiency (real case, 2026-10-01: 10.3% on
+// day one of a monthly period showed no pacing at all).
+test('first day of the period: the current day counts as elapsed', () => {
+  const periodStart = new Date(2026, 6, 13); // Monday
+  const periodEnd = new Date(2026, 6, 27); // 10 working days
+  const now = new Date(2026, 6, 13, 18, 0); // evening of day one
+  const ctx = { window: pctWindow(20), workSchedule: FULL_WEEK_SCHEDULE, periodStart, periodEnd, now };
+  assert.equal(budget.elapsedWorkingUnits(periodStart, periodEnd, now, FULL_WEEK_SCHEDULE), 1);
+  assert.equal(budget.remainingWorkingUnits(periodEnd, now, FULL_WEEK_SCHEDULE), 9);
+  assert.equal(budget.efficiencyIndex(ctx), 0.5); // ideal 10%/day, actual 20%/day
+  assert.equal(budget.projectedUsage(ctx), 100); // 20 + 20 × 9, capped
+  assert.equal(budget.estimatedAutonomyWorkingDays(ctx), 4); // 80% left at 20%/day
+  assert.equal(budget.workingDaysUntilReset(periodEnd, FULL_WEEK_SCHEDULE, now), 9);
+});
+
+test('elapsed and remaining working units always add up to the whole period', () => {
+  const periodStart = new Date(2026, 6, 13);
+  const periodEnd = new Date(2026, 6, 27);
+  const total = budget.workingUnitsBetween(periodStart, periodEnd, FULL_WEEK_SCHEDULE);
+  for (let day = 13; day < 27; day++) {
+    const now = new Date(2026, 6, day, 11, 30);
+    const sum = budget.elapsedWorkingUnits(periodStart, periodEnd, now, FULL_WEEK_SCHEDULE)
+      + budget.remainingWorkingUnits(periodEnd, now, FULL_WEEK_SCHEDULE);
+    assert.equal(sum, total, `day ${String(day)}`);
+  }
+});
+
+test('elapsedWorkingUnits: a non-working current day adds nothing, before the period it is 0', () => {
+  const periodStart = new Date(2026, 6, 13);
+  const periodEnd = new Date(2026, 6, 27);
+  assert.equal(budget.elapsedWorkingUnits(periodStart, periodEnd, new Date(2026, 6, 18, 12), FULL_WEEK_SCHEDULE), 5); // Saturday
+  assert.equal(budget.elapsedWorkingUnits(periodStart, periodEnd, new Date(2026, 6, 10), FULL_WEEK_SCHEDULE), 0);
 });
 
 test('resolveRenewalDate: future dayOfMonth in the current month', () => {
@@ -188,19 +224,27 @@ test('sustainableHourlyRate computes the maximum hourly pace to reach 100% at th
   const now = new Date(2026, 6, 20, 0, 0, 0);
   const resetsAt = new Date(2026, 6, 20, 10, 0, 0); // 10 hours to reset
   const win = pctWindow(50, { resetsAt });
-  assert.equal(budget.sustainableHourlyRate(win, now), 5); // 50% residuo / 10h
+  assert.equal(budget.sustainableHourlyRate(win, resetsAt, now), 5); // 50% left / 10h
 });
 
-test('sustainableHourlyRate returns null when resetsAt is missing', () => {
+test('sustainableHourlyRate uses the reset passed by the caller (window without its own resetsAt)', () => {
+  // Monthly spend limit: no resetsAt on the window, the period end comes from the
+  // renewal rule.
+  const now = new Date(2026, 9, 1, 12, 0, 0);
+  const periodEnd = new Date(2026, 9, 2, 12, 0, 0); // 24 hours
+  assert.equal(budget.sustainableHourlyRate(pctWindow(52, { resetsAt: null }), periodEnd, now), 2);
+});
+
+test('sustainableHourlyRate returns null when the reset is unknown', () => {
   const win = pctWindow(50, { resetsAt: null });
-  assert.equal(budget.sustainableHourlyRate(win, new Date(2026, 6, 20)), null);
+  assert.equal(budget.sustainableHourlyRate(win, null, new Date(2026, 6, 20)), null);
 });
 
 test('sustainableHourlyRate returns 0 when already at 100% or the reset has passed', () => {
   const now = new Date(2026, 6, 20, 12, 0, 0);
   const past = new Date(2026, 6, 20, 0, 0, 0);
-  assert.equal(budget.sustainableHourlyRate(pctWindow(100, { resetsAt: new Date(2026, 6, 21) }), now), 0);
-  assert.equal(budget.sustainableHourlyRate(pctWindow(50, { resetsAt: past }), now), 0);
+  assert.equal(budget.sustainableHourlyRate(pctWindow(100), new Date(2026, 6, 21), now), 0);
+  assert.equal(budget.sustainableHourlyRate(pctWindow(50), past, now), 0);
 });
 
 // ---------------------------------------------------------------------------

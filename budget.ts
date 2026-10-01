@@ -80,6 +80,30 @@ export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | n
   return top ? top.window : first;
 }
 
+/**
+ * Working units already spent in the period at `now`: the full days before today plus
+ * the current day, counted as elapsed in full. Counting today only once it is over (as
+ * `workingUnitsBetween(periodStart, now)` does) left 0 elapsed units on the first day
+ * of a period, so projection/autonomy/efficiency ignored a whole day of heavy use.
+ * Counting it in full underestimates the pace while the day is still running — the
+ * cautious side: it never raises a false alarm. 0 before the period starts or on a
+ * non-working day that opens the period.
+ */
+export function elapsedWorkingUnits(periodStart: Date | string, periodEnd: Date | string, now: Date, workSchedule: WorkSchedule): number {
+  const today = startOfDay(now);
+  if (isBefore(today, startOfDay(new Date(periodStart)))) return 0;
+  const todayUnit = isBefore(today, startOfDay(new Date(periodEnd))) ? getDayUnit(today, workSchedule) : 0;
+  return workingUnitsBetween(periodStart, today, workSchedule) + todayUnit;
+}
+
+/**
+ * Working units left in the period after the current day (see elapsedWorkingUnits:
+ * today is already counted as elapsed, so elapsed + remaining = the whole period).
+ */
+export function remainingWorkingUnits(periodEnd: Date | string, now: Date, workSchedule: WorkSchedule): number {
+  return workingUnitsBetween(addDays(startOfDay(now), 1), periodEnd, workSchedule);
+}
+
 export interface PeriodContext {
   window: QuotaWindow;
   workSchedule: WorkSchedule;
@@ -98,7 +122,7 @@ export function efficiencyIndex({ window, workSchedule, periodStart, periodEnd, 
   if (utilization === null) return null;
 
   const totalUnits = workingUnitsBetween(periodStart, periodEnd, workSchedule);
-  const elapsedUnits = workingUnitsBetween(periodStart, now, workSchedule);
+  const elapsedUnits = elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule);
   if (totalUnits <= 0 || elapsedUnits <= 0) return null;
 
   const idealPace = 100 / totalUnits;
@@ -116,8 +140,8 @@ export function projectedUsage({ window, workSchedule, periodStart, periodEnd, n
   const utilization = normalizedUtilization(window);
   if (utilization === null) return null;
 
-  const elapsedUnits = workingUnitsBetween(periodStart, now, workSchedule);
-  const remainingUnits = workingUnitsBetween(now, periodEnd, workSchedule);
+  const elapsedUnits = elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule);
+  const remainingUnits = remainingWorkingUnits(periodEnd, now, workSchedule);
   if (elapsedUnits <= 0) return Math.min(100, utilization);
 
   const avgPacePerUnit = utilization / elapsedUnits;
@@ -130,9 +154,13 @@ export function daysUntilReset(resetsAt: Date | string, now: Date = new Date()):
   return Math.max(0, differenceInCalendarDays(new Date(resetsAt), now));
 }
 
-/** Working days/units left until the reset (>= 0). */
+/**
+ * Working days/units left until the reset (>= 0), after the current day — the same
+ * horizon `estimatedAutonomyWorkingDays` is compared with (today counts as elapsed,
+ * see elapsedWorkingUnits).
+ */
 export function workingDaysUntilReset(resetsAt: Date | string, workSchedule: WorkSchedule, now: Date = new Date()): number {
-  return workingUnitsBetween(now, resetsAt, workSchedule);
+  return remainingWorkingUnits(resetsAt, now, workSchedule);
 }
 
 /**
@@ -140,12 +168,12 @@ export function workingDaysUntilReset(resetsAt: Date | string, workSchedule: Wor
  * (how many working units are left before reaching 100%).
  * Returns Infinity when the current pace is ~0 (no consumption observed).
  */
-export function estimatedAutonomyWorkingDays({ window, workSchedule, periodStart, now = new Date() }: Omit<PeriodContext, 'periodEnd'>): number | null {
+export function estimatedAutonomyWorkingDays({ window, workSchedule, periodStart, periodEnd, now = new Date() }: PeriodContext): number | null {
   const utilization = normalizedUtilization(window);
   if (utilization === null) return null;
   if (utilization >= 100) return 0;
 
-  const elapsedUnits = workingUnitsBetween(periodStart, now, workSchedule);
+  const elapsedUnits = elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule);
   if (elapsedUnits <= 0) return Infinity;
 
   const avgPacePerUnit = utilization / elapsedUnits;
@@ -204,18 +232,20 @@ export function instantaneousRate(
 
 /**
  * Maximum sustainable hourly pace (%/h) to reach exactly 100% at the window
- * reset — the "target" marker of the instant consumption gauge. Uses only
- * `window.resetsAt`, not `periodStart`/`workSchedule`: unlike
- * `efficiencyIndex`/`projectedUsage` it also works for windows with an unknown
- * reference period (e.g. one-off credits, see main.ts canEstimatePacing), because
- * knowing when the period started is not needed to know how much time is left.
+ * reset — the "target" marker of the instant consumption gauge. Needs only the reset
+ * moment, not `periodStart`/`workSchedule`: unlike `efficiencyIndex`/`projectedUsage`
+ * it also works for windows with an unknown reference period (e.g. one-off credits
+ * with their own `resetsAt`, see main.ts canEstimatePacing), because knowing when the
+ * period started is not needed to know how much time is left. `resetsAt` is passed
+ * explicitly: a window without its own (e.g. a monthly spend limit) resets at the end
+ * of the billing period resolved by the caller.
  * Returns null when `resetsAt` is missing or utilization cannot be computed.
  */
-export function sustainableHourlyRate(window: QuotaWindow, now: Date = new Date()): number | null {
+export function sustainableHourlyRate(window: QuotaWindow, resetsAt: Date | string | null, now: Date = new Date()): number | null {
   const utilization = normalizedUtilization(window);
-  if (utilization === null || !window.resetsAt) return null;
+  if (utilization === null || !resetsAt) return null;
 
-  const hoursUntilReset = (new Date(window.resetsAt).getTime() - now.getTime()) / (3600 * 1000);
+  const hoursUntilReset = (new Date(resetsAt).getTime() - now.getTime()) / (3600 * 1000);
   if (hoursUntilReset <= 0) return 0;
 
   const remainingPercent = Math.max(0, 100 - utilization);

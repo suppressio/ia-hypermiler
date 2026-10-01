@@ -47,6 +47,8 @@ export interface QuotaWindow {
   id: string;
   label: string;
   periodType: 'rolling-hours' | 'rolling-days' | 'billing-cycle';
+  // Hours (rolling-hours), days (rolling-days) or months (billing-cycle); null when
+  // unknown — such a window gets no pacing (see main.ts canEstimatePacing).
   periodLength: number | null;
   unit: 'percentage' | 'count';
   used: number;

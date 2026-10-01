@@ -108,7 +108,9 @@ function readSpend(value: unknown): SpendReading {
 
   const used = moneyValue(spend.used);
   const limit = moneyValue(spend.limit);
-  const base = { id: SPEND_KEY, label: KNOWN_LABELS[SPEND_KEY] ?? SPEND_KEY, periodType: 'billing-cycle' as const, periodLength: null, resetsAt: null };
+  // A monthly spend limit: periodLength 1 (month) enables pacing, the period end comes
+  // from the account renewal rule since the object carries no reset date.
+  const base = { id: SPEND_KEY, label: KNOWN_LABELS[SPEND_KEY] ?? SPEND_KEY, periodType: 'billing-cycle' as const, periodLength: 1, resetsAt: null };
   if (used !== null && limit !== null && limit > 0) {
     return { kind: 'window', window: { ...base, unit: 'count', used, total: limit } };
   }

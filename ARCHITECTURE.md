@@ -27,7 +27,7 @@ This had to be confirmed explicitly because it changes the `fetchUsage()` interf
     id: string,                              // 'five_hour' | 'seven_day' | 'seven_day_opus' | 'ai_credits' | ...
     label: string,
     periodType: 'rolling-hours' | 'rolling-days' | 'billing-cycle',
-    periodLength: number,                    // e.g. 5, 7, or days of the cycle
+    periodLength: number | null,             // hours, days or months by periodType (5, 7, 1); null = unknown, no pacing
     unit: 'percentage' | 'count',
     used: number,                            // 0-100 for percentage, absolute value for count
     total: number | null,                    // null when the service exposes no total (Claude case)

@@ -183,9 +183,11 @@ async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | nul
 
 // ---------------------------------------------------------------------------
 // Period bounds for efficiency/projection/reset:
-// - if the critical window has its own resetsAt (Claude case, rolling windows), we use
-//   it and derive the period start by subtracting the window length;
-// - otherwise (Copilot case, billing cycle) we use the configured renewalRule.
+// - the period end is the window's own resetsAt when it has one (Claude rolling
+//   windows, Copilot quota snapshots), otherwise the configured renewalRule (e.g. a
+//   Claude spend limit or the Copilot billing report, which carry no reset date);
+// - the period start subtracts the window length from the end: hours or days for
+//   rolling windows, calendar months for a billing cycle (months differ in length).
 // NOTE: for Claude's "five_hour" window the day/half-day granularity of budget.ts is
 // too coarse for a truly meaningful efficiency — the value stays consistent, but it
 // should be read mostly as a current indicator, not as reliable pacing on such a short
@@ -196,16 +198,17 @@ function resolvePeriodBounds(
   subscription: { renewalRule: RenewalRule },
   now: Date,
 ): { periodStart: Date; periodEnd: Date } {
-  if (criticalWindow?.resetsAt) {
-    const periodEnd = new Date(criticalWindow.resetsAt);
+  const periodEnd = criticalWindow?.resetsAt
+    ? new Date(criticalWindow.resetsAt)
+    : budget.resolveRenewalDate(subscription.renewalRule, now);
+  if (criticalWindow && criticalWindow.periodType !== 'billing-cycle') {
     const spanMs = criticalWindow.periodType === 'rolling-hours'
       ? (criticalWindow.periodLength ?? 0) * 3600 * 1000
       : (criticalWindow.periodLength ?? 0) * 24 * 3600 * 1000;
     return { periodStart: new Date(periodEnd.getTime() - spanMs), periodEnd };
   }
-  const periodEnd = budget.resolveRenewalDate(subscription.renewalRule, now);
   const periodStart = new Date(periodEnd);
-  periodStart.setMonth(periodStart.getMonth() - 1);
+  periodStart.setMonth(periodStart.getMonth() - (criticalWindow?.periodLength ?? 1));
   return { periodStart, periodEnd };
 }
 
@@ -213,8 +216,8 @@ function resolvePeriodBounds(
 // only by the shape of the value in services/claude.ts, both recurring and one-off:
 // there is no way to tell them apart without guessing an undocumented format) has no
 // period start that can be derived with certainty: no pacing fabricated on a fictitious
-// span (see resolvePeriodBounds below), only daysUntilReset, which uses the window's
-// real resetsAt and is always reliable.
+// span (see resolvePeriodBounds above), only daysUntilReset. Known monthly windows
+// (Claude spend limit, Copilot quotas) declare periodLength 1 and get full pacing.
 function canEstimatePacing(window: QuotaWindow): boolean {
   return window.periodType !== 'billing-cycle' || window.periodLength !== null;
 }
@@ -253,11 +256,12 @@ function computeWindowSnapshot(
   const daysUntilReset = budget.daysUntilReset(periodEnd, now);
   const workingDaysUntilReset = budget.workingDaysUntilReset(periodEnd, workSchedule, now);
   const estimatedAutonomyWorkingDays = pacingAvailable ? budget.estimatedAutonomyWorkingDays(ctx) : null;
-  // Not gated by pacingAvailable: it only uses window.resetsAt, so it stays meaningful
-  // even for windows with an unknown period start (e.g. one-off credits) — see
-  // budget.sustainableHourlyRate.
+  // Not gated by pacingAvailable when the window has its own resetsAt: knowing the
+  // reset is enough, even with an unknown period start (e.g. one-off credits) — see
+  // budget.sustainableHourlyRate. Without one, the renewal-rule period end is used
+  // only for windows known to follow the billing cycle (pacingAvailable).
   const instantRate = budget.instantaneousRate(recentSamples, now);
-  const sustainableRate = budget.sustainableHourlyRate(window, now);
+  const sustainableRate = budget.sustainableHourlyRate(window, window.resetsAt ?? (pacingAvailable ? periodEnd : null), now);
   const efficiencyRating = ratingAvailable
     ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, chartDays)
     : null;

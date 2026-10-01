@@ -69,6 +69,7 @@ test('fetchUsage (personal) sums the report in credits and applies manualQuota a
   assert.equal(at(result.quotaWindows, 0).id, 'ai_credits');
   assert.equal(at(result.quotaWindows, 0).used, 42);
   assert.equal(at(result.quotaWindows, 0).total, 300);
+  assert.equal(at(result.quotaWindows, 0).periodLength, 1); // monthly report: pacing enabled
 });
 
 test('fetchUsage (personal) falls back to premium_request/usage when ai_credit/usage answers 404', async () => {
@@ -134,6 +135,7 @@ test('fetchUsage (company seat) converts quota_snapshots into percentage windows
   assert.equal(result.quotaWindows.length, 2);
   const premium = result.quotaWindows.find((w) => w.id === 'premium_interactions');
   assert.equal(premium?.used, 60); // 100 - 40
+  assert.equal(premium.periodLength, 1); // monthly quota: pacing up to the reset
 });
 
 test('fetchUsage (company seat) explicitly reports the failure as best-effort', async () => {
