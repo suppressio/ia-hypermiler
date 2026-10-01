@@ -56,6 +56,30 @@ async function main() {
   const hints = hintedPaths(shape);
   console.log(`\nFields whose name suggests credits/quota (${hints.length}):`);
   for (const path of hints) console.log(`  ${path}`);
+  printSafeSummary(body);
+}
+
+// Plan names and yes/no flags only: never amounts, percentages, dates or identifiers.
+function printSafeSummary(body) {
+  if (body === null || typeof body !== 'object') return;
+  const label = (value) => (typeof value === 'string' && /^[a-z0-9_.-]{1,40}$/i.test(value) ? value : typeof value);
+  const flag = (value) => (typeof value === 'boolean' ? String(value) : typeof value);
+  const positive = (value) => (typeof value === 'number' ? String(value > 0) : typeof value);
+  console.log('\nSafe summary (plan names and yes/no flags only):');
+  console.log(`  copilot_plan: ${label(body.copilot_plan)}`);
+  console.log(`  access_type_sku: ${label(body.access_type_sku)}`);
+  console.log(`  token_based_billing: ${flag(body.token_based_billing)}`);
+  console.log(`  organizations listed: ${Array.isArray(body.organization_list) ? body.organization_list.length > 0 : 'n/a'}`);
+  const snapshots = body.quota_snapshots;
+  if (snapshots === null || typeof snapshots !== 'object') return;
+  for (const [name, snap] of Object.entries(snapshots)) {
+    if (snap === null || typeof snap !== 'object') continue;
+    console.log(
+      `  ${name}: unlimited=${flag(snap.unlimited)} has_quota=${flag(snap.has_quota)} ` +
+      `entitlement>0=${positive(snap.entitlement)} credits_used>0=${positive(snap.credits_used)} ` +
+      `overage_permitted=${flag(snap.overage_permitted)}`,
+    );
+  }
 }
 
 main().catch((error) => {
