@@ -1,9 +1,9 @@
-// eslint.config.mjs — lint con regole basate sui tipi (typescript-eslint, preset strict).
-// Due progetti TypeScript separati (main CommonJS, renderer ES module isolato):
-// il parser li riceve entrambi, così ogni file è analizzato col proprio tsconfig.
+// eslint.config.mjs — lint with type-aware rules (typescript-eslint, strict preset).
+// Separate TypeScript projects (main CommonJS, isolated renderer ES modules, renderer
+// tests): the parser gets all of them, so every file is analyzed with its own tsconfig.
 //
-// Le poche regole regolate qui sotto sono solo quelle con falsi positivi noti;
-// nessuna è spenta per nascondere un problema reale.
+// The few rules tuned below are only those with known false positives; none is turned
+// off to hide a real problem.
 
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
@@ -22,11 +22,11 @@ export default tseslint.config(
       },
     },
     rules: {
-      // Numeri e booleani nei template string sono voluti (messaggi, etichette UI).
+      // Numbers and booleans in template strings are intended (messages, UI labels).
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true, allowBoolean: true }],
-      // Convenzione `_nome` = inutilizzato di proposito (già accettata da tsc).
+      // Convention `_name` = intentionally unused (already accepted by tsc).
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      // `test()`/`describe()` di node:test restituiscono una promise gestita dal runner.
+      // `test()`/`describe()` from node:test return a promise handled by the runner.
       '@typescript-eslint/no-floating-promises': ['error', {
         allowForKnownSafeCalls: [{ from: 'package', package: 'node:test', name: ['test', 'describe', 'it'] }],
       }],
@@ -35,9 +35,9 @@ export default tseslint.config(
   {
     files: ['**/*.test.ts', 'tests/**/*.ts'],
     rules: {
-      // Nei mock di fetch/SDK una funzione async senza await è la forma naturale.
+      // In fetch/SDK mocks an async function without await is the natural form.
       '@typescript-eslint/require-await': 'off',
-      // `!` dopo un assert già fatto nel test: accettabile nei soli test.
+      // `!` after an assert already done in the test: acceptable in tests only.
       '@typescript-eslint/no-non-null-assertion': 'off',
     },
   },

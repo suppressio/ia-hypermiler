@@ -1,18 +1,18 @@
-// store/defaults.ts — valori di default di AppSettings (schema in ARCHITECTURE.md §1).
-// Modulo puro (nessun import di electron/electron-store): usabile anche dai test.
+// store/defaults.ts — default values of AppSettings (schema in ARCHITECTURE.md §1).
+// Pure module (no electron/electron-store import): usable from tests too.
 
 import type { AppSettings } from '../types/index';
 
 export const DEFAULTS: AppSettings = {
-  // Registro account (issue #4): parte vuoto, gli account si aggiungono dalla
-  // tabella in Impostazioni. Uno store legacy `{ claude, copilot }` viene
-  // convertito qui sotto da migrateAccounts() — vedi store/migrate.ts.
+  // Account registry (issue #4): starts empty, accounts are added from the table in
+  // Settings. A legacy `{ claude, copilot }` store is converted by migrateAccounts() —
+  // see store/migrate.ts.
   accounts: [],
 
   workSchedule: {
-    // Default true: preserva il comportamento già in uso (pacing sui giorni
-    // lavorativi configurati sotto). Disattivabile in Impostazioni per un account
-    // personale, dove il pacing per giorni/ore specifici non ha senso.
+    // Default true: keeps the behaviour already in use (pacing on the working days
+    // configured below). Can be disabled in Settings for a personal account, where pacing
+    // on specific days/hours makes no sense.
     enabled: true,
     days: {
       mon: 'full',
@@ -23,10 +23,10 @@ export const DEFAULTS: AppSettings = {
       sat: 'off',
       sun: 'off',
     },
-    // Ore lavorative/giorno: non ancora usato da budget.ts (che lavora a granularità
-    // giornaliera/mezza giornata), riservato per un futuro pacing infra-giornaliero
-    // (es. finestra Claude delle 5 ore). Vedi feedback in CLAUDE.md — semplificato
-    // da un intervallo inizio/fine a un singolo numero su richiesta dell'utente.
+    // Working hours/day: not used yet by budget.ts (which works at day/half-day
+    // granularity), reserved for future intra-day pacing (e.g. Claude's 5-hour window).
+    // See the feedback in CLAUDE.md — simplified from a start/end range to a single number
+    // at the user's request.
     hoursPerDay: 8,
   },
 
@@ -35,7 +35,7 @@ export const DEFAULTS: AppSettings = {
     windowStyle: 'filled',
     alwaysOnTop: false,
     accentColor: '#2563eb',
-    // x/y assenti finché l'utente non sposta la finestra (vedi main/windows.ts).
+    // x/y missing until the user moves the window (see main/windows.ts).
     bounds: { width: 360, height: 480 },
     chartRange: 'week',
     notificationThresholdPercent: 80,
@@ -52,10 +52,10 @@ export const DEFAULTS: AppSettings = {
   meta: { notifiedToday: {} },
 
   diagnostics: {
-    // Se un endpoint cambia formato, apre una bozza di issue GitHub precompilata
-    // (solo struttura, mai valori reali) invece di fallire silenziosamente — vedi
-    // services/_shape.ts e diagnostics/githubIssue.ts. Attivo di default: non
-    // pubblica nulla da solo, richiede sempre conferma manuale nel browser.
+    // When an endpoint changes format, opens a pre-filled GitHub issue draft (structure
+    // only, never real values) instead of failing silently — see services/_shape.ts and
+    // diagnostics/githubIssue.ts. On by default: it publishes nothing on its own, it
+    // always needs a manual confirmation in the browser.
     autoReportFormatDrift: true,
     reportedSignatures: {},
   },
@@ -63,8 +63,8 @@ export const DEFAULTS: AppSettings = {
   localInsightsCache: { claudeCode: null },
 
   updates: {
-    // Controllo nuova versione all'avvio e ogni 24h (issue #5, services/updates.ts):
-    // solo lettura dell'elenco Release GitHub, nessun download automatico.
+    // New-version check at startup and every 24h (issue #5, services/updates.ts): only
+    // reads the GitHub Releases list, no automatic download.
     autoCheck: true,
     lastCheckedAt: null,
     lastError: null,

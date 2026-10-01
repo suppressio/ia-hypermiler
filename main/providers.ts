@@ -1,11 +1,11 @@
-// main/providers.ts — parte specifica per provider del registro account (issue #4,
-// EVOLUTION.md punto 3). main.ts lavora solo su AccountConfig generici e delega
-// qui tutto ciò che dipende dal provider: stato di connessione, credenziali per il
-// service, disconnessione, redazione dei segreti verso il renderer. I service
-// (services/claude.ts, services/copilot.ts) restano invariati: il contratto
-// fetchUsage(credentials) di CLAUDE.md è già la base comune tra provider.
-// Aggiungere un provider = un nuovo ramo in ciascuna funzione qui sotto (il
-// `switch` esaustivo su `provider` fa fallire tsc se se ne dimentica uno).
+// main/providers.ts — provider-specific part of the account registry (issue #4,
+// EVOLUTION.md point 3). main.ts works only on generic AccountConfig values and
+// delegates here everything that depends on the provider: connection state,
+// credentials for the service, disconnection, redaction of secrets towards the
+// renderer. The services (services/claude.ts, services/copilot.ts) are unchanged: the
+// fetchUsage(credentials) contract of CLAUDE.md is already the common base across
+// providers. Adding a provider = a new branch in each function below (the exhaustive
+// `switch` on `provider` makes tsc fail when one is forgotten).
 
 import * as claudeService from '../services/claude';
 import * as copilotService from '../services/copilot';
@@ -26,7 +26,7 @@ export function isConnected(cfg: AccountConfig): boolean {
   }
 }
 
-/** Chiama il fetchUsage del service del provider con le credenziali dell'account. */
+/** Calls the provider service's fetchUsage with the account credentials. */
 export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
   switch (cfg.provider) {
     case 'claude':
@@ -34,7 +34,7 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
         sessionKey: cfg.session.sessionKey as string,
         organizationId: cfg.session.organizationId,
         planTier: cfg.planTier,
-        // Letto fresco ad ogni refresh (non persistito), dalla partition dell'account.
+        // Read fresh on every refresh (not persisted), from the account partition.
         cookieHeader: await buildClaudeCookieHeader(cfg.partition),
       });
     case 'copilot': {
@@ -50,9 +50,9 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
 }
 
 /**
- * Rimuove credenziali e, per Claude, i cookie della partition — non solo il
- * sessionKey nello store (causa di issue #4). Ritorna la config aggiornata,
- * disabilitata: un account disconnesso resta disconnesso finché non si rifà "Connetti".
+ * Removes credentials and, for Claude, the partition cookies — not only the
+ * sessionKey in the store (cause of issue #4). Returns the updated, disabled config: a
+ * disconnected account stays disconnected until "Connect" is done again.
  */
 export async function disconnect(cfg: AccountConfig): Promise<AccountConfig> {
   switch (cfg.provider) {
@@ -60,12 +60,12 @@ export async function disconnect(cfg: AccountConfig): Promise<AccountConfig> {
       await clearClaudePartition(cfg.partition);
       return { ...cfg, enabled: false, session: { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null } };
     case 'copilot':
-      // oauthApp.clientId non viene cancellato: non è un segreto, resta comodo per riconnettersi.
+      // oauthApp.clientId is not deleted: it is not a secret and is handy to reconnect.
       return { ...cfg, enabled: false, credentials: { token: null, username: null } };
   }
 }
 
-/** Sostituisce i segreti con un segnaposto prima di passare il confine IPC verso il renderer. */
+/** Replaces secrets with a placeholder before crossing the IPC boundary towards the renderer. */
 export function redactSecrets(cfg: AccountConfig): AccountConfig {
   switch (cfg.provider) {
     case 'claude':
@@ -76,12 +76,12 @@ export function redactSecrets(cfg: AccountConfig): AccountConfig {
 }
 
 /**
- * I segreti cambiano solo tramite i flussi dedicati (connect/disconnect), mai col
- * salvataggio generico delle Impostazioni: la config in arrivo dal renderer
- * contiene il segnaposto, che qui viene rimpiazzato dal valore reale attuale
- * dello stesso account (per id). Anche `partition` è gestita solo dal main.
- * Un account sconosciuto (id non presente) viene scartato: gli account si creano
- * solo via accounts:add, non inventandoli in una patch.
+ * Secrets change only through the dedicated flows (connect/disconnect), never through
+ * the generic Settings save: the config coming from the renderer contains the
+ * placeholder, replaced here by the current real value of the same account (by id).
+ * `partition` is also owned by the main process only. An unknown account (id not
+ * present) is dropped: accounts are created only via accounts:add, never invented in
+ * a patch.
  */
 export function preserveSecrets(incoming: AccountConfig, current: AccountConfig | undefined): AccountConfig | null {
   if (!current || current.provider !== incoming.provider) return null;

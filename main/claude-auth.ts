@@ -1,14 +1,14 @@
-// main/claude-auth.ts — cattura della sessione Claude via finestra di login embedded.
-// Vedi RESEARCH.md v3 §1 e CLAUDE.md: mai chiedere all'utente di incollare un cookie
-// a mano. Funziona sia con login classico (email/password, Google) sia con SSO
-// aziendale: in entrambi i casi, al termine del login claude.ai deposita lo stesso
-// cookie di sessione (`sessionKey`), che qui intercettiamo.
+// main/claude-auth.ts — Claude session capture through an embedded login window.
+// See RESEARCH.md v3 §1 and CLAUDE.md: never ask the user to paste a cookie by hand.
+// Works with classic login (email/password, Google) and with company SSO: in both
+// cases, at the end of the login claude.ai sets the same session cookie
+// (`sessionKey`), which we intercept here.
 //
-// Ogni account Claude ha una propria partition Electron (`persist:account-<id>`,
-// vedi store/migrate.ts): i cookie di due account non si mescolano, e un
-// "Disconnetti" può cancellarli davvero (clearClaudePartition). Prima tutto
-// viveva in session.defaultSession — il login successivo a un disconnect
-// ritrovava il vecchio cookie e riprendeva la stessa sessione (issue #4).
+// Each Claude account has its own Electron partition (`persist:account-<id>`, see
+// store/migrate.ts): cookies of two accounts never mix, and "Disconnect" can really
+// delete them (clearClaudePartition). Everything used to live in
+// session.defaultSession — the login after a disconnect found the old cookie and
+// resumed the same session (issue #4).
 
 import { BrowserWindow, session } from 'electron';
 import { t } from './i18n/index';
@@ -16,7 +16,7 @@ import { t } from './i18n/index';
 const LOGIN_URL = 'https://claude.ai/login';
 const COOKIE_DOMAIN = '.claude.ai';
 const COOKIE_NAME = 'sessionKey';
-const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minuti: oltre, l'utente ha probabilmente abbandonato il login
+const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes: beyond that, the user probably abandoned the login
 
 export interface CapturedClaudeSession {
   sessionKey: string;
@@ -24,30 +24,29 @@ export interface CapturedClaudeSession {
 }
 
 /**
- * Ricostruisce l'header Cookie completo che un vero browser manderebbe a
- * claude.ai in questo momento — non solo `sessionKey`, ma anche `cf_clearance`
- * e gli altri cookie Cloudflare/di sessione depositati durante il login reale
- * in main/claude-auth.ts. Senza questi, claude.ai risponde con la pagina di
- * verifica "Just a moment..." invece dei dati (403, HTML non-JSON) — scoperto
- * testando con un account reale, vedi CLAUDE.md "Stato avanzamento".
- * Letto fresco ad ogni chiamata (non persistito): cf_clearance ha una durata
- * limitata e viene rinnovato da Cloudflare mentre l'utente resta loggato.
+ * Rebuilds the full Cookie header a real browser would send to claude.ai right now —
+ * not only `sessionKey`, but also `cf_clearance` and the other Cloudflare/session
+ * cookies set during the real login in main/claude-auth.ts. Without them claude.ai
+ * answers with the "Just a moment..." challenge page instead of the data (403,
+ * non-JSON HTML) — found while testing with a real account, see the CLAUDE.md progress
+ * log. Read fresh on every call (not persisted): cf_clearance has a limited lifetime
+ * and Cloudflare renews it while the user stays logged in.
  */
 export async function buildClaudeCookieHeader(partition: string): Promise<string> {
   const cookies = await session.fromPartition(partition).cookies.get({ url: 'https://claude.ai' });
   return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 }
 
-/** Cancella cookie e storage della partition dell'account (disconnect/rimozione, e prima di un nuovo login). */
+/** Clears cookies and storage of the account partition (disconnect/removal, and before a new login). */
 export async function clearClaudePartition(partition: string): Promise<void> {
   await session.fromPartition(partition).clearStorageData();
 }
 
 /**
- * Copia una tantum i cookie claude.ai da session.defaultSession (dove vivevano
- * prima delle partition per account) nella partition dell'account Claude
- * migrato, poi li rimuove da defaultSession. Evita di dover rifare il login dopo
- * l'aggiornamento; se fallisce, basta riconnettere l'account da Impostazioni.
+ * One-off copy of the claude.ai cookies from session.defaultSession (where they
+ * lived before per-account partitions) into the partition of the migrated Claude
+ * account, then removes them from defaultSession. Avoids a new login after the
+ * update; if it fails, reconnecting the account from Settings is enough.
  */
 export async function migrateDefaultSessionCookies(targetPartition: string): Promise<number> {
   const source = session.defaultSession;
@@ -59,8 +58,8 @@ export async function migrateDefaultSessionCookies(targetPartition: string): Pro
       url: `https://${host}${c.path ?? '/'}`,
       name: c.name,
       value: c.value,
-      // Un cookie host-only non deve diventare di dominio: passiamo `domain` solo se lo era.
-      // Campi opzionali copiati solo se presenti (exactOptionalPropertyTypes).
+      // A host-only cookie must not become a domain cookie: `domain` is passed only if it was one.
+      // Optional fields are copied only when present (exactOptionalPropertyTypes).
       ...(!c.hostOnly && c.domain !== undefined ? { domain: c.domain } : {}),
       ...(c.path !== undefined ? { path: c.path } : {}),
       ...(c.secure !== undefined ? { secure: c.secure } : {}),
@@ -77,10 +76,10 @@ export async function migrateDefaultSessionCookies(targetPartition: string): Pro
 }
 
 /**
- * Apre una finestra di login verso claude.ai, nella partition dell'account, e
- * risolve con il cookie di sessione non appena l'utente completa l'accesso (con
- * qualunque metodo). La partition viene svuotata prima: si parte sempre da un
- * login pulito, mai da una sessione residua.
+ * Opens a login window towards claude.ai, in the account partition, and resolves
+ * with the session cookie as soon as the user completes the sign-in (with any
+ * method). The partition is cleared first: the login always starts clean, never from
+ * a leftover session.
  */
 export async function captureClaudeSession(partition: string): Promise<CapturedClaudeSession> {
   await clearClaudePartition(partition);
@@ -93,8 +92,8 @@ export async function captureClaudeSession(partition: string): Promise<CapturedC
         partition,
         nodeIntegration: false,
         contextIsolation: true,
-        // Nessun preload: questa finestra carica solo claude.ai, nessun bisogno di
-        // esporre canali contextBridge al suo interno.
+        // No preload: this window only loads claude.ai, there is no need to expose
+        // contextBridge channels inside it.
       },
     });
 
@@ -110,7 +109,7 @@ export async function captureClaudeSession(partition: string): Promise<CapturedC
     };
 
     const safetyTimer = setTimeout(() => {
-      finish(reject, new Error('Login Claude scaduto: nessuna sessione rilevata entro 5 minuti'));
+      finish(reject, new Error('Claude login timed out: no session detected within 5 minutes'));
     }, MAX_WAIT_MS);
 
     const checkForSessionCookie = async () => {
@@ -121,24 +120,24 @@ export async function captureClaudeSession(partition: string): Promise<CapturedC
           finish(resolve, { sessionKey: cookie.value, capturedAt: new Date().toISOString() });
         }
       } catch (err) {
-        // Non fatale: riproveremo al prossimo evento di navigazione.
-        console.error('[claude-auth] errore lettura cookie:', err);
+        // Not fatal: we will retry on the next navigation event.
+        console.error('[claude-auth] cookie read error:', err);
       }
     };
 
-    // checkForSessionCookie gestisce da sé i propri errori (try/catch interno): la
-    // promise non può rifiutare, `void` esplicita che non serve attenderla.
+    // checkForSessionCookie handles its own errors (internal try/catch): the promise
+    // cannot reject, `void` states that there is no need to await it.
     const onPageEvent = () => { void checkForSessionCookie(); };
     authWindow.webContents.on('did-navigate', onPageEvent);
     authWindow.webContents.on('did-navigate-in-page', onPageEvent);
     authWindow.webContents.on('did-finish-load', onPageEvent);
 
     authWindow.on('closed', () => {
-      finish(reject, new Error('Login Claude annullato: finestra chiusa prima del completamento'));
+      finish(reject, new Error('Claude login cancelled: window closed before completion'));
     });
 
     authWindow.loadURL(LOGIN_URL).catch((err: unknown) => {
-      finish(reject, new Error(`Impossibile aprire la pagina di login Claude: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
+      finish(reject, new Error(`Could not open the Claude login page: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
     });
   });
 }

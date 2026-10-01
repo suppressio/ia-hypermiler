@@ -1,30 +1,29 @@
-// store/normalize.ts — rende lo store conforme ad AppSettings, qualunque cosa ci
-// sia su disco. Funzione pura, testata in store/normalize.test.ts.
+// store/normalize.ts — makes the store conform to AppSettings, whatever is on disk.
+// Pure function, tested in store/normalize.test.ts.
 //
-// Perché: electron-store (conf) applica i DEFAULTS con un merge SHALLOW
-// (Object.assign), quindi un campo aggiunto dentro un oggetto annidato già
-// persistito (es. history.recentSamples, workSchedule.enabled, updates) su
-// un'installazione esistente restava `undefined` pur essendo tipizzato come
-// sempre presente — bug reale già capitato (vedi CLAUDE.md, gauge "consumo
-// istantaneo"). Normalizzando una volta all'avvio, e ad ogni scrittura da IPC,
-// i tipi dicono il vero e il resto del codice non ha bisogno di fallback.
+// Why: electron-store (conf) applies DEFAULTS with a SHALLOW merge (Object.assign), so
+// a field added inside a nested object already persisted (e.g. history.recentSamples,
+// workSchedule.enabled, updates) on an existing installation stayed `undefined` while
+// typed as always present — a real bug that already happened (see CLAUDE.md, instant
+// consumption gauge). Normalizing once at startup, and on every write from IPC, makes
+// the types tell the truth and the rest of the code needs no fallback.
 //
-// Regole:
-// - oggetto nei default + oggetto su disco → merge ricorsivo;
-// - array nei default → l'array su disco se è un array, altrimenti il default;
-// - primitivo nei default → il valore su disco se ha lo stesso `typeof`,
-//   altrimenti il default (un tipo sbagliato non passa);
-// - default `null` → il valore su disco se presente (campi "null oppure valore");
-// - chiavi su disco assenti nei default (es. history.lastGood) → conservate.
-// Gli account hanno una normalizzazione dedicata per provider (normalizeAccounts).
+// Rules:
+// - object in defaults + object on disk → recursive merge;
+// - array in defaults → the array on disk if it is an array, otherwise the default;
+// - primitive in defaults → the value on disk if it has the same `typeof`, otherwise
+//   the default (a wrong type does not get through);
+// - `null` default → the value on disk if present ("null or value" fields);
+// - keys on disk missing from defaults (e.g. history.lastGood) → kept.
+// Accounts have a dedicated per-provider normalization (normalizeAccounts).
 
 import type { AppSettings } from '../types/index';
 import { mergeWithDefaults, isPlainRecord } from './merge';
 import { migrateAccounts, normalizeAccounts } from './migrate';
 
 /**
- * Store su disco (qualunque forma) → AppSettings valido. `legacyLocalInsights`
- * serve solo alla migrazione dallo schema account a due slot (vedi migrate.ts).
+ * Store on disk (any shape) → valid AppSettings. `legacyLocalInsights` serves only
+ * the migration from the two-slot account schema (see migrate.ts).
  */
 export function normalizeSettings(raw: unknown, defaults: AppSettings): AppSettings {
   const merged = mergeWithDefaults(defaults, raw) as AppSettings;
@@ -36,7 +35,7 @@ export function normalizeSettings(raw: unknown, defaults: AppSettings): AppSetti
   const accounts = Array.isArray(rawAccounts)
     ? normalizeAccounts(rawAccounts)
     : migrateAccounts(rawAccounts, legacyLocalInsights);
-  // Il vecchio flag globale `localInsights` (ora per-account) non fa parte di AppSettings.
+  // The old global `localInsights` flag (now per account) is not part of AppSettings.
   const result: AppSettings & { localInsights?: unknown } = { ...merged, accounts };
   delete result.localInsights;
   return result;

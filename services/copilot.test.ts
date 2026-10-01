@@ -1,5 +1,5 @@
-// services/copilot.test.ts — test unitari per services/copilot.ts con fetch mockato.
-// Nessuna chiamata di rete reale. I test di integrazione sono in
+// services/copilot.test.ts — unit tests for services/copilot.ts with a mocked fetch.
+// No real network call. Integration tests are in
 // tests/integration/copilot.integration.test.ts.
 
 import { test, afterEach } from 'node:test';
@@ -28,22 +28,22 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-test('resolveUsername legge login dalla risposta /user', async () => {
+test('resolveUsername reads login from the /user response', async () => {
   installFetchMock(async () => jsonResponse({ login: 'testuser' }));
   const username = await copilotService.resolveUsername('tok-123');
   assert.equal(username, 'testuser');
 });
 
-test('resolveUsername lancia errore esplicito senza token', async () => {
-  await assert.rejects(() => copilotService.resolveUsername(''), /token mancante/);
+test('resolveUsername throws an explicit error without token', async () => {
+  await assert.rejects(() => copilotService.resolveUsername(''), /missing token/);
 });
 
-test('resolveUsername lancia errore se manca login nella risposta', async () => {
+test('resolveUsername throws when login is missing from the response', async () => {
   installFetchMock(async () => jsonResponse({}));
-  await assert.rejects(() => copilotService.resolveUsername('tok-123'), /impossibile determinare lo username/);
+  await assert.rejects(() => copilotService.resolveUsername('tok-123'), /could not determine the username/);
 });
 
-test('sumCreditsUsed somma il netAmount di tutti gli usage item e lo converte in credit', () => {
+test('sumCreditsUsed sums the netAmount of every usage item and converts it to credits', () => {
   const report = {
     usageItems: [
       { netAmount: 0.1 },
@@ -53,11 +53,11 @@ test('sumCreditsUsed somma il netAmount di tutti gli usage item e lo converte in
   assert.equal(copilotService.sumCreditsUsed(report), 15); // (0.10 + 0.05) USD / $0.01 = 15 credit
 });
 
-test('sumCreditsUsed lancia errore esplicito se usageItems manca', () => {
-  assert.throws(() => copilotService.sumCreditsUsed({}), /formato risposta inatteso/);
+test('sumCreditsUsed throws an explicit error when usageItems is missing', () => {
+  assert.throws(() => copilotService.sumCreditsUsed({}), /unexpected response format/);
 });
 
-test('fetchUsage (personale) somma il report in credit e applica manualQuota come total', async () => {
+test('fetchUsage (personal) sums the report in credits and applies manualQuota as total', async () => {
   installFetchMock(async (url) => {
     if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
     return jsonResponse({ usageItems: [{ netAmount: 0.42 }] });
@@ -71,7 +71,7 @@ test('fetchUsage (personale) somma il report in credit e applica manualQuota com
   assert.equal(at(result.quotaWindows, 0).total, 300);
 });
 
-test('fetchUsage (personale) ripiega su premium_request/usage se ai_credit/usage risponde 404', async () => {
+test('fetchUsage (personal) falls back to premium_request/usage when ai_credit/usage answers 404', async () => {
   installFetchMock(async (url) => {
     if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
     if (url.includes('ai_credit/usage')) return jsonResponse({ message: 'Not Found' }, 404);
@@ -84,10 +84,10 @@ test('fetchUsage (personale) ripiega su premium_request/usage se ai_credit/usage
   assert.equal(at(result.quotaWindows, 0).used, 30);
 });
 
-test('fetchUsage (personale) ripiega su copilot_internal/user se anche premium_request/usage risponde 404', async () => {
+test('fetchUsage (personal) falls back to copilot_internal/user when premium_request/usage also answers 404', async () => {
   installFetchMock(async (url) => {
-    // copilot_internal/user termina anch'esso per "/user": va controllato prima
-    // del check generico usato per risolvere lo username (api.github.com/user).
+    // copilot_internal/user also ends with "/user": it must be checked before the generic
+    // check used to resolve the username (api.github.com/user).
     if (url.includes('copilot_internal/user')) {
       return jsonResponse({
         copilot_plan: 'individual',
@@ -106,7 +106,7 @@ test('fetchUsage (personale) ripiega su copilot_internal/user se anche premium_r
   assert.equal(at(result.quotaWindows, 0).used, 20); // 100 - 80
 });
 
-test('fetchUsage (personale) non ripiega su premium_request/usage per errori diversi da 404', async () => {
+test('fetchUsage (personal) does not fall back to premium_request/usage on errors other than 404', async () => {
   installFetchMock(async (url) => {
     if (url.endsWith('/user')) return jsonResponse({ login: 'testuser' });
     return jsonResponse({ message: 'Bad credentials' }, 401);
@@ -114,11 +114,11 @@ test('fetchUsage (personale) non ripiega su premium_request/usage per errori div
 
   await assert.rejects(
     () => copilotService.fetchUsage({ token: 'tok-invalido', accountScope: 'personal' }),
-    /ha risposto 401/,
+    /answered 401/,
   );
 });
 
-test('fetchUsage (seat aziendale) converte quota_snapshots in finestre percentuali', async () => {
+test('fetchUsage (company seat) converts quota_snapshots into percentage windows', async () => {
   installFetchMock(async () => jsonResponse({
     copilot_plan: 'business',
     quota_reset_date: '2026-08-01T00:00:00Z',
@@ -136,7 +136,7 @@ test('fetchUsage (seat aziendale) converte quota_snapshots in finestre percentua
   assert.equal(premium?.used, 60); // 100 - 40
 });
 
-test('fetchUsage (seat aziendale) segnala esplicitamente il fallimento come best-effort', async () => {
+test('fetchUsage (company seat) explicitly reports the failure as best-effort', async () => {
   installFetchMock(async () => jsonResponse({ message: 'Bad credentials' }, 401));
   await assert.rejects(
     () => copilotService.fetchUsage({ token: 'tok-invalido', accountScope: 'organization' }),
@@ -144,15 +144,15 @@ test('fetchUsage (seat aziendale) segnala esplicitamente il fallimento come best
   );
 });
 
-test('fetchUsage lancia errore esplicito senza token', async () => {
-  await assert.rejects(() => copilotService.fetchUsage({ token: '' }), /token mancante/);
+test('fetchUsage throws an explicit error without token', async () => {
+  await assert.rejects(() => copilotService.fetchUsage({ token: '' }), /missing token/);
 });
 
-test('fetchOrgManagedUsage lancia FormatDriftError con la shape (mai i valori) se manca quota_snapshots', async () => {
+test('fetchOrgManagedUsage throws FormatDriftError with the shape (never the values) when quota_snapshots is missing', async () => {
   installFetchMock(async () => jsonResponse({ copilot_plan: 'business', cinder_cove: { used_dollars: 42 } }));
   try {
     await copilotService.fetchUsage({ token: 'tok-123', accountScope: 'organization' });
-    assert.fail('doveva lanciare');
+    assert.fail('should have thrown');
   } catch (err) {
     assert.ok(err instanceof FormatDriftError);
     assert.ok(!JSON.stringify(err.shape).includes('42'));

@@ -1,13 +1,13 @@
-// main/copilot-oauth.test.ts — test unitari sulle sole funzioni pure (PKCE, URL di
-// autorizzazione). Il flusso interattivo (loopback HTTP + shell.openExternal) non è
-// testabile senza rete/UI, coerente con main/claude-auth.ts (verificato solo a mano).
+// main/copilot-oauth.test.ts — unit tests for the pure functions only (PKCE,
+// authorization URL). The interactive flow (HTTP loopback + shell.openExternal) cannot
+// be tested without network/UI, consistent with main/claude-auth.ts (verified by hand).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createPkcePair, buildAuthorizationUrl } from './copilot-oauth';
 
-test('createPkcePair genera un code_verifier in base64url e il code_challenge corrispondente (SHA-256)', () => {
+test('createPkcePair generates a base64url code_verifier and the matching code_challenge (SHA-256)', () => {
   const { codeVerifier, codeChallenge } = createPkcePair();
 
   assert.match(codeVerifier, /^[A-Za-z0-9_-]+$/);
@@ -22,13 +22,13 @@ test('createPkcePair genera un code_verifier in base64url e il code_challenge co
   assert.equal(codeChallenge, expectedChallenge);
 });
 
-test('createPkcePair genera coppie diverse ad ogni chiamata', () => {
+test('createPkcePair generates a different pair on every call', () => {
   const first = createPkcePair();
   const second = createPkcePair();
   assert.notEqual(first.codeVerifier, second.codeVerifier);
 });
 
-test('buildAuthorizationUrl include tutti i parametri richiesti da GitHub OAuth + PKCE', () => {
+test('buildAuthorizationUrl includes every parameter required by GitHub OAuth + PKCE', () => {
   const url = new URL(
     buildAuthorizationUrl({
       clientId: 'client-123',

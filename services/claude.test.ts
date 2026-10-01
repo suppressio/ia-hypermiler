@@ -1,6 +1,6 @@
-// services/claude.test.ts — test unitari per services/claude.ts con fetch mockato.
-// Nessuna chiamata di rete reale: verifichiamo solo parsing, mapping e gestione errori.
-// I test di integrazione con un account reale sono in tests/integration/claude.integration.test.ts.
+// services/claude.test.ts — unit tests for services/claude.ts with a mocked fetch.
+// No real network call: only parsing, mapping and error handling are checked.
+// Integration tests with a real account are in tests/integration/claude.integration.test.ts.
 
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,26 +28,26 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-test('listOrganizations mappa uuid/name dalla risposta', async () => {
+test('listOrganizations maps uuid/name from the response', async () => {
   installFetchMock(async () => jsonResponse([{ uuid: 'org-1', name: 'Acme Inc' }, { id: 'org-2' }]));
   const orgs = await claudeService.listOrganizations('sess-abc');
   assert.deepEqual(orgs, [{ id: 'org-1', name: 'Acme Inc' }, { id: 'org-2', name: 'Organizzazione' }]);
 });
 
-test('listOrganizations lancia errore esplicito senza sessionKey', async () => {
-  await assert.rejects(() => claudeService.listOrganizations(''), /sessionKey mancante/);
+test('listOrganizations throws an explicit error without sessionKey', async () => {
+  await assert.rejects(() => claudeService.listOrganizations(''), /missing sessionKey/);
 });
 
-test('listOrganizations lancia errore su risposta non-array', async () => {
+test('listOrganizations throws on a non-array response', async () => {
   installFetchMock(async () => jsonResponse({ unexpected: true }));
-  await assert.rejects(() => claudeService.listOrganizations('sess-abc'), /formato non riconosciuto/);
+  await assert.rejects(() => claudeService.listOrganizations('sess-abc'), /unrecognized format/);
 });
 
-test('buildQuotaWindows converte solo le finestre presenti e valide', () => {
+test('buildQuotaWindows converts only present and valid windows', () => {
   const windows = claudeService.buildQuotaWindows({
     five_hour: { utilization: 34, resets_at: '2026-07-20T10:00:00Z' },
     seven_day: { utilization: 58, resets_at: '2026-07-23T00:00:00Z' },
-    // seven_day_opus assente di proposito: non deve comparire nell'output
+    // seven_day_opus missing on purpose: it must not appear in the output
   });
   assert.equal(windows.length, 2);
   assert.equal(at(windows, 0).id, 'five_hour');
@@ -56,16 +56,16 @@ test('buildQuotaWindows converte solo le finestre presenti e valide', () => {
   assert.equal(at(windows, 1).id, 'seven_day');
 });
 
-test('buildQuotaWindows lancia errore esplicito se nessuna finestra riconosciuta', () => {
-  assert.throws(() => claudeService.buildQuotaWindows({}), /nessuna finestra di quota riconosciuta/);
+test('buildQuotaWindows throws an explicit error when no window is recognized', () => {
+  assert.throws(() => claudeService.buildQuotaWindows({}), /no quota window recognized/);
 });
 
-test('buildQuotaWindows lancia un FormatDriftError con la shape (mai i valori) quando nulla è riconosciuto', () => {
+test('buildQuotaWindows throws a FormatDriftError with the shape (never the values) when nothing is recognized', () => {
   try {
-    // Forma volutamente fuori schema: il cast passa per unknown, niente `any`.
+    // Deliberately off-schema shape: the cast goes through unknown, no `any`.
     const unrecognized = { cinder_cove: { some_unrelated_field: 389.19 } } as unknown as Parameters<typeof claudeService.buildQuotaWindows>[0];
     claudeService.buildQuotaWindows(unrecognized);
-    assert.fail('doveva lanciare');
+    assert.fail('should have thrown');
   } catch (err) {
     assert.ok(err instanceof FormatDriftError);
     const shape = err.shape;
@@ -73,10 +73,10 @@ test('buildQuotaWindows lancia un FormatDriftError con la shape (mai i valori) q
   }
 });
 
-test('buildQuotaWindows riconosce una finestra qualunque sia il nome della chiave, purché abbia utilization numerico', () => {
-  // Nomi dei campi non stabili (vedi CLAUDE.md, caso reale osservato il 2026-07):
-  // "cinder_cove" non è un nome documentato, ma va comunque riconosciuto come
-  // finestra valida perché ha la forma giusta (utilization numerico).
+test('buildQuotaWindows recognizes a window whatever the key name, as long as utilization is numeric', () => {
+  // Field names are not stable (see CLAUDE.md, real case observed in 2026-07):
+  // "cinder_cove" is not a documented name, but it must still be recognized as a valid
+  // window because it has the right shape (numeric utilization).
   const windows = claudeService.buildQuotaWindows({ cinder_cove: { utilization: 38.9, resets_at: '2026-09-13T00:00:00Z' } });
   assert.equal(windows.length, 1);
   assert.equal(at(windows, 0).id, 'cinder_cove');
@@ -84,7 +84,7 @@ test('buildQuotaWindows riconosce una finestra qualunque sia il nome della chiav
   assert.equal(at(windows, 0).unit, 'percentage');
 });
 
-test('buildQuotaWindows tratta le finestre con limit_dollars/used_dollars come "count" con importi reali', () => {
+test('buildQuotaWindows treats windows with limit_dollars/used_dollars as "count" with real amounts', () => {
   const windows = claudeService.buildQuotaWindows({
     cinder_cove: {
       utilization: 39.5166701,
@@ -100,17 +100,17 @@ test('buildQuotaWindows tratta le finestre con limit_dollars/used_dollars come "
   assert.equal(at(windows, 0).total, 1000);
 });
 
-test('buildQuotaWindows scarta le finestre a 0% senza reset e senza importi (non applicabili al piano)', () => {
+test('buildQuotaWindows drops 0% windows without reset and amounts (not applicable to the plan)', () => {
   const windows = claudeService.buildQuotaWindows({
     omelette_promotional: { utilization: 0, resets_at: null, limit_dollars: null, used_dollars: null, remaining_dollars: null },
   });
   assert.equal(windows.length, 0);
 });
 
-test('buildQuotaWindows: caso reale — payload con nomi di campo offuscati (2026-07) viene interpretato correttamente', () => {
-  // Payload reale ricevuto da un account collegato, con i vecchi nomi (five_hour,
-  // seven_day, ...) tutti null e nomi nuovi/arbitrari al loro posto — vedi
-  // CLAUDE.md "Stato avanzamento" e RESEARCH.md addendum.
+test('buildQuotaWindows: real case — payload with obfuscated field names (2026-07) is parsed correctly', () => {
+  // Real payload received from a connected account, with the old names (five_hour,
+  // seven_day, ...) all null and new/arbitrary names in their place — see the CLAUDE.md
+  // progress log and the RESEARCH.md addendum.
   const windows = claudeService.buildQuotaWindows({
     five_hour: null,
     seven_day: null,
@@ -131,14 +131,14 @@ test('buildQuotaWindows: caso reale — payload con nomi di campo offuscati (202
       remaining_dollars: 604.83,
     },
   });
-  assert.equal(windows.length, 1); // solo cinder_cove: gli altri sono null o filtrati come non applicabili
+  assert.equal(windows.length, 1); // only cinder_cove: the others are null or filtered out as not applicable
   assert.equal(at(windows, 0).id, 'cinder_cove');
   assert.equal(at(windows, 0).unit, 'count');
   assert.equal(at(windows, 0).used, 395.166701);
   assert.equal(at(windows, 0).total, 1000);
 });
 
-test('fetchUsage usa organizationId fornito senza chiamare /organizations', async () => {
+test('fetchUsage uses the given organizationId without calling /organizations', async () => {
   const calledUrls: string[] = [];
   installFetchMock(async (url) => {
     calledUrls.push(url);
@@ -153,7 +153,7 @@ test('fetchUsage usa organizationId fornito senza chiamare /organizations', asyn
   assert.equal(result.subscriptionRenewsAt, null);
 });
 
-test('fetchUsage risolve organizationId quando assente, poi chiama /usage', async () => {
+test('fetchUsage resolves organizationId when missing, then calls /usage', async () => {
   const calledUrls: string[] = [];
   installFetchMock(async (url) => {
     calledUrls.push(url);
@@ -168,14 +168,14 @@ test('fetchUsage risolve organizationId quando assente, poi chiama /usage', asyn
   assert.equal(at(result.quotaWindows, 0).used, 12);
 });
 
-test('fetchUsage lancia errore esplicito senza sessionKey', async () => {
-  await assert.rejects(() => claudeService.fetchUsage({ sessionKey: '' }), /sessionKey mancante/);
+test('fetchUsage throws an explicit error without sessionKey', async () => {
+  await assert.rejects(() => claudeService.fetchUsage({ sessionKey: '' }), /missing sessionKey/);
 });
 
-test('fetchUsage propaga un errore leggibile su risposta HTTP non-ok', async () => {
+test('fetchUsage propagates a readable error on a non-ok HTTP response', async () => {
   installFetchMock(async () => jsonResponse({ error: 'unauthorized' }, 401));
   await assert.rejects(
     () => claudeService.fetchUsage({ sessionKey: 'sess-abc', organizationId: 'org-xyz' }),
-    /ha risposto 401/,
+    /answered 401/,
   );
 });

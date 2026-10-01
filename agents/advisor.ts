@@ -1,9 +1,9 @@
-// agents/advisor.ts — agente Claude per i consigli d'uso
-// TODO (Giorno 2, Sessione 2): chiamata Anthropic SDK con contesto
-//   (consumo ultimi 7 giorni, budget giornaliero corrente, servizi usati).
-// Vincoli da CLAUDE.md: model "claude-sonnet-4-6", max_tokens 1000,
-//   cache su electron-store, rigenerazione max una volta ogni 24 ore,
-//   system prompt che richiede consigli specifici e pratici (non generici).
+// agents/advisor.ts — Claude agent for usage advice
+// TODO (Day 2, Session 2): Anthropic SDK call with context
+//   (consumption of the last 7 days, current daily budget, services used).
+// Constraints from CLAUDE.md: model "claude-sonnet-4-6", max_tokens 1000,
+//   cached in electron-store, regenerated at most once every 24 hours,
+//   system prompt asking for specific, practical advice (not generic).
 
 import type { AccountSnapshot, WorkSchedule } from '../types/index';
 
@@ -13,5 +13,5 @@ export interface AdvisorContext {
 }
 
 export function getAdvice(_context: AdvisorContext): Promise<string> {
-  return Promise.reject(new Error('getAdvice non ancora implementato — vedi Giorno 2, Sessione 2'));
+  return Promise.reject(new Error('getAdvice not implemented yet — see Day 2, Session 2'));
 }

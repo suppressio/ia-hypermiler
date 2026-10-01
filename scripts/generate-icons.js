@@ -1,23 +1,23 @@
-// scripts/generate-icons.js — genera l'icona "gauge" dell'app (tray + finestra/pacchetto),
-// senza aggiungere dipendenze esterne (vedi CLAUDE.md): un rasterizzatore vettoriale minimale
-// con supersampling per l'antialiasing, incapsulato in un encoder PNG scritto a mano (solo
-// node:zlib per la compressione IDAT + un CRC32 table-based per i chunk).
+// scripts/generate-icons.js — generates the app "gauge" icon (tray + window/package)
+// without adding external dependencies (see CLAUDE.md): a minimal vector rasterizer
+// with supersampling for antialiasing, wrapped in a hand-written PNG encoder (only
+// node:zlib for IDAT compression + a table-based CRC32 for the chunks).
 //
-// Script eseguito una tantum (`node scripts/generate-icons.js`): gli asset generati sono
-// statici e deterministici, si rigenerano solo se si vuole ridisegnare l'icona — non fa parte
-// di `npm run build`. Per .ico/.icns non serve altro codice qui: electron-builder li genera
-// automaticamente da build/icon.png (vedi package.json, campo "build.icon").
+// One-off script (`node scripts/generate-icons.js`): the generated assets are static
+// and deterministic, regenerated only to redesign the icon — not part of
+// `npm run build`. No more code is needed here for .ico/.icns: electron-builder
+// generates them automatically from build/icon.png (see package.json, "build.icon").
 
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
 const ROOT = path.join(__dirname, '..');
-const ACCENT = [37, 99, 235, 255]; // #2563eb, stesso --accent di renderer/style.css
+const ACCENT = [37, 99, 235, 255]; // #2563eb, same --accent as renderer/style.css
 const WHITE = [255, 255, 255, 255];
 
 // ---------------------------------------------------------------------------
-// PNG encoder minimale (RGBA, 8 bit per canale, nessun filtro riga)
+// Minimal PNG encoder (RGBA, 8 bits per channel, no row filter)
 // ---------------------------------------------------------------------------
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -71,8 +71,8 @@ function encodePng(size, rgbaBuffer) {
 }
 
 // ---------------------------------------------------------------------------
-// Rasterizzatore vettoriale con supersampling (antialiasing via media pesata
-// sull'alpha, per non "sporcare" i bordi con nero alle zone trasparenti).
+// Vector rasterizer with supersampling (antialiasing via alpha-weighted average, so
+// edges are not "dirtied" with black in transparent areas).
 // ---------------------------------------------------------------------------
 const SUPERSAMPLE = 4;
 
@@ -109,7 +109,7 @@ function rasterize(size, drawFn) {
 }
 
 // ---------------------------------------------------------------------------
-// Disegno del gauge: anello, tacche su un arco di 270°, lancetta, mozzo.
+// Gauge drawing: ring, ticks on a 270° arc, needle, hub.
 // ---------------------------------------------------------------------------
 function makeGaugeDrawFn({ size, foreground, background = null, roundedSquare = false }) {
   const cx = size / 2;
@@ -123,7 +123,7 @@ function makeGaugeDrawFn({ size, foreground, background = null, roundedSquare = 
   const hubR = size * 0.06;
   const needleAngle = (-55 * Math.PI) / 180; // punta in alto a destra, lettura "moderata"
   const sweepStartDeg = 135;
-  const sweepSpanDeg = 270; // apertura di 270°, "vuoto" in basso — stile speedometer
+  const sweepSpanDeg = 270; // 270° opening, "gap" at the bottom — speedometer style
   const tickCount = 6;
   const tickHalfWidthDeg = 4;
   const cornerRadius = size * 0.22;
@@ -185,31 +185,32 @@ function writeFile(relativePath, data) {
   const fullPath = path.join(ROOT, relativePath);
   fs.mkdirSync(path.dirname(fullPath), { recursive: true });
   fs.writeFileSync(fullPath, data);
-  console.log(`[generate-icons] scritto ${relativePath} (${data.length} byte)`);
+  console.log(`[generate-icons] wrote ${relativePath} (${data.length} bytes)`);
 }
 
-// Icona applicativa: sfondo quadrato arrotondato colore accento, glifo bianco. Scritta in
-// due punti identici:
-// - build/icon.png: sorgente per electron-builder (genera .ico/.icns automaticamente da un
-//   unico PNG quadrato al momento di `npm run package`), NON copiata in dist/.
-// - renderer/assets/app-icon.png: usata a runtime da main/windows.ts per l'icona di finestra
-//   (soprattutto utile in `npm start`, non pacchettizzato). Passa dalla stessa pipeline già
-//   funzionante di renderer/assets/ (copiata in dist/renderer/assets/ da scripts/copy-assets.js),
-//   perché build/ non viene copiata in dist/ e non sarebbe altrimenti raggiungibile a runtime.
+// App icon: accent-colored rounded square background, white glyph. Written in two
+// identical places:
+// - build/icon.png: source for electron-builder (it generates .ico/.icns automatically
+//   from a single square PNG during `npm run package`), NOT copied into dist/.
+// - renderer/assets/app-icon.png: used at runtime by main/windows.ts for the window icon
+//   (mostly useful with an unpackaged `npm start`). It goes through the existing
+//   renderer/assets/ pipeline (copied into dist/renderer/assets/ by
+//   scripts/copy-assets.js), because build/ is not copied into dist/ and would
+//   otherwise be unreachable at runtime.
 const appIcon = generate(1024, { foreground: WHITE, background: ACCENT, roundedSquare: true });
 writeFile('build/icon.png', appIcon);
 writeFile('renderer/assets/app-icon.png', appIcon);
 
-// electron-builder genera l'icona Linux derivandola dal .icns di macOS — ma sulla CI ogni
-// piattaforma builda a sé (il job Linux non esegue mai --mac), quindi su un runner Linux
-// non c'è mai un .icns da cui derivare, e l'AppImage/deb finisce con l'icona di Electron di
-// default. Fix: build/icons/ con le dimensioni esplicite (convenzione electron-builder,
-// nessuna voce aggiuntiva richiesta in package.json — stesso build.buildResources di default).
+// electron-builder derives the Linux icon from the macOS .icns — but on CI every
+// platform builds on its own (the Linux job never runs --mac), so a Linux runner never
+// has an .icns to derive from, and the AppImage/deb ends up with the default Electron
+// icon. Fix: build/icons/ with explicit sizes (electron-builder convention, no extra
+// entry needed in package.json — same default build.buildResources).
 const LINUX_ICON_SIZES = [16, 24, 32, 48, 64, 96, 128, 256, 512, 1024];
 for (const size of LINUX_ICON_SIZES) {
   writeFile(`build/icons/${size}x${size}.png`, generate(size, { foreground: WHITE, background: ACCENT, roundedSquare: true }));
 }
 
-// Icona tray: sfondo trasparente, glifo monocromatico colore accento — nativeImage la
-// carica direttamente, nessuna conversione richiesta (main/tray.ts già pronto).
+// Tray icon: transparent background, single-color glyph in the accent color —
+// nativeImage loads it directly, no conversion needed (main/tray.ts is ready).
 writeFile('renderer/assets/tray-icon.png', generate(64, { foreground: ACCENT }));

@@ -1,5 +1,5 @@
-// services/updates.test.ts — controllo nuova versione (issue #5), fetch mockato,
-// nessuna rete. Nomi degli asset presi da una release reale prodotta dalla CI.
+// services/updates.test.ts — new-version check (issue #5), mocked fetch, no network.
+// Asset names taken from a real release produced by CI.
 
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,40 +37,40 @@ function release(tag: string, overrides: Partial<GithubRelease> = {}): GithubRel
   };
 }
 
-test('compareVersions: semver con pre-release e prefisso v', () => {
+test('compareVersions: semver with pre-release and v prefix', () => {
   assert.ok(compareVersions('0.2.1-beta', '0.2.0-beta') > 0);
   assert.ok(compareVersions('0.2.1-beta', '0.2.1') < 0);
   assert.ok(compareVersions('v0.3.0-beta', '0.2.9') > 0);
   assert.ok(compareVersions('0.10.0', '0.9.0') > 0);
   assert.ok(compareVersions('1.0.0-beta.2', '1.0.0-beta.10') < 0);
   assert.equal(compareVersions('v0.2.1-beta', '0.2.1-beta'), 0);
-  assert.throws(() => compareVersions('latest', '0.2.1'), /Versione non valida/);
+  assert.throws(() => compareVersions('latest', '0.2.1'), /Invalid version/);
 });
 
-test('pickLatestRelease: la più alta, bozze e tag non semver esclusi', () => {
+test('pickLatestRelease: the highest one, drafts and non-semver tags excluded', () => {
   const releases = [release('v0.2.1-beta'), release('v0.4.0-beta', { draft: true }), release('v0.3.0-beta'), release('nightly')];
   assert.equal(pickLatestRelease(releases, '0.2.1-beta')?.tag_name, 'v0.3.0-beta');
 });
 
-test('pickLatestRelease: nessuna versione più recente → null', () => {
+test('pickLatestRelease: no newer version → null', () => {
   assert.equal(pickLatestRelease([release('v0.2.1-beta'), release('v0.2.0-beta')], '0.2.1-beta'), null);
   assert.equal(pickLatestRelease([], '0.2.1-beta'), null);
 });
 
-test('pickDownloadAsset: pacchetto giusto per ogni OS', () => {
+test('pickDownloadAsset: right package for every OS', () => {
   assert.equal(pickDownloadAsset(CI_ASSETS, 'win32', 'x64', false)?.name, 'ia-hypermiler-Setup-0.3.0-beta.exe');
   assert.equal(pickDownloadAsset(CI_ASSETS, 'darwin', 'arm64', false)?.name, 'ia-hypermiler-0.3.0-beta-arm64.dmg');
   assert.equal(pickDownloadAsset(CI_ASSETS, 'linux', 'x64', true)?.name, 'ia-hypermiler-0.3.0-beta.AppImage');
   assert.equal(pickDownloadAsset(CI_ASSETS, 'linux', 'x64', false)?.name, 'ia-hypermiler_0.3.0-beta_amd64.deb');
 });
 
-test('pickDownloadAsset: nessun pacchetto adatto → null (Mac Intel con solo dmg arm64, linux arm64 senza deb)', () => {
+test('pickDownloadAsset: no fitting package → null (Intel Mac with arm64-only dmg, linux arm64 without deb)', () => {
   assert.equal(pickDownloadAsset(CI_ASSETS, 'darwin', 'x64', false), null);
   assert.equal(pickDownloadAsset(CI_ASSETS, 'linux', 'arm64', false), null);
   assert.equal(pickDownloadAsset(CI_ASSETS, 'freebsd', 'x64', false), null);
 });
 
-test('fetchLatestUpdate: interroga l\'elenco release (non /latest) e propone il pacchetto per l\'OS', async () => {
+test('fetchLatestUpdate: queries the release list (not /latest) and offers the package for the OS', async () => {
   let calledUrl = '';
   globalThis.fetch = (async (input: string) => {
     calledUrl = input;
@@ -88,21 +88,21 @@ test('fetchLatestUpdate: interroga l\'elenco release (non /latest) e propone il 
   });
 });
 
-test('fetchLatestUpdate: senza pacchetto adatto ripiega sulla pagina della release', async () => {
+test('fetchLatestUpdate: without a fitting package falls back to the release page', async () => {
   globalThis.fetch = (async () => new Response(JSON.stringify([release('v0.3.0-beta')]), { status: 200 }));
   const update = await fetchLatestUpdate('0.2.1-beta', { platform: 'darwin', arch: 'x64', isAppImage: false });
   assert.equal(update?.downloadUrl, 'https://github.com/suppressio/ia-hypermiler/releases/tag/v0.3.0-beta');
   assert.equal(update.assetName, null);
 });
 
-test('fetchLatestUpdate: già aggiornato → null', async () => {
+test('fetchLatestUpdate: already up to date → null', async () => {
   globalThis.fetch = (async () => new Response(JSON.stringify([release('v0.2.1-beta')]), { status: 200 }));
   assert.equal(await fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), null);
 });
 
-test('fetchLatestUpdate: errore HTTP o risposta inattesa → errore esplicito', async () => {
+test('fetchLatestUpdate: HTTP error or unexpected response → explicit error', async () => {
   globalThis.fetch = (async () => new Response('rate limited', { status: 403, statusText: 'Forbidden' }));
-  await assert.rejects(fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), /GitHub Releases ha risposto 403/);
+  await assert.rejects(fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), /GitHub Releases answered 403/);
   globalThis.fetch = (async () => new Response(JSON.stringify({ message: 'x' }), { status: 200 }));
-  await assert.rejects(fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), /non un elenco/);
+  await assert.rejects(fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), /not a list/);
 });

@@ -1,5 +1,5 @@
-// store/merge.ts — merge profondo "valore su disco sopra i default", condiviso da
-// normalize.ts (intero store) e migrate.ts (singolo account). Regole in normalize.ts.
+// store/merge.ts — deep merge "value on disk over defaults", shared by normalize.ts
+// (whole store) and migrate.ts (single account). Rules in normalize.ts.
 
 type PlainRecord = Record<string, unknown>;
 

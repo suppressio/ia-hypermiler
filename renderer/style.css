@@ -1,10 +1,10 @@
-/* style.css — tre skin (vedi ARCHITECTURE.md §2). Sobria, nessuna animazione/pulsazione. */
+/* style.css — three skins (see ARCHITECTURE.md §2). Plain, no animation/pulsing. */
 
-/* L'attributo `hidden` deve vincere su qualunque `display` impostato da una
-   classe (es. .window-list/.account-tabs sono display:flex): senza questa regola
-   il display dell'autore sovrascrive il display:none del browser e l'elemento
-   "nascosto" resta visibile — bug reale della 0.2.0 (lista finestre dell'account
-   personale rimasta visibile sull'account aziendale). */
+/* The `hidden` attribute must win over any `display` set by a class (e.g.
+   .window-list/.account-tabs are display:flex): without this rule the author display
+   overrides the browser's display:none and the "hidden" element stays visible — a
+   real 0.2.0 bug (the personal account's window list stayed visible on the company
+   account). */
 [hidden] { display: none !important; }
 
 
@@ -16,11 +16,10 @@
   --muted-filled: #6b7280;
   --border-filled: #e5e7eb;
 
-  /* Skin "pieno (dark)": bg/testo invertiti rispetto a quella chiara (richiesta
-     esplicita "colori invertiti"). --border-filled-dark non è l'inversione
-     letterale di --border-filled (che sarebbe quasi nera, invisibile su sfondo
-     scuro), ma un grigio scuro con lo stesso ruolo: una linea sottile e leggibile
-     contro lo sfondo. */
+  /* Skin "filled (dark)": bg/text swapped compared to the light one (explicit request
+     "inverted colors"). --border-filled-dark is not the literal inversion of
+     --border-filled (which would be almost black, invisible on a dark background) but a
+     dark grey with the same role: a thin line readable against the background. */
   --bg-filled-dark: #1a1a1a;
   --text-filled-dark: #fafafa;
   --border-filled-dark: #374151;
@@ -69,12 +68,11 @@ body {
   width: 14px;
   height: 14px;
 }
-/* Pin "sempre in primo piano": stesso trattamento hover neutro degli altri
-   pulsanti della titlebar (vedi regole per-skin sotto) sia acceso che spento —
-   niente più riempimento pieno con --accent (un colore "acceso" a piena
-   saturazione era troppo invadente, feedback utente). Da spento, nessun
-   effetto. Da acceso, solo un glow statico (nessuna animazione/pulsazione,
-   coerente con CLAUDE.md) a indicare lo stato senza "colpire l'occhio". */
+/* "Always on top" pin: same neutral hover treatment as the other title bar buttons
+   (see the per-skin rules below) both on and off — no more full --accent fill (a fully
+   saturated "on" color was too intrusive, user feedback). Off: no effect. On: only a
+   static glow (no animation/pulsing, consistent with CLAUDE.md) to show the state
+   without being eye-catching. */
 .titlebar-controls-left button.active {
   color: var(--accent);
   filter: drop-shadow(0 0 3px var(--accent));
@@ -85,9 +83,9 @@ body.style-filled {
   background: var(--bg-filled);
   color: var(--text-filled);
 }
-/* Stesso trattamento "invisibile finché non passi il mouse sulla finestra" della
-   skin digitale (feedback utente): niente più barra/bordo sempre visibile in
-   alto, pulsanti e maniglia di trascinamento compaiono solo in hover. */
+/* Same "invisible until the mouse is over the window" treatment as the digital skin
+   (user feedback): no always-visible bar/border at the top, buttons and drag handle
+   appear only on hover. */
 body.style-filled .titlebar { background: var(--bg-filled); }
 body.style-filled .titlebar-controls,
 body.style-filled .titlebar-controls-left {
@@ -126,8 +124,8 @@ body.style-filled.window-hover .titlebar-drag::after {
 }
 
 /* ---------- Skin "pieno (dark)" ---------- */
-/* Stessa struttura della skin "pieno (classico)" sopra, solo con i token
-   -filled-dark al posto di -filled (colori invertiti, richiesta utente). */
+/* Same structure as the "filled (classic)" skin above, only with the -filled-dark
+   tokens instead of -filled (inverted colors, user request). */
 body.style-filled-dark {
   background: var(--bg-filled-dark);
   color: var(--text-filled-dark);
@@ -168,9 +166,9 @@ body.style-filled-dark .titlebar-drag::after {
 body.style-filled-dark.window-hover .titlebar-drag::after {
   opacity: 1;
 }
-/* Le tab account condividono una regola comune con border-color fisso a
-   --border-filled (riga sotto, "Layout condiviso") — troppo chiaro su sfondo
-   scuro, sovrascritto qui con l'analogo -dark. */
+/* Account tabs share a common rule with border-color fixed to --border-filled (row
+   below, "Shared layout") — too light on a dark background, overridden here with the
+   -dark equivalent. */
 body.style-filled-dark .account-tabs button { border-color: var(--border-filled-dark); }
 
 /* ---------- Skin "trasparente/digitale" ---------- */
@@ -185,14 +183,12 @@ body.style-transparent-digital #app {
   border-radius: 8px;
   margin: 4px;
 }
-/* Invisibili di default, rivelati in hover su tutta la finestra (classe
-   .window-hover, vedi renderer/app.ts) o direttamente sui pulsanti stessi
-   (questi, essendo no-drag, hanno sempre un hover CSS affidabile). Nota: sopra
-   alla striscia -webkit-app-region: drag il sistema operativo intercetta il
-   mouse come se fosse la titlebar nativa, quindi in quel punto specifico il
-   tracking hover può risultare meno affidabile (limite noto di Electron) — resta
-   comunque la richiesta esplicita dell'utente di un comportamento "solo hover",
-   preferita alla visibilità sempre presente a bassa opacità provata in precedenza. */
+/* Invisible by default, revealed when hovering the whole window (.window-hover class,
+   see renderer/app.ts) or the buttons themselves (no-drag, so their CSS hover is always
+   reliable). Note: over the -webkit-app-region: drag strip the OS captures the mouse as
+   if it were the native title bar, so hover tracking can be less reliable right there
+   (known Electron limit) — still the user's explicit request for a "hover only"
+   behaviour, preferred over the always-visible low-opacity version tried before. */
 body.style-transparent-digital .titlebar-controls,
 body.style-transparent-digital .titlebar-controls-left {
   opacity: 0;
@@ -206,10 +202,10 @@ body.style-transparent-digital .titlebar-controls-left:hover,
 body.style-transparent-digital .titlebar-controls-left:focus-within {
   opacity: 1;
 }
-/* Maniglia di trascinamento larga come la striscia (non un pallino piccolo) ma
-   sottile (non l'intera altezza): l'area trascinabile resta comunque tutta la
-   striscia in alto, cambia solo lo spessore dell'indicatore visivo (feedback
-   utente: la primissima versione andava bene in larghezza, solo troppo "spessa"). */
+/* Drag handle as wide as the strip (not a small dot) but thin (not the full height):
+   the draggable area is still the whole top strip, only the thickness of the visual
+   indicator changes (user feedback: the very first version was fine in width, only
+   too "thick"). */
 body.style-transparent-digital .titlebar-drag { position: relative; }
 body.style-transparent-digital .titlebar-drag::after {
   content: '';
@@ -235,9 +231,9 @@ body.style-transparent-digital .current-value,
 body.style-transparent-digital .metric-value {
   text-shadow: 0 0 6px rgba(215, 247, 233, 0.35);
 }
-/* Tab account attiva: il testo bianco di default (stile "pieno") ha contrasto
-   scarso sullo sfondo --accent chiaro qui sopra lo sfondo scuro della skin
-   digitale — invertito a un testo scuro solo per questa skin. */
+/* Active account tab: the default white text (filled style) has poor contrast on the
+   light --accent background over the dark background of the digital skin — switched to
+   dark text for this skin only. */
 body.style-transparent-digital .account-tabs button.active {
   color: #0a140f;
 }
@@ -249,10 +245,10 @@ body.style-transparent-digital .account-tabs button.active {
 .account-tabs button {
   border: 1px solid var(--border-filled);
   background: transparent;
-  /* I <button> non erediscono `color` dal genitore per default (restano al
-     colore di sistema, tendenzialmente scuro) — invisibile per coincidenza
-     sulla skin "pieno" (testo scuro comunque), ma illeggibile su quella
-     digitale (serve il verde chiaro --text-digital). */
+  /* <button> elements do not inherit `color` from their parent by default (they keep
+     the system color, usually dark) — invisible by coincidence on the "filled" skin
+     (dark text anyway), but unreadable on the digital one (it needs the light green
+     --text-digital). */
   color: inherit;
   border-radius: 6px;
   padding: 4px 10px;
@@ -261,11 +257,10 @@ body.style-transparent-digital .account-tabs button.active {
 }
 .account-tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-/* Lista finestre di quota dell'account attivo (EVOLUTION.md punto 1): una riga
-   per finestra con mini-barra e verdetto calcolato dall'app, al posto delle tab
-   che affiancavano solo le metriche del provider. Label troncate: alcune finestre
-   hanno nomi lunghi (campi non documentati, vedi services/claude.ts) — il testo
-   completo resta nel title. */
+/* Quota windows of the active account (EVOLUTION.md point 1): one row per window with
+   a mini bar and a verdict computed by the app, replacing tabs that only lined up the
+   provider's metrics. Labels truncated: some windows have long names (undocumented
+   fields, see services/claude.ts) — the full text stays in the title. */
 .window-list { display: flex; flex-direction: column; gap: 3px; margin: -4px 0 10px; }
 .window-row {
   display: grid;
@@ -326,10 +321,9 @@ body.style-transparent-digital .account-tabs button.active {
 .metric-value { font-size: 16px; font-weight: 600; }
 .metric-hint { font-size: 10px; opacity: 0.6; }
 
-/* Indice efficienza + rating a stelle tenuti insieme (stesso concetto, due
-   finestre temporali diverse — feedback utente: "andrebbero tenute vicino
-   all'indice di efficienza"), su tutta la larghezza della griglia per fare
-   spazio alla riga di stelle. */
+/* Efficiency index + star rating kept together (same concept, two different time
+   windows — user feedback: "they should stay next to the efficiency index"), across
+   the full grid width to make room for the row of stars. */
 .metric-efficiency-block { grid-column: 1 / -1; }
 .efficiency-rating {
   display: flex;
@@ -341,12 +335,11 @@ body.style-transparent-digital .account-tabs button.active {
 .efficiency-rating-stars svg { width: 15px; height: 15px; }
 .efficiency-rating-label { font-size: 11px; opacity: 0.65; }
 
-/* Sezione unica collassabile: consiglio del giorno (sempre presente) + insight
-   locali (opt-in, solo se abilitati e disponibili — vedi RESEARCH.md §5), che
-   compaiono come sottosezione dentro la stessa <details> invece di una loro
-   propria sezione separata (feedback utente: unificare per non frammentare la
-   vista). Aperta di default: il consiglio era sempre visibile prima di questo
-   raggruppamento, non deve perdere prominenza solo perché ora è collassabile. */
+/* Single collapsible section: tip of the day (always present) + local insights
+   (opt-in, only when enabled and available — see RESEARCH.md §5), shown as a
+   sub-section inside the same <details> instead of a separate section (user feedback:
+   unify rather than fragment the view). Open by default: the tip was always visible
+   before this grouping and must not lose prominence just because it is collapsible. */
 .tips-section {
   border-top: 1px solid rgba(127, 127, 127, 0.2);
   padding-top: 10px;

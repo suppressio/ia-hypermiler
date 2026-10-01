@@ -1,6 +1,6 @@
 {
-  // Stessi controlli nell'IDE e da riga di comando: TypeScript del progetto
-  // (non quello integrato in VS Code) ed ESLint con la config del repo.
+  // Same checks in the IDE and on the command line: the project's TypeScript
+  // (not the one bundled with VS Code) and ESLint with the repository config.
   "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true,
   "eslint.useFlatConfig": true,

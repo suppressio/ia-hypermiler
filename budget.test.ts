@@ -1,6 +1,6 @@
-// budget.test.ts — test unitari per la logica pura di budget.ts (nessuna rete,
-// nessun mock necessario: tutte le funzioni sono deterministiche).
-// Esegui con: npm test (compila e lancia `node --test dist`).
+// budget.test.ts — unit tests for the pure logic of budget.ts (no network, no mock
+// needed: every function is deterministic).
+// Run with: npm test (builds, then runs `node --test` inside dist/).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,67 +28,67 @@ function pctWindow(used: number, overrides: Partial<QuotaWindow> = {}): QuotaWin
   };
 }
 
-test('workingUnitsBetween conta solo i giorni lavorativi (lun-ven)', () => {
-  // Lunedì 2026-07-13 -> lunedì successivo: esattamente 5 giorni lavorativi.
+test('workingUnitsBetween counts only working days (Mon-Fri)', () => {
+  // Monday 2026-07-13 -> next Monday: exactly 5 working days.
   const start = new Date(2026, 6, 13);
   const end = new Date(2026, 6, 20);
   assert.equal(budget.workingUnitsBetween(start, end, FULL_WEEK_SCHEDULE), 5);
 });
 
-test('workingUnitsBetween ritorna 0 se end precede start', () => {
+test('workingUnitsBetween returns 0 when end precedes start', () => {
   const start = new Date(2026, 6, 20);
   const end = new Date(2026, 6, 13);
   assert.equal(budget.workingUnitsBetween(start, end, FULL_WEEK_SCHEDULE), 0);
 });
 
-test('getDayUnit: con workSchedule.enabled=false ogni giorno vale 1, anche uno segnato "off"', () => {
+test('getDayUnit: with workSchedule.enabled=false every day counts 1, even one marked "off"', () => {
   const disabledSchedule: WorkSchedule = { ...FULL_WEEK_SCHEDULE, enabled: false };
   const saturday = new Date(2026, 6, 18); // sabato, 'off' in FULL_WEEK_SCHEDULE
   assert.equal(budget.getDayUnit(saturday, disabledSchedule), 1);
 });
 
-test('workingUnitsBetween: con calendario disattivato conta tutti i giorni di calendario', () => {
+test('workingUnitsBetween: with the schedule disabled counts every calendar day', () => {
   const disabledSchedule: WorkSchedule = { ...FULL_WEEK_SCHEDULE, enabled: false };
-  const start = new Date(2026, 6, 13); // lunedì
-  const end = new Date(2026, 6, 20); // lunedì successivo, 7 giorni di calendario
+  const start = new Date(2026, 6, 13); // Monday
+  const end = new Date(2026, 6, 20); // next Monday, 7 calendar days
   assert.equal(budget.workingUnitsBetween(start, end, disabledSchedule), 7);
 });
 
-test('normalizedUtilization: percentage ritorna used direttamente', () => {
+test('normalizedUtilization: percentage returns used directly', () => {
   assert.equal(budget.normalizedUtilization(pctWindow(42)), 42);
 });
 
-test('normalizedUtilization: count con total calcola la percentuale', () => {
+test('normalizedUtilization: count with total computes the percentage', () => {
   const win = pctWindow(0, { unit: 'count', used: 150, total: 300 });
   assert.equal(budget.normalizedUtilization(win), 50);
 });
 
-test('normalizedUtilization: count senza total ritorna null', () => {
+test('normalizedUtilization: count without total returns null', () => {
   const win = pctWindow(0, { unit: 'count', used: 150, total: null });
   assert.equal(budget.normalizedUtilization(win), null);
 });
 
-test('pickCriticalWindow sceglie la finestra con utilizzo più alto', () => {
+test('pickCriticalWindow picks the window with the highest utilization', () => {
   const windows = [pctWindow(30, { id: 'a' }), pctWindow(70, { id: 'b' }), pctWindow(0, { id: 'c', unit: 'count', used: 90, total: 100 })];
   const picked = budget.pickCriticalWindow(windows);
   assert.equal(picked?.id, 'c'); // 90% > 70% > 30%
 });
 
-test('pickCriticalWindow ritorna null su lista vuota', () => {
+test('pickCriticalWindow returns null on an empty list', () => {
   assert.equal(budget.pickCriticalWindow([]), null);
 });
 
-test('efficiencyIndex ~1 quando il ritmo reale eguaglia quello ideale', () => {
-  // Periodo di 10 giorni lavorativi (2 settimane lun-ven), a metà (5 lavorativi
-  // trascorsi) con il 50% di utilizzo: ritmo esattamente in linea.
-  const periodStart = new Date(2026, 6, 13); // lunedì
-  const periodEnd = new Date(2026, 6, 27); // due lunedì dopo (10 giorni lavorativi)
-  const now = new Date(2026, 6, 20); // lunedì intermedio (5 giorni lavorativi trascorsi)
+test('efficiencyIndex ~1 when the actual pace equals the ideal one', () => {
+  // Period of 10 working days (2 Mon-Fri weeks), halfway (5 working days elapsed) at
+  // 50% usage: pace exactly on track.
+  const periodStart = new Date(2026, 6, 13); // Monday
+  const periodEnd = new Date(2026, 6, 27); // two Mondays later (10 working days)
+  const now = new Date(2026, 6, 20); // middle Monday (5 working days elapsed)
   const result = budget.efficiencyIndex({ window: pctWindow(50), workSchedule: FULL_WEEK_SCHEDULE, periodStart, periodEnd, now });
   assert.equal(result, 1);
 });
 
-test('efficiencyIndex < 1 quando si consuma più veloce del sostenibile', () => {
+test('efficiencyIndex < 1 when consuming faster than sustainable', () => {
   const periodStart = new Date(2026, 6, 13);
   const periodEnd = new Date(2026, 6, 27);
   const now = new Date(2026, 6, 20);
@@ -96,36 +96,36 @@ test('efficiencyIndex < 1 quando si consuma più veloce del sostenibile', () => 
   assert.ok(result !== null && result < 1);
 });
 
-test('efficiencyIndex ritorna null se il periodo non è ancora iniziato', () => {
+test('efficiencyIndex returns null when the period has not started yet', () => {
   const periodStart = new Date(2026, 6, 20);
   const periodEnd = new Date(2026, 6, 27);
-  const now = new Date(2026, 6, 13); // prima dell'inizio periodo
+  const now = new Date(2026, 6, 13); // before the start of the period
   const result = budget.efficiencyIndex({ window: pctWindow(10), workSchedule: FULL_WEEK_SCHEDULE, periodStart, periodEnd, now });
   assert.equal(result, null);
 });
 
-test('projectedUsage estrapola linearmente e satura a 100', () => {
+test('projectedUsage extrapolates linearly and caps at 100', () => {
   const periodStart = new Date(2026, 6, 13);
   const periodEnd = new Date(2026, 6, 27);
   const now = new Date(2026, 6, 20);
   const result = budget.projectedUsage({ window: pctWindow(90), workSchedule: FULL_WEEK_SCHEDULE, periodStart, periodEnd, now });
-  assert.equal(result, 100); // 90% a metà periodo => proietterebbe oltre 100, va saturato
+  assert.equal(result, 100); // 90% halfway => would project above 100, must be capped
 });
 
-test('daysUntilReset non è mai negativo', () => {
+test('daysUntilReset is never negative', () => {
   const past = new Date(2026, 6, 1);
   const now = new Date(2026, 6, 20);
   assert.equal(budget.daysUntilReset(past, now), 0);
 });
 
-test('estimatedAutonomyWorkingDays ritorna 0 se già al 100%', () => {
+test('estimatedAutonomyWorkingDays returns 0 when already at 100%', () => {
   const periodStart = new Date(2026, 6, 13);
   const now = new Date(2026, 6, 20);
   const result = budget.estimatedAutonomyWorkingDays({ window: pctWindow(100), workSchedule: FULL_WEEK_SCHEDULE, periodStart, now });
   assert.equal(result, 0);
 });
 
-test('resolveRenewalDate: dayOfMonth futuro nel mese corrente', () => {
+test('resolveRenewalDate: future dayOfMonth in the current month', () => {
   const ref = new Date(2026, 6, 10); // 10 luglio
   const result = budget.resolveRenewalDate({ type: 'dayOfMonth', day: 20 }, ref);
   assert.equal(result.getFullYear(), 2026);
@@ -133,36 +133,36 @@ test('resolveRenewalDate: dayOfMonth futuro nel mese corrente', () => {
   assert.equal(result.getDate(), 20);
 });
 
-test('resolveRenewalDate: dayOfMonth già passato slitta al mese successivo', () => {
+test('resolveRenewalDate: past dayOfMonth moves to the next month', () => {
   const ref = new Date(2026, 6, 25); // 25 luglio
   const result = budget.resolveRenewalDate({ type: 'dayOfMonth', day: 5 }, ref);
   assert.equal(result.getMonth(), 7); // agosto
   assert.equal(result.getDate(), 5);
 });
 
-test('resolveRenewalDate: rrule non supportato lancia errore esplicito', () => {
-  assert.throws(() => budget.resolveRenewalDate({ type: 'rrule', rrule: 'FREQ=WEEKLY' }), /non supportato/);
+test('resolveRenewalDate: unsupported rrule throws an explicit error', () => {
+  assert.throws(() => budget.resolveRenewalDate({ type: 'rrule', rrule: 'FREQ=WEEKLY' }), /not supported/);
 });
 
 // ---------------------------------------------------------------------------
 // instantaneousRate — gauge "consumo istantaneo"
 // ---------------------------------------------------------------------------
 
-test('instantaneousRate calcola il ritmo %/ora tra il campione più vecchio e il più recente', () => {
+test('instantaneousRate computes the %/h pace between the oldest and the newest sample', () => {
   const now = new Date(2026, 6, 20, 12, 0, 0);
   const samples = [
     { timestamp: new Date(2026, 6, 20, 10, 0, 0), used: 10 },
     { timestamp: new Date(2026, 6, 20, 12, 0, 0), used: 20 },
   ];
-  assert.equal(budget.instantaneousRate(samples, now), 5); // 10 punti in 2 ore
+  assert.equal(budget.instantaneousRate(samples, now), 5); // 10 points in 2 hours
 });
 
-test('instantaneousRate ritorna null con meno di 2 campioni', () => {
+test('instantaneousRate returns null with fewer than 2 samples', () => {
   const now = new Date(2026, 6, 20, 12, 0, 0);
   assert.equal(budget.instantaneousRate([{ timestamp: now, used: 10 }], now), null);
 });
 
-test('instantaneousRate ritorna null se l\'intervallo è troppo corto (< 5 min)', () => {
+test('instantaneousRate returns null when the interval is too short (< 5 min)', () => {
   const now = new Date(2026, 6, 20, 12, 4, 0);
   const samples = [
     { timestamp: new Date(2026, 6, 20, 12, 0, 0), used: 10 },
@@ -171,32 +171,32 @@ test('instantaneousRate ritorna null se l\'intervallo è troppo corto (< 5 min)'
   assert.equal(budget.instantaneousRate(samples, now), null);
 });
 
-test('instantaneousRate clampa a 0 un delta negativo (reset della finestra nel mezzo)', () => {
+test('instantaneousRate clamps a negative delta to 0 (window reset in between)', () => {
   const now = new Date(2026, 6, 20, 12, 0, 0);
   const samples = [
     { timestamp: new Date(2026, 6, 20, 10, 0, 0), used: 95 },
-    { timestamp: now, used: 5 }, // la finestra si è resettata tra i due campioni
+    { timestamp: now, used: 5 }, // the window was reset between the two samples
   ];
   assert.equal(budget.instantaneousRate(samples, now), 0);
 });
 
 // ---------------------------------------------------------------------------
-// sustainableHourlyRate — "pallino target" del gauge
+// sustainableHourlyRate — the gauge "target" marker
 // ---------------------------------------------------------------------------
 
-test('sustainableHourlyRate calcola il ritmo orario massimo per arrivare al 100% al reset', () => {
+test('sustainableHourlyRate computes the maximum hourly pace to reach 100% at the reset', () => {
   const now = new Date(2026, 6, 20, 0, 0, 0);
-  const resetsAt = new Date(2026, 6, 20, 10, 0, 0); // 10 ore al reset
+  const resetsAt = new Date(2026, 6, 20, 10, 0, 0); // 10 hours to reset
   const win = pctWindow(50, { resetsAt });
   assert.equal(budget.sustainableHourlyRate(win, now), 5); // 50% residuo / 10h
 });
 
-test('sustainableHourlyRate ritorna null se resetsAt è assente', () => {
+test('sustainableHourlyRate returns null when resetsAt is missing', () => {
   const win = pctWindow(50, { resetsAt: null });
   assert.equal(budget.sustainableHourlyRate(win, new Date(2026, 6, 20)), null);
 });
 
-test('sustainableHourlyRate ritorna 0 se già al 100% o il reset è già passato', () => {
+test('sustainableHourlyRate returns 0 when already at 100% or the reset has passed', () => {
   const now = new Date(2026, 6, 20, 12, 0, 0);
   const past = new Date(2026, 6, 20, 0, 0, 0);
   assert.equal(budget.sustainableHourlyRate(pctWindow(100, { resetsAt: new Date(2026, 6, 21) }), now), 0);
@@ -211,39 +211,39 @@ function dayPoint(date: string, used: number): DailyUsagePoint {
   return { date, accountId: 'claude', windowId: 'test-window', used };
 }
 
-test('efficiencyRating media i rapporti ideale/reale sui giorni lavorativi validi', () => {
+test('efficiencyRating averages the ideal/actual ratios over valid working days', () => {
   const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15), dayPoint('2026-07-15', 17)];
-  // Periodo con 20 unità lavorative totali => quota ideale 5%/giorno pieno.
+  // Period with 20 total working units => ideal share 5% per full day.
   const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20);
   assert.ok(result !== null);
   assert.equal(result.avgRatio, 1.75); // rapporti 5/5=1 e 5/2=2.5, media 1.75
   assert.equal(result.stars, 5);
 });
 
-test('efficiencyRating scarta un giorno con delta negativo (reset della finestra)', () => {
+test('efficiencyRating drops a day with a negative delta (window reset)', () => {
   const history = [
     dayPoint('2026-07-13', 10),
     dayPoint('2026-07-14', 15),
     dayPoint('2026-07-15', 17),
-    dayPoint('2026-07-16', 3), // reset: il valore scende invece di salire
+    dayPoint('2026-07-16', 3), // reset: the value goes down instead of up
   ];
   const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20);
-  assert.equal(result!.avgRatio, 1.75); // identico al test precedente: il giorno di reset non altera la media
+  assert.equal(result!.avgRatio, 1.75); // identical to the previous test: the reset day does not change the average
 });
 
-test('efficiencyRating esclude i giorni non lavorativi', () => {
-  // 2026-07-17 è venerdì, 2026-07-18 è sabato (off nello schedule di test).
+test('efficiencyRating excludes non-working days', () => {
+  // 2026-07-17 is a Friday, 2026-07-18 a Saturday (off in the test schedule).
   const history = [dayPoint('2026-07-17', 20), dayPoint('2026-07-18', 25)];
   assert.equal(budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20), null);
 });
 
-test('efficiencyRating ritorna null con dati insufficienti', () => {
+test('efficiencyRating returns null with insufficient data', () => {
   assert.equal(budget.efficiencyRating([dayPoint('2026-07-13', 10)], FULL_WEEK_SCHEDULE, 20), null);
   assert.equal(budget.efficiencyRating([dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15)], FULL_WEEK_SCHEDULE, 0), null);
 });
 
 // ---------------------------------------------------------------------------
-// generateDailyTip — consiglio del giorno derivato dai dati reali
+// generateDailyTip — tip of the day derived from real data
 // ---------------------------------------------------------------------------
 
 function baseTipContext(overrides: Partial<budget.DailyTipContext> = {}): budget.DailyTipContext {
@@ -316,11 +316,11 @@ test('generateDailyTip picks among applicable candidates using the injected rand
 });
 
 // ---------------------------------------------------------------------------
-// dailyDeltas / deltaStats / windowVerdict — grafico "consumo/giorno vs budget"
-// e lista finestre con verdetto (EVOLUTION.md punto 1)
+// dailyDeltas / deltaStats / windowVerdict — "daily consumption vs budget" chart and
+// window list with verdicts (EVOLUTION.md point 1)
 // ---------------------------------------------------------------------------
 
-test('dailyDeltas: consumo del giorno = differenza col punto precedente, con quota ideale', () => {
+test('dailyDeltas: daily consumption = difference with the previous point, with ideal share', () => {
   const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15), dayPoint('2026-07-15', 17)];
   assert.deepEqual(budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 20), [
     { date: '2026-07-14', delta: 5, idealShare: 5 },
@@ -328,20 +328,20 @@ test('dailyDeltas: consumo del giorno = differenza col punto precedente, con quo
   ]);
 });
 
-test('dailyDeltas: reset (delta negativo) → null, giorno non lavorativo → quota ideale 0', () => {
+test('dailyDeltas: reset (negative delta) → null, non-working day → ideal share 0', () => {
   const history = [dayPoint('2026-07-17', 20), dayPoint('2026-07-18', 25), dayPoint('2026-07-20', 4)];
   const result = budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 20);
   assert.equal(at(result, 0).idealShare, 0); // sabato
   assert.equal(at(result, 0).delta, 5);
-  assert.equal(at(result, 1).delta, null); // lunedì dopo un reset
+  assert.equal(at(result, 1).delta, null); // Monday after a reset
 });
 
-test('dailyDeltas: senza pacing (unità totali 0) i delta restano, la quota ideale è null', () => {
+test('dailyDeltas: without pacing (0 total units) deltas remain, ideal share is null', () => {
   const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 12)];
   assert.deepEqual(budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 0), [{ date: '2026-07-14', delta: 2, idealShare: null }]);
 });
 
-test('deltaStats: picco/media sui delta (non sul cumulato) e streak entro la quota ideale', () => {
+test('deltaStats: peak/average on deltas (not on the cumulative value) and streak within the ideal share', () => {
   const stats = budget.deltaStats([
     { date: 'a', delta: 8, idealShare: 5 },
     { date: 'b', delta: null, idealShare: 5 },
@@ -351,12 +351,12 @@ test('deltaStats: picco/media sui delta (non sul cumulato) e streak entro la quo
   assert.deepEqual(stats, { peak: 8, avg: 4.67, streakUnderBudget: 2 });
 });
 
-test('deltaStats: nessun dato → tutto null; senza pacing lo streak è null', () => {
+test('deltaStats: no data → all null; without pacing the streak is null', () => {
   assert.deepEqual(budget.deltaStats([]), { peak: null, avg: null, streakUnderBudget: null });
   assert.equal(budget.deltaStats([{ date: 'a', delta: 3, idealShare: null }]).streakUnderBudget, null);
 });
 
-test('windowVerdict: esaurita, a rischio (autonomia o proiezione), in linea, senza pacing', () => {
+test('windowVerdict: exhausted, at risk (autonomy or projection), on track, no pacing', () => {
   const base = { projectedUsage: 80, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 12 };
   assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(100) }), { kind: 'exhausted' });
   assert.deepEqual(
@@ -375,7 +375,7 @@ test('windowVerdict: esaurita, a rischio (autonomia o proiezione), in linea, sen
 });
 
 // ---------------------------------------------------------------------------
-// tokenYield / consumptionCause — valore per token (EVOLUTION.md punto 4)
+// tokenYield / consumptionCause — value per token (EVOLUTION.md point 4)
 // ---------------------------------------------------------------------------
 
 function localDay(date: string, outputTokens: number, highContextOutputTokens = 0) {
@@ -386,24 +386,24 @@ function delta(date: string, value: number | null) {
   return { date, delta: value, idealShare: 5 };
 }
 
-test('tokenYield: token per 1% di quota sui soli giorni presenti in entrambe le fonti', () => {
+test('tokenYield: tokens per 1% of quota on days present in both sources only', () => {
   const local = [localDay('2026-07-13', 10000), localDay('2026-07-14', 20000), localDay('2026-07-15', 30000), localDay('2026-07-16', 99999)];
-  // 2026-07-16 ha un reset (delta null) → escluso; 2026-07-17 non ha sessioni locali → escluso.
+  // 2026-07-16 has a reset (delta null) → excluded; 2026-07-17 has no local sessions → excluded.
   const deltas = [delta('2026-07-13', 2), delta('2026-07-14', 4), delta('2026-07-15', 4), delta('2026-07-16', null), delta('2026-07-17', 10)];
   const y = budget.tokenYield(local, deltas);
   assert.equal(y?.tokensPerPercent, 6000); // 60000 token / 10 punti
   assert.equal(y.daysCompared, 3);
-  // Metà (1 giorno ciascuna): 10000/2=5000 → 30000/4=7500 → +50%.
+  // Halves (1 day each): 10000/2=5000 → 30000/4=7500 → +50%.
   assert.equal(y.trendPercent, 50);
 });
 
-test('tokenYield: null con meno di 3 giorni in comune o consumo totale sotto 1%', () => {
+test('tokenYield: null with fewer than 3 common days or total consumption below 1%', () => {
   assert.equal(budget.tokenYield([localDay('2026-07-13', 1000), localDay('2026-07-14', 1000)], [delta('2026-07-13', 2), delta('2026-07-14', 2)]), null);
   const local = [localDay('a', 1000), localDay('b', 1000), localDay('c', 1000)];
   assert.equal(budget.tokenYield(local, [delta('a', 0.2), delta('b', 0.2), delta('c', 0.2)]), null);
 });
 
-test('consumptionCause: segnale netto → giorni ad alto consumo dominati da contesto ampio', () => {
+test('consumptionCause: clear signal → high-consumption days dominated by large context', () => {
   const local = [
     localDay('d1', 1000, 100), localDay('d2', 1000, 100), localDay('d3', 1000, 150),
     localDay('d4', 1000, 800), localDay('d5', 1000, 900), localDay('d6', 1000, 850),
@@ -416,14 +416,14 @@ test('consumptionCause: segnale netto → giorni ad alto consumo dominati da con
   });
 });
 
-test('consumptionCause: segnale debole o pochi giorni → nessuna frase (null)', () => {
+test('consumptionCause: weak signal or few days → no sentence (null)', () => {
   const weakLocal = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6'].map((d, i) => localDay(d, 1000, i < 3 ? 400 : 500));
   const deltas = [delta('d1', 1), delta('d2', 1.5), delta('d3', 2), delta('d4', 8), delta('d5', 9), delta('d6', 10)];
   assert.equal(budget.consumptionCause(weakLocal, deltas), null);
   assert.equal(budget.consumptionCause(weakLocal.slice(0, 4), deltas.slice(0, 4)), null);
 });
 
-test('generateDailyTip: il legame consumo/contesto entra come candidato solo se presente', () => {
+test('generateDailyTip: the consumption/context link is a candidate only when present', () => {
   const cause = { highDaysHighContextPercent: 85, lowDaysHighContextPercent: 12, daysCompared: 6 };
   const tip = budget.generateDailyTip({ ...baseTipContext(), consumptionCause: cause });
   assert.deepEqual(tip, { key: 'cause', params: { highPercent: 85, lowPercent: 12, days: 6 } });

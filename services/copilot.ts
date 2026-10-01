@@ -1,25 +1,25 @@
-// services/copilot.ts — fetch utilizzo GitHub Copilot (vedi RESEARCH.md v3 §2 e ARCHITECTURE.md §0)
+// services/copilot.ts — GitHub Copilot usage fetch (see RESEARCH.md v3 §2 and ARCHITECTURE.md §0)
 //
-// Due percorsi molto diversi in affidabilità:
-// - Piano PERSONALE: endpoint ufficiale e documentato (ai_credit/usage, poi
-//   premium_request/usage come fallback), via PAT. Se entrambi rispondono 404
-//   (osservato con un account Free reale — vedi RESEARCH.md §2.1 addendum),
-//   ultimo tentativo sull'endpoint interno sotto, condiviso col percorso aziendale.
-// - Seat AZIENDALE (org-managed): nessun endpoint pubblico self-service. Unico dato
-//   disponibile è l'endpoint interno non documentato copilot_internal/user (stesso
-//   usato dall'indicatore di quota in VS Code) — trattato esplicitamente come
-//   funzionalità sperimentale/best-effort, può rompersi senza preavviso.
+// Two paths with very different reliability:
+// - PERSONAL plan: official, documented endpoint (ai_credit/usage, then
+//   premium_request/usage as fallback), via PAT. When both answer 404 (observed with a
+//   real Free account — see RESEARCH.md §2.1 addendum), a last attempt goes to the
+//   internal endpoint below, shared with the company path.
+// - COMPANY seat (org-managed): no public self-service endpoint. The only data source
+//   is the undocumented internal endpoint copilot_internal/user (the same used by the
+//   VS Code quota indicator) — explicitly treated as an experimental/best-effort
+//   feature, it can break without notice.
 //
-// L'API di billing di GitHub non espone la quota TOTALE del piano (solo il consumo):
-// il totale resta un valore configurato manualmente dall'utente (credentials.manualQuota),
-// come già anticipato in ARCHITECTURE.md §0.
+// GitHub's billing API does not expose the plan's TOTAL quota (only consumption): the
+// total stays a value configured by hand by the user (credentials.manualQuota), as
+// anticipated in ARCHITECTURE.md §0.
 
 import { fetchJson } from './_http';
 import { extractShape, FormatDriftError } from './_shape';
 import type { CopilotCredentials, QuotaWindow, RawAccountUsage } from '../types/index';
 
 const API_BASE = 'https://api.github.com';
-const USD_PER_CREDIT = 0.01; // 1 AI credit = $0.01, vedi RESEARCH.md §2.1
+const USD_PER_CREDIT = 0.01; // 1 AI credit = $0.01, see RESEARCH.md §2.1
 
 interface GithubUserResponse {
   login?: string;
@@ -31,8 +31,8 @@ interface BillingUsageItem {
 }
 
 interface BillingUsageReport {
-  // year/month/day: un solo timePeriod per l'intero report (non una data per item) —
-  // il filtro per mese avviene lato server tramite i parametri di query year/month.
+  // year/month/day: a single timePeriod for the whole report (not one date per item) —
+  // the monthly filter happens server side through the year/month query parameters.
   usageItems?: BillingUsageItem[];
 }
 
@@ -55,30 +55,30 @@ function authHeaders(token: string): Record<string, string> {
   };
 }
 
-/** Risolve lo username GitHub associato al token (usato al momento del "Connetti"). */
+/** Resolves the GitHub username tied to the token (used on "Connect"). */
 export async function resolveUsername(token: string): Promise<string> {
-  if (!token) throw new Error('Copilot: token mancante');
+  if (!token) throw new Error('Copilot: missing token');
   const data = await fetchJson<GithubUserResponse | null>(`${API_BASE}/user`, {
     headers: authHeaders(token),
     label: 'api.github.com/user',
   });
   if (!data?.login) {
-    throw new Error('Copilot: impossibile determinare lo username dal token fornito');
+    throw new Error('Copilot: could not determine the username from the given token');
   }
   return data.login;
 }
 
 /**
- * Somma il consumo (in credit AI) degli usage item di un report di billing.
- * Il report è già filtrato per anno/mese dal server (parametri di query year/month
- * sulla richiesta): ogni item non ha una propria data, solo un `netAmount` in USD
- * (importo netto dopo eventuali sconti) — convertito in credit AI (1 credit = $0.01).
+ * Sums the consumption (in AI credits) of the usage items of a billing report.
+ * The report is already filtered by year/month by the server (year/month query
+ * parameters on the request): items have no date of their own, only a `netAmount` in
+ * USD (net amount after discounts) — converted to AI credits (1 credit = $0.01).
  */
 export function sumCreditsUsed(report: BillingUsageReport | null): number {
   const items = report?.usageItems;
   if (!Array.isArray(items)) {
     throw new FormatDriftError(
-      'Copilot: formato risposta inatteso su ai_credit/usage (nessun usageItems) — vedi RESEARCH.md',
+      'Copilot: unexpected response format on ai_credit/usage (no usageItems) — see RESEARCH.md',
       'users/{username}/settings/billing/ai_credit/usage',
       extractShape(report),
     );
@@ -92,15 +92,14 @@ function isHttp404(err: unknown): boolean {
 }
 
 /**
- * Legge il report di billing per il mese corrente. Prova prima `ai_credit/usage`
- * (endpoint corrente, sostituisce il vecchio modello "premium requests" ritirato
- * l'1/06/2026 — vedi RESEARCH.md §2.1); se risponde 404 (osservato con un account
- * reale, causa non ancora chiarita: rollout non uniforme dell'endpoint o account
- * senza un piano personale proprio) ripiega su `premium_request/usage`, che la
- * doc REST descrive con la stessa identica forma di risposta — stesso parsing,
- * nessuna logica duplicata. Un fallimento non-404 (rete, 401/403, ecc.) non
- * innesca il fallback: si propaga subito, per non mascherare un problema di
- * credenziali dietro un secondo tentativo inutile.
+ * Reads the billing report for the current month. Tries `ai_credit/usage` first
+ * (current endpoint, replacing the old "premium requests" model retired on 2026-06-01 —
+ * see RESEARCH.md §2.1); on 404 (observed with a real account, cause not yet clear:
+ * non-uniform endpoint rollout or account without its own personal plan) it falls back
+ * to `premium_request/usage`, which the REST docs describe with exactly the same
+ * response shape — same parsing, no duplicated logic. A non-404 failure (network,
+ * 401/403, …) does not trigger the fallback: it propagates at once, so a credentials
+ * problem is not hidden behind a useless second attempt.
  */
 async function fetchBillingUsageReport(username: string, token: string, year: number, month: string): Promise<BillingUsageReport | null> {
   const headers = authHeaders(token);
@@ -113,7 +112,7 @@ async function fetchBillingUsageReport(username: string, token: string, year: nu
     if (!isHttp404(err)) throw err;
     return fetchJson<BillingUsageReport | null>(
       `${API_BASE}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage?year=${year}&month=${month}`,
-      { headers, label: 'users/{username}/settings/billing/premium_request/usage (fallback da ai_credit/usage 404)' },
+      { headers, label: 'users/{username}/settings/billing/premium_request/usage (fallback from ai_credit/usage 404)' },
     );
   }
 }
@@ -128,12 +127,12 @@ async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; 
     const used = sumCreditsUsed(report);
 
     return {
-      planTier: null, // valorizzato dal chiamante da store, non derivabile dalla risposta
+      planTier: null, // filled in by the caller from the store, not derivable from the response
       subscriptionRenewsAt: null,
       quotaWindows: [
         {
           id: 'ai_credits',
-          label: 'Credito AI',
+          label: 'AI credits',
           periodType: 'billing-cycle',
           periodLength: null,
           unit: 'count',
@@ -145,44 +144,43 @@ async function fetchPersonalUsage({ token, manualQuota, now }: { token: string; 
     };
   } catch (err) {
     if (!isHttp404(err)) throw err;
-    // Sia ai_credit/usage sia premium_request/usage hanno risposto 404 (osservato con
-    // un account Free personale reale — vedi RESEARCH.md §2.1 addendum — nonostante la
-    // pagina github.com/settings/billing dello stesso account mostri un consumo
-    // "Included credits" reale: questi endpoint REST ufficiali evidentemente non lo
-    // coprono per questo tipo di piano). Ultimo tentativo: lo stesso endpoint interno
-    // non documentato già usato per i seat aziendali (RESEARCH.md §2.2) — alimenta
-    // l'indicatore quota di VS Code per QUALSIASI account Copilot, non solo quelli
-    // aziendali, quindi potrebbe funzionare anche qui.
-    return fetchCopilotInternalUsage(token, 'piano personale, fallback interno');
+    // Both ai_credit/usage and premium_request/usage answered 404 (observed with a real
+    // personal Free account — see RESEARCH.md §2.1 addendum — although the
+    // github.com/settings/billing page of the same account shows real "Included credits"
+    // consumption: these official REST endpoints evidently do not cover it for this kind
+    // of plan). Last attempt: the same undocumented internal endpoint already used for
+    // company seats (RESEARCH.md §2.2) — it powers the VS Code quota indicator for ANY
+    // Copilot account, not only company ones, so it might work here too.
+    return fetchCopilotInternalUsage(token, 'personal plan, internal fallback');
   }
 }
 
 /**
- * Endpoint interno non documentato che alimenta l'indicatore di quota di VS Code,
- * per qualunque tipo di account Copilot (non solo seat aziendali — vedi RESEARCH.md
- * §2.2). Nessuna garanzia di stabilità o di compatibilità con un token PAT standard
- * (VS Code usa un token Copilot ottenuto con un proprio flusso di autenticazione, non
- * necessariamente un PAT generico). Se questa chiamata fallisce con 401/403, è atteso:
- * significa che il token fornito non è accettato da questo endpoint interno.
+ * Undocumented internal endpoint powering the VS Code quota indicator, for any kind
+ * of Copilot account (not only company seats — see RESEARCH.md §2.2). No guarantee of
+ * stability or of compatibility with a standard PAT (VS Code uses a Copilot token
+ * obtained through its own authentication flow, not necessarily a generic PAT). A
+ * 401/403 here is expected: it means the token is not accepted by this internal
+ * endpoint.
  */
 async function fetchCopilotInternalUsage(token: string, context: string): Promise<RawAccountUsage> {
   let data: CopilotInternalUserResponse | null;
   try {
     data = await fetchJson<CopilotInternalUserResponse | null>(`${API_BASE}/copilot_internal/user`, {
       headers: authHeaders(token),
-      label: 'copilot_internal/user (endpoint interno non ufficiale)',
+      label: 'copilot_internal/user (unofficial internal endpoint)',
     });
   } catch (err) {
     throw new Error(
-      `Copilot (${context}, best-effort): chiamata fallita — ${err instanceof Error ? err.message : String(err)}. ` +
-      'Questo endpoint non è ufficiale: potrebbe richiedere un token Copilot diverso da un PAT standard. Vedi RESEARCH.md.',
+      `Copilot (${context}, best-effort): call failed — ${err instanceof Error ? err.message : String(err)}. ` +
+      'This endpoint is not official: it may require a Copilot token different from a standard PAT. See RESEARCH.md.',
       { cause: err },
     );
   }
 
   if (!data?.quota_snapshots) {
     throw new FormatDriftError(
-      `Copilot (${context}, best-effort): risposta senza quota_snapshots — formato cambiato o token non valido per questo endpoint`,
+      `Copilot (${context}, best-effort): response without quota_snapshots — format changed or token not valid for this endpoint`,
       'copilot_internal/user',
       extractShape(data),
     );
@@ -205,7 +203,7 @@ async function fetchCopilotInternalUsage(token: string, context: string): Promis
 
   if (windows.length === 0) {
     throw new FormatDriftError(
-      `Copilot (${context}, best-effort): nessuna finestra di quota riconosciuta nella risposta`,
+      `Copilot (${context}, best-effort): no quota window recognized in the response`,
       'copilot_internal/user',
       extractShape(data.quota_snapshots),
     );
@@ -219,13 +217,13 @@ async function fetchCopilotInternalUsage(token: string, context: string): Promis
 }
 
 async function fetchOrgManagedUsage({ token }: { token: string }): Promise<RawAccountUsage> {
-  return fetchCopilotInternalUsage(token, 'seat aziendale');
+  return fetchCopilotInternalUsage(token, 'company seat');
 }
 
 export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAccountUsage> {
   const { token, accountScope, manualQuota } = credentials;
   if (!token) {
-    throw new Error("Copilot: token mancante — collega l'account dalle Impostazioni");
+    throw new Error('Copilot: missing token — connect the account from Settings');
   }
 
   const now = new Date();

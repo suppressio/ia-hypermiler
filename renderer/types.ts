@@ -1,10 +1,10 @@
-// renderer/types.ts — copia locale, ridotta, dei tipi condivisi in ../types/index.ts.
+// renderer/types.ts — local, reduced copy of the shared types in ../types/index.ts.
 //
-// Duplicata intenzionalmente (invece di importare da '../types/index') per tenere
-// il tsconfig del renderer (tsconfig.renderer.json, rootDir "renderer") indipendente
-// dal resto del progetto: un import cross-cartella costringerebbe tsc a includere
-// file fuori da rootDir e a fallire l'emit (TS6059). Se cambi le interfacce in
-// ../types/index.ts, aggiorna anche questo file.
+// Duplicated on purpose (instead of importing from '../types/index') to keep the
+// renderer tsconfig (tsconfig.renderer.json, rootDir "renderer") independent from the
+// rest of the project: a cross-folder import would force tsc to include files outside
+// rootDir and fail the emit (TS6059). If you change the interfaces in
+// ../types/index.ts, update this file too.
 
 export type AccountId = string;
 export type ProviderId = 'claude' | 'copilot';
@@ -74,7 +74,7 @@ export interface QuotaWindowSnapshot {
   sustainableRate: number | null;
   efficiencyRating: EfficiencyRating | null;
   dailyTip: DailyTip;
-  // Solo per l'account Claude con insight locali attivi (null altrimenti).
+  // Only for the Claude account with local insights enabled (null otherwise).
   tokenYield: TokenYield | null;
 }
 
@@ -90,7 +90,7 @@ export interface ClaudeLocalInsights {
   highContextSharePercent: number | null;
   longSessionSharePercent: number | null;
   topTools: ToolUsageShare[];
-  // Token di output per giorno (sessione attribuita al giorno di ultima modifica).
+  // Output tokens per day (a session is attributed to the day it was last modified).
   daily: LocalDailyTokens[];
 }
 
@@ -100,15 +100,15 @@ export interface LocalDailyTokens {
   highContextOutputTokens: number;
 }
 
-/** "Resa": token di output per 1% di quota consumata — vedi budget.tokenYield. */
+/** "Yield": output tokens per 1% of quota used — see budget.tokenYield. */
 export interface TokenYield {
   tokensPerPercent: number;
-  // Variazione % della resa tra seconda e prima metà dei giorni confrontati (null se non calcolabile).
+  // % change of the yield between the second and the first half of the compared days (null when not computable).
   trendPercent: number | null;
   daysCompared: number;
 }
 
-/** Legame osservato tra giorni di consumo alto e contesto ampio — vedi budget.consumptionCause. */
+/** Observed link between high-consumption days and large context — see budget.consumptionCause. */
 export interface ConsumptionCause {
   highDaysHighContextPercent: number;
   lowDaysHighContextPercent: number;
@@ -154,7 +154,7 @@ export interface ClaudeAccountConfig extends AccountConfigBase {
   provider: 'claude';
   authMethod: 'password' | 'google' | 'sso';
   planTier: string;
-  // sessionKey arriva sempre redatto (segnaposto) dal main: indica solo "connesso sì/no".
+  // sessionKey always arrives redacted (placeholder) from the main process: it only tells "connected yes/no".
   session: { sessionKey: string | null; organizationId: string | null };
   localInsights: boolean;
 }
@@ -171,12 +171,12 @@ export interface CopilotAccountConfig extends AccountConfigBase {
 
 export type AccountConfig = ClaudeAccountConfig | CopilotAccountConfig;
 
-/** Nuova versione disponibile — vedi services/updates.ts (issue #5). */
+/** New version available — see services/updates.ts (issue #5). */
 export interface UpdateInfo {
   version: string;
   publishedAt: string | null;
   releaseUrl: string;
-  // Pacchetto per l'OS in uso; se nessuno è adatto (es. Mac Intel), la pagina della release.
+  // Package for the current OS; when none fits (e.g. Intel Mac), the release page.
   downloadUrl: string;
   assetName: string | null;
 }
@@ -186,7 +186,7 @@ export interface UpdateSettings {
   lastCheckedAt: string | null;
   lastError: string | null;
   available: UpdateInfo | null;
-  // Versione già notificata con una notifica di sistema: non ripetere ad ogni controllo.
+  // Version already announced with a system notification: not repeated on every check.
   notifiedVersion: string | null;
 }
 

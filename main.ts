@@ -1,7 +1,7 @@
-// main.ts — processo principale Electron
-// Giorno 2, Sessione 1: dati reali da services/claude.ts e services/copilot.ts al posto
-// del mock del Giorno 1. Se una fetch fallisce, si mostra l'ultimo dato noto con
-// timestamp (mai schermata bianca, vedi CLAUDE.md).
+// main.ts — Electron main process
+// Day 2, Session 1: real data from services/claude.ts and services/copilot.ts instead
+// of the Day 1 mock. When a fetch fails, the last known data is shown with its
+// timestamp (never a blank screen, see CLAUDE.md).
 
 import { app, dialog, ipcMain, BrowserWindow, Notification, shell, Menu, screen } from 'electron';
 import store, { DEFAULTS } from './store/index';
@@ -43,24 +43,24 @@ import type {
   WindowStyle,
 } from './types/index';
 
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minuti, come da CLAUDE.md
-// Controllo nuova versione (issue #5): all'avvio (con un piccolo ritardo, per non
-// sovrapporsi al primo refresh usage) e poi ogni 24 ore.
+const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes, as per CLAUDE.md
+// New-version check (issue #5): at startup (with a short delay, not to overlap
+// the first usage refresh) and then every 24 hours.
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const UPDATE_FIRST_CHECK_DELAY_MS = 10 * 1000;
-// Ricalcolo insight locali (services/claudeLocalSessions.ts): più costoso di un
-// refresh usuale (scansione file su disco, non un poll di rete), non serve farlo
-// ad ogni refresh di 30 min — cache con questo intervallo minimo, stesso pattern
-// di advisorCache.
-const LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 ore
+// Local insights recomputation (services/claudeLocalSessions.ts): more expensive
+// than a regular refresh (scanning files on disk, not a network poll), no need to do
+// it on every 30-minute refresh — cached with this minimum interval, same pattern as
+// advisorCache.
+const LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
-// Promise lanciate "in background" (timer, IPC fire-and-forget, dopo una risposta
-// IPC già inviata): mai un rifiuto non gestito, che Node registrerebbe senza contesto
-// o, peggio, lascerebbe l'app in uno stato a metà senza traccia (CLAUDE.md: mai
-// fallimenti silenziosi).
+// Promises launched "in the background" (timers, fire-and-forget IPC, after an IPC
+// reply was already sent): never an unhandled rejection, which Node would log without
+// context or, worse, would leave the app half-way with no trace (CLAUDE.md: never
+// silent failures).
 function runDetached(label: string, task: Promise<unknown>): void {
   task.catch((err: unknown) => {
-    console.error(`[main] ${label} fallito:`, err);
+    console.error(`[main] ${label} failed:`, err);
   });
 }
 
@@ -73,16 +73,15 @@ let trayHandle: TrayHandle | null = null;
 let lastHoverState = false;
 
 // ---------------------------------------------------------------------------
-// Rivelamento hover finestra per titlebar/pulsanti "a scomparsa" (feedback
-// utente): un :hover CSS puro, e anche mouseover/mouseout sul documento, non
-// si attivano in modo affidabile sopra alla striscia -webkit-app-region:drag,
-// perché il sistema operativo la tratta come area non-client (come la titlebar
-// nativa) e intercetta il mouse per il trascinamento invece di dispatchare i
-// normali eventi DOM — con quella tecnica la barra spariva proprio passandoci
-// sopra. Il fix affidabile è interrogare la posizione del cursore lato main
-// process (sempre disponibile via screen.getCursorScreenPoint(), indipendente
-// dal dispatch di eventi del renderer) e confrontarla con i bounds della
-// finestra, inviando al renderer solo i cambi di stato via IPC.
+// Window hover detection for the "auto-hiding" title bar/buttons (user feedback):
+// a pure CSS :hover, and even mouseover/mouseout on the document, do not fire
+// reliably over the -webkit-app-region:drag strip, because the OS treats it as a
+// non-client area (like a native title bar) and captures the mouse for dragging
+// instead of dispatching regular DOM events — with that technique the bar vanished
+// exactly while hovering it. The reliable fix queries the cursor position in the main
+// process (always available via screen.getCursorScreenPoint(), independent of the
+// renderer's event dispatch), compares it with the window bounds and sends only state
+// changes to the renderer via IPC.
 // ---------------------------------------------------------------------------
 function startWindowHoverPolling(): void {
   if (hoverPollTimer) clearInterval(hoverPollTimer);
@@ -101,9 +100,9 @@ function startWindowHoverPolling(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Storico locale: Claude e Copilot non forniscono uno storico giornaliero via
-// API (vedi RESEARCH.md), quindi lo costruiamo noi, un punto al giorno, ad ogni
-// refresh riuscito.
+// Local history: neither Claude nor Copilot provides a daily history via API (see
+// RESEARCH.md), so we build it ourselves, one point per day, on every successful
+// refresh.
 // ---------------------------------------------------------------------------
 function recordDailyUsage(accountId: AccountId, window: QuotaWindow): void {
   const utilization = budget.normalizedUtilization(window);
@@ -130,10 +129,9 @@ function getDailyHistory(accountId: AccountId, windowId: string, days: number): 
     .slice(-days);
 }
 
-// Ampio margine sopra il lookback di 3h usato da budget.instantaneousRate: il
-// buffer resta comunque minuscolo (append ogni 30 min, mai più di ~8 campioni
-// per finestra), a differenza di history.dailyUsage non serve una vera retention
-// configurabile.
+// Ample margin above the 3h lookback used by budget.instantaneousRate: the buffer
+// stays tiny anyway (one append every 30 min, never more than ~8 samples per window);
+// unlike history.dailyUsage it needs no real configurable retention.
 const RECENT_SAMPLES_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 
 function recordRecentSample(accountId: AccountId, window: QuotaWindow): void {
@@ -155,19 +153,19 @@ function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSa
 }
 
 // ---------------------------------------------------------------------------
-// Insight locali da sessioni Claude Code (services/claudeLocalSessions.ts, vedi
-// RESEARCH.md §5): opt-in per account (ClaudeAccountSettings.localInsights, al
-// massimo un account Claude — il chiamante decide per quale),
-// cachati perché più costosi di un refresh usuale (scansione file su disco, non
-// un poll di rete) — ricalcolati al massimo ogni LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
+// Local insights from Claude Code sessions (services/claudeLocalSessions.ts, see
+// RESEARCH.md §5): opt-in per account (ClaudeAccountSettings.localInsights, at most
+// one Claude account — the caller decides which), cached because more expensive than
+// a regular refresh (scanning files on disk, not a network poll) — recomputed at most
+// every LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
 // ---------------------------------------------------------------------------
-// Finestra di analisi = vista scelta per il grafico (7/30gg, +1 giorno come per i
-// delta giornalieri): insight, resa e grafico guardano lo stesso periodo.
+// Analysis window = the view chosen for the chart (7/30 days, +1 day as for the
+// daily deltas): insights, yield and chart look at the same period.
 async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | null> {
   const windowDays = (store.get('ui').chartRange === 'month' ? 30 : 7) + 1;
   const cached = store.get('localInsightsCache').claudeCode;
   const cacheAgeMs = cached ? Date.now() - new Date(cached.computedAt).getTime() : Infinity;
-  // Cache precedente senza `daily` (prima del punto 4) o su un'altra finestra: ricalcola.
+  // Previous cache without `daily` (before point 4) or for another window: recompute.
   if (cached && Array.isArray(cached.daily) && cached.windowDays === windowDays && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
 
   try {
@@ -175,22 +173,22 @@ async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | nul
     store.set('localInsightsCache.claudeCode', result);
     return result;
   } catch (err) {
-    // Mai bloccare il refresh dell'account per un problema sulla sorgente locale
-    // opzionale: logga e ricadi sull'ultima cache valida (anche se scaduta), se c'è.
-    console.error('[main] calcolo insight locali Claude Code fallito:', (err as Error).message);
+    // Never block the account refresh because of a problem with the optional local
+    // source: log it and fall back to the last valid cache (even if expired), if any.
+    console.error('[main] Claude Code local insights computation failed:', (err as Error).message);
     return cached;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Confini del periodo per efficienza/previsionale/scadenza:
-// - se la finestra critica ha un proprio resetsAt (caso Claude, finestre rolling),
-//   usiamo quello e ricaviamo l'inizio periodo sottraendo la durata della finestra;
-// - altrimenti (caso Copilot, ciclo di fatturazione) usiamo la renewalRule configurata.
-// NOTA: per la finestra "five_hour" di Claude la granularità giorno/mezza-giornata di
-// budget.ts è troppo grossolana per un'efficienza realmente significativa — il valore
-// resta comunque coerente, ma va letto soprattutto come indicatore corrente, non come
-// pacing affidabile su una finestra così breve.
+// Period bounds for efficiency/projection/reset:
+// - if the critical window has its own resetsAt (Claude case, rolling windows), we use
+//   it and derive the period start by subtracting the window length;
+// - otherwise (Copilot case, billing cycle) we use the configured renewalRule.
+// NOTE: for Claude's "five_hour" window the day/half-day granularity of budget.ts is
+// too coarse for a truly meaningful efficiency — the value stays consistent, but it
+// should be read mostly as a current indicator, not as reliable pacing on such a short
+// window.
 // ---------------------------------------------------------------------------
 function resolvePeriodBounds(
   criticalWindow: QuotaWindow | null,
@@ -210,12 +208,12 @@ function resolvePeriodBounds(
   return { periodStart, periodEnd };
 }
 
-// Una finestra "billing-cycle" con periodLength sconosciuto (es. i crediti riconosciuti
-// solo dalla forma del valore in services/claude.ts, sia quelli ricorrenti sia quelli
-// una tantum: non c'è modo di distinguerli senza indovinare un formato non documentato)
-// non ha un periodStart deducibile con certezza: niente pacing fabbricato su uno span
-// fittizio (vedi resolvePeriodBounds sotto), solo daysUntilReset, che usa il resetsAt
-// reale della finestra ed è sempre affidabile.
+// A "billing-cycle" window with an unknown periodLength (e.g. credits recognized
+// only by the shape of the value in services/claude.ts, both recurring and one-off:
+// there is no way to tell them apart without guessing an undocumented format) has no
+// period start that can be derived with certainty: no pacing fabricated on a fictitious
+// span (see resolvePeriodBounds below), only daysUntilReset, which uses the window's
+// real resetsAt and is always reliable.
 function canEstimatePacing(window: QuotaWindow): boolean {
   return window.periodType !== 'billing-cycle' || window.periodLength !== null;
 }
@@ -231,8 +229,8 @@ function computeWindowSnapshot(
   recordDailyUsage(accountId, window);
   recordRecentSample(accountId, window);
   const chartDays = store.get('ui').chartRange === 'month' ? 30 : 7;
-  // chartDays + 1 punti: servono N+1 valori cumulati per N delta giornalieri
-  // (grafico consumo/giorno e rating) — prima il rating ne vedeva solo N-1.
+  // chartDays + 1 points: N+1 cumulative values are needed for N daily deltas
+  // (consumption-per-day chart and rating) — the rating used to see only N-1.
   const dailyHistory = getDailyHistory(accountId, window.id, chartDays + 1);
   const recentSamples = getRecentSamples(accountId, window.id);
 
@@ -240,13 +238,13 @@ function computeWindowSnapshot(
   const ctx = { window, workSchedule, periodStart, periodEnd, now };
   const pacingAvailable = canEstimatePacing(window);
   const totalPeriodWorkingUnits = budget.workingUnitsBetween(periodStart, periodEnd, workSchedule);
-  // Il rating a stelle si basa su delta giornalieri su una finestra di `chartDays`
-  // giorni (7/30, la stessa vista scelta dall'utente per il grafico — coerenza tra
-  // indicatori): non ha senso per una finestra che si rinnova ogni poche ore (es.
-  // "five_hour" di Claude, vedi nota sopra resolvePeriodBounds) — lì il consumo di
-  // "un giorno" può attraversare più reset, un rapporto ideale/reale giornaliero
-  // non è più significativo. In quel caso resta solo il gauge %/ora (instantRate/
-  // sustainableRate sotto), coerente a qualunque scala temporale.
+  // The star rating is based on daily deltas over a window of `chartDays` days (7/30,
+  // the same view chosen by the user for the chart — consistency between indicators): it
+  // makes no sense for a window renewing every few hours (e.g. Claude's "five_hour", see
+  // the note above resolvePeriodBounds) — there the consumption of "one day" can span
+  // several resets, so an ideal/actual daily ratio is no longer meaningful. In that case
+  // only the %/h gauge remains (instantRate/sustainableRate below), consistent at any
+  // time scale.
   const ratingAvailable = pacingAvailable && window.periodType !== 'rolling-hours';
 
   const efficiencyIndex = pacingAvailable ? budget.efficiencyIndex(ctx) : null;
@@ -254,19 +252,19 @@ function computeWindowSnapshot(
   const daysUntilReset = budget.daysUntilReset(periodEnd, now);
   const workingDaysUntilReset = budget.workingDaysUntilReset(periodEnd, workSchedule, now);
   const estimatedAutonomyWorkingDays = pacingAvailable ? budget.estimatedAutonomyWorkingDays(ctx) : null;
-  // Non gated da pacingAvailable: usa solo window.resetsAt, quindi resta
-  // significativo anche per finestre con periodStart sconosciuto (es. crediti
-  // una tantum) — vedi budget.sustainableHourlyRate.
+  // Not gated by pacingAvailable: it only uses window.resetsAt, so it stays meaningful
+  // even for windows with an unknown period start (e.g. one-off credits) — see
+  // budget.sustainableHourlyRate.
   const instantRate = budget.instantaneousRate(recentSamples, now);
   const sustainableRate = budget.sustainableHourlyRate(window, now);
   const efficiencyRating = ratingAvailable
     ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, chartDays)
     : null;
-  // Stesso gate del rating: su una finestra di poche ore un delta "giornaliero"
-  // attraversa più reset e non misura nulla. Senza pacing i delta restano, ma
-  // senza quota ideale (idealShare null).
-  // Valore per token (EVOLUTION.md punto 4): solo se l'account ha gli insight
-  // locali attivi — incrocia i token per giorno con i delta di questa finestra.
+  // Same gate as the rating: on a window of a few hours a "daily" delta spans several
+  // resets and measures nothing. Without pacing the deltas remain, but with no ideal
+  // share (idealShare null).
+  // Value per token (EVOLUTION.md point 4): only when the account has local insights
+  // enabled — crosses tokens per day with this window's deltas.
   const localDaily = localInsights?.daily ?? null;
   const dailyDeltasForWindow = window.periodType === 'rolling-hours'
     ? []
@@ -344,8 +342,8 @@ function computeAccountSnapshot(
   };
 }
 
-// Sempre un array valido: lo store è normalizzato all'avvio e ad ogni scrittura
-// da IPC (store/normalize.ts). Copia, perché i chiamanti la modificano.
+// Always a valid array: the store is normalized at startup and on every write from
+// IPC (store/normalize.ts). A copy, because callers modify it.
 function getAccounts(): AccountConfig[] {
   return [...store.get('accounts')];
 }
@@ -358,7 +356,7 @@ function updateAccount(id: AccountId, update: (cfg: AccountConfig) => AccountCon
   const accounts = getAccounts();
   const idx = accounts.findIndex((a) => a.id === id);
   const current = accounts[idx];
-  if (!current) throw new Error(`Account non trovato: ${id}`);
+  if (!current) throw new Error(`Account not found: ${id}`);
   const updated = update(current);
   accounts[idx] = updated;
   store.set('accounts', accounts);
@@ -367,9 +365,9 @@ function updateAccount(id: AccountId, update: (cfg: AccountConfig) => AccountCon
 
 type StampedUsage = RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string; stale: boolean; lastError?: string };
 
-// 401/403 da un service (sessionKey/PAT scaduto o revocato) sono l'unico caso in cui
-// possiamo dare un consiglio pratico invece del messaggio grezzo del service — vedi
-// CLAUDE.md, "Stato avanzamento", sessione sull'errore account_session_invalid.
+// 401/403 from a service (expired or revoked sessionKey/PAT) is the only case where
+// we can give practical advice instead of the service's raw message — see CLAUDE.md,
+// progress log, session about the account_session_invalid error.
 function friendlyErrorMessage(err: unknown): string {
   const error = err as Error & { status?: number };
   if (error.status === 401 || error.status === 403) {
@@ -399,30 +397,29 @@ async function fetchAccountOrFallback(
     return stamped;
   } catch (err) {
     const error = err as Error;
-    console.error(`[main] refresh ${accountId} fallito:`, error.message);
-    // Segnalato qui (non solo nel chiamante) perché un fallback su dato pregresso
-    // valido "assorbe" l'errore sotto — senza questa chiamata un format-drift che
-    // emerge DOPO il primo fetch riuscito non verrebbe mai rilevato.
+    console.error(`[main] refresh ${accountId} failed:`, error.message);
+    // Reported here (not only in the caller) because a fallback to valid previous data
+    // "absorbs" the error below — without this call a format drift appearing AFTER the
+    // first successful fetch would never be detected.
     maybeReportFormatDrift(provider, err);
     const lastGood = store.get('history').lastGood?.[accountId];
-    if (!lastGood) throw err; // nessun dato pregresso: propaga, il chiamante decide come mostrarlo
+    if (!lastGood) throw err; // no previous data: propagate, the caller decides how to show it
     return { ...lastGood, stale: true, lastError: friendlyErrorMessage(err) };
   }
 }
 
-// Placeholder mostrato quando un account è collegato/abilitato ma la fetch è
-// fallita e non esiste ancora nessun dato pregresso (store.history.lastGood.*):
-// senza questo, il renderer non distingue "non collegato" da "collegato ma la
-// sincronizzazione è appena fallita", e mostra il messaggio sbagliato ("Nessun
-// account collegato") anche quando l'account È collegato — vedi CLAUDE.md,
-// "mai schermata bianca o fallimento silenzioso".
+// Placeholder shown when an account is connected/enabled but the fetch failed and
+// there is no previous data yet (store.history.lastGood.*): without it, the renderer
+// cannot tell "not connected" from "connected but the sync just failed", and shows the
+// wrong message ("No account connected") even when the account IS connected — see
+// CLAUDE.md, "never a blank screen or silent failure".
 // ---------------------------------------------------------------------------
-// Auto-segnalazione "format drift" (feedback utente, Giorno 3): se un service
-// rileva che il formato di un endpoint non è più quello atteso (FormatDriftError,
-// vedi services/_shape.ts), apriamo nel browser una bozza di issue GitHub già
-// compilata — MAI valori reali, solo struttura (nomi di campo/tipo) — che
-// l'utente deve rivedere e confermare manualmente. Deduplicata per firma della
-// struttura: non riapre la stessa bozza ad ogni refresh (ogni 30 minuti).
+// Automatic "format drift" report (user feedback, Day 3): when a service detects that
+// an endpoint format is no longer the expected one (FormatDriftError, see
+// services/_shape.ts), we open a pre-filled GitHub issue draft in the browser — NEVER
+// real values, only structure (field names/types) — that the user must review and
+// submit by hand. Deduplicated by structure signature: the same draft is not reopened
+// on every refresh (every 30 minutes).
 // ---------------------------------------------------------------------------
 function maybeReportFormatDrift(provider: ProviderId, err: unknown): void {
   if (!(err instanceof FormatDriftError)) return;
@@ -431,11 +428,11 @@ function maybeReportFormatDrift(provider: ProviderId, err: unknown): void {
 
   const signature = shapeSignature(err.shape);
   const reported = { ...diagnostics.reportedSignatures };
-  if (reported[signature]) return; // già segnalato per questa forma: non riaprire
+  if (reported[signature]) return; // already reported for this shape: do not reopen
 
   const url = buildFormatDriftIssueUrl({ provider, endpointLabel: err.endpointLabel, shape: err.shape });
   shell.openExternal(url).catch((openErr: unknown) => {
-    console.error('[main] impossibile aprire la bozza di segnalazione nel browser:', openErr);
+    console.error('[main] could not open the report draft in the browser:', openErr);
   });
 
   if (Notification.isSupported()) {
@@ -477,8 +474,8 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
 
   for (const cfg of getAccounts()) {
     if (!cfg.enabled || !providers.isConnected(cfg)) continue;
-    // Sorgente locale indipendente dal fetch dell'account: calcolata prima (serve
-    // alla resa per finestra) e mostrata anche se il provider non ha risposto.
+    // Local source independent of the account fetch: computed first (the per-window
+    // yield needs it) and shown even if the provider did not answer.
     const localInsights = cfg.provider === 'claude' && cfg.localInsights ? await computeLocalInsightsIfNeeded() : null;
     let account: AccountSnapshot;
     try {
@@ -486,7 +483,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
       account = computeAccountSnapshot(raw, cfg, workSchedule, now, localInsights);
     } catch (err) {
       const message = friendlyErrorMessage(err);
-      console.error(`[main] ${cfg.label} non disponibile e nessun dato pregresso:`, message);
+      console.error(`[main] ${cfg.label} unavailable and no previous data:`, message);
       account = emptyAccountSnapshot(cfg, message);
     }
     if (localInsights) account.localInsights = localInsights;
@@ -497,7 +494,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
 }
 
 // ---------------------------------------------------------------------------
-// Notifiche soglia (default 80%, configurabile) — una sola volta al giorno
+// Threshold notifications (default 80%, configurable) — at most once a day
 // ---------------------------------------------------------------------------
 function maybeNotifyThreshold(snapshot: UsageSnapshot): void {
   const threshold = store.get('ui').notificationThresholdPercent;
@@ -528,7 +525,7 @@ async function refreshAndBroadcast(): Promise<void> {
   try {
     snapshot = await buildUsageSnapshot();
   } catch (err) {
-    console.error('[main] refresh usage fallito:', err);
+    console.error('[main] usage refresh failed:', err);
     return;
   }
   maybeNotifyThreshold(snapshot);
@@ -540,35 +537,35 @@ async function refreshAndBroadcast(): Promise<void> {
 // ---------------------------------------------------------------------------
 // IPC
 // ---------------------------------------------------------------------------
-// Il renderer non deve mai ricevere segreti reali (sessionKey, PAT) — vedi CLAUDE.md
-// "Sicurezza Electron". `store.store` li contiene in chiaro (servono al main process
-// per autenticare le chiamate), quindi ogni volta che passa il confine IPC verso il
-// renderer li sostituiamo con un segnaposto: preserva il valore booleano "è collegato?"
-// (usato da renderer/settings.ts per lo stato "Connesso"/"Non connesso") senza mai
-// esporre il valore reale.
+// The renderer must never receive real secrets (sessionKey, PAT) — see CLAUDE.md
+// "Electron security". `store.store` holds them in clear (the main process needs them
+// to authenticate calls), so every time it crosses the IPC boundary towards the
+// renderer they are replaced with a placeholder: it keeps the "is connected?" boolean
+// (used by renderer/settings.ts for "Connected"/"Not connected") without ever exposing
+// the real value.
 function redactSecretsForRenderer(settings: AppSettings): AppSettings {
   const accounts = Array.isArray(settings.accounts) ? settings.accounts : [];
   return { ...settings, accounts: accounts.map(providers.redactSecrets) };
 }
 
-// Il renderer riceve sempre la versione con segnaposto (mai il valore reale): se
-// salva le impostazioni dopo aver modificato un ALTRO campo (es. planTier), rimanda
-// indietro l'intero array `accounts` così com'è, segnaposto incluso. Senza questa
-// difesa, quel segnaposto sovrascriverebbe silenziosamente sessionKey/token reali
-// nello store. I segreti cambiano SOLO tramite i flussi dedicati (accounts:connect*/
-// accounts:disconnect), mai tramite il salvataggio generico — vedi providers.preserveSecrets.
+// The renderer always receives the placeholder version (never the real value): when
+// it saves the settings after editing ANOTHER field (e.g. planTier), it sends back the
+// whole `accounts` array as is, placeholder included. Without this defence, that
+// placeholder would silently overwrite the real sessionKey/token in the store. Secrets
+// change ONLY through the dedicated flows (accounts:connect*/accounts:disconnect),
+// never through the generic save — see providers.preserveSecrets.
 // ---------------------------------------------------------------------------
-// Validazione input IPC: i valori arrivano dal renderer, cioè da fuori dal main —
-// i tipi TypeScript lì non garantiscono nulla a runtime. Ogni handler riceve
-// `unknown` e lo valida prima di usarlo.
+// IPC input validation: values come from the renderer, i.e. from outside the main
+// process — TypeScript types guarantee nothing there at runtime. Every handler
+// receives `unknown` and validates it before use.
 // ---------------------------------------------------------------------------
 function requireString(value: unknown, what: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new Error(`${what}: valore non valido`);
+  if (typeof value !== 'string' || value.trim() === '') throw new Error(`${what}: invalid value`);
   return value;
 }
 
 function requireBoolean(value: unknown, what: string): boolean {
-  if (typeof value !== 'boolean') throw new Error(`${what}: valore non valido`);
+  if (typeof value !== 'boolean') throw new Error(`${what}: invalid value`);
   return value;
 }
 
@@ -577,35 +574,35 @@ const WINDOW_STYLES: readonly WindowStyle[] = ['filled', 'filled-dark', 'transpa
 
 function requireOneOf<T extends string>(value: unknown, allowed: readonly T[], what: string): T {
   const match = allowed.find((candidate) => candidate === value);
-  if (match === undefined) throw new Error(`${what}: valore non supportato (${String(value)})`);
+  if (match === undefined) throw new Error(`${what}: unsupported value (${String(value)})`);
   return match;
 }
 
-// Sezioni che la finestra Impostazioni può scrivere via settings:set: history,
-// meta, cache e simili sono gestite solo dal main (schema validato: backlog Giorno 3).
+// Sections the Settings window may write via settings:set: history, meta, caches
+// and the like are owned by the main process only (schema validation: Day 3 backlog).
 const RENDERER_EDITABLE_KEYS = new Set<string>(['accounts', 'workSchedule', 'ui', 'diagnostics', 'updates']);
 
 function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
-  // `updates` è stato gestito dal main (esito dei controlli): dal renderer si
-  // accetta solo la preferenza autoCheck, altrimenti una bozza aperta prima di un
-  // controllo automatico ne sovrascriverebbe l'esito al primo "Salva".
+  // `updates` is owned by the main process (check results): from the renderer only
+  // the autoCheck preference is accepted, otherwise a draft opened before an automatic
+  // check would overwrite its result on the first "Save".
   if (key === 'updates') {
     const incoming = isPlainRecord(value) ? value : {};
     return { ...getUpdateSettings(), autoCheck: incoming.autoCheck !== false };
   }
-  // Stesso principio per la diagnostica: le firme già segnalate le scrive solo il main.
+  // Same principle for diagnostics: already reported signatures are written only by the main process.
   if (key === 'diagnostics') {
     const incoming = isPlainRecord(value) ? value : {};
     return { ...store.get('diagnostics'), autoReportFormatDrift: incoming.autoReportFormatDrift !== false };
   }
   if (key !== 'accounts' || !Array.isArray(value)) return value;
   const current = getAccounts();
-  // Validati prima di toccarli: dal renderer arriva un valore qualunque.
+  // Validated before being touched: the renderer may send any value.
   const merged = normalizeAccounts(value)
     .map((incoming) => providers.preserveSecrets(incoming, current.find((c) => c.id === incoming.id)))
     .filter((a): a is AccountConfig => a !== null);
-  // Un account presente nello store ma assente dalla patch non viene rimosso qui:
-  // la rimozione passa solo da accounts:remove (che pulisce anche la partition).
+  // An account present in the store but missing from the patch is not removed here:
+  // removal goes only through accounts:remove (which also clears the partition).
   for (const cur of current) {
     if (!merged.some((m) => m.id === cur.id)) merged.push(cur);
   }
@@ -613,10 +610,10 @@ function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// Aggiornamenti (issue #5, services/updates.ts): solo controllo + download nel
-// browser, nessuna installazione automatica (pacchetti non firmati, nessuna
-// dipendenza aggiuntiva — scelta dell'utente). Lo stato vive in store.updates,
-// così la finestra Impostazioni e il tray lo leggono come ogni altra impostazione.
+// Updates (issue #5, services/updates.ts): only check + download in the browser, no
+// automatic installation (unsigned packages, no extra dependency — user's choice).
+// The state lives in store.updates, so the Settings window and the tray read it like
+// any other setting.
 // ---------------------------------------------------------------------------
 function getUpdateSettings(): UpdateSettings {
   return store.get('updates');
@@ -639,9 +636,9 @@ async function checkForUpdates(source: 'auto' | 'manual'): Promise<UpdateSetting
     });
     next = { ...current, available, lastCheckedAt: new Date().toISOString(), lastError: null };
   } catch (err) {
-    // Mai bloccante: l'ultimo esito noto (available) resta valido, l'errore si
-    // vede in Impostazioni accanto a "Controlla ora".
-    console.error('[main] controllo aggiornamenti fallito:', (err as Error).message);
+    // Never blocking: the last known result (available) stays valid, the error is shown
+    // in Settings next to "Check now".
+    console.error('[main] update check failed:', (err as Error).message);
     next = { ...current, lastCheckedAt: new Date().toISOString(), lastError: (err as Error).message };
   }
 
@@ -662,10 +659,9 @@ async function checkForUpdates(source: 'auto' | 'manual'): Promise<UpdateSetting
 }
 
 function startUpdateChecks(): void {
-  // In sviluppo (`npm start`, app non pacchettizzata) niente controllo automatico:
-  // la versione locale non corrisponde a una build installata. Il pulsante
-  // "Controlla ora" funziona comunque. `autoCheck` è riletto ad ogni giro, quindi
-  // attivarlo/disattivarlo in Impostazioni ha effetto senza riavviare.
+  // In development (`npm start`, unpackaged app) no automatic check: the local version
+  // does not match an installed build. The "Check now" button still works. `autoCheck`
+  // is re-read on every round, so toggling it in Settings takes effect without a restart.
   if (!app.isPackaged) return;
   setTimeout(() => { runDetached('controllo aggiornamenti', checkForUpdates('auto')); }, UPDATE_FIRST_CHECK_DELAY_MS);
   updateTimer = setInterval(() => { runDetached('controllo aggiornamenti', checkForUpdates('auto')); }, UPDATE_CHECK_INTERVAL_MS);
@@ -682,20 +678,20 @@ function registerIpcHandlers(): void {
   ipcMain.handle('settings:get', () => redactSecretsForRenderer(store.store));
 
   ipcMain.handle('settings:set', (_event: IpcMainInvokeEvent, patch: unknown) => {
-    if (!isPlainRecord(patch)) throw new Error('Impostazioni: patch non valida');
+    if (!isPlainRecord(patch)) throw new Error('Settings: invalid patch');
     let next: AppSettings = store.store;
     for (const [key, value] of Object.entries(patch)) {
-      if (!RENDERER_EDITABLE_KEYS.has(key)) throw new Error(`Impostazioni: sezione non modificabile dal renderer: ${key}`);
+      if (!RENDERER_EDITABLE_KEYS.has(key)) throw new Error(`Settings: section not editable from the renderer: ${key}`);
       next = { ...next, [key]: preserveRealSecretsOnWrite(key, value) };
     }
-    // Stessa normalizzazione dell'avvio (store/normalize.ts): un valore del tipo
-    // sbagliato o un campo mancante nella patch non arriva mai nello store.
+    // Same normalization as at startup (store/normalize.ts): a value of the wrong type
+    // or a field missing from the patch never reaches the store.
     store.store = normalizeSettings(next, DEFAULTS);
     applyMainLocale();
     const redacted = redactSecretsForRenderer(store.store);
-    // Propaga il cambio al widget se già aperto: alcuni campi (es. colore accento)
-    // non hanno un IPC dedicato come ui.windowStyle/ui.alwaysOnTop e altrimenti
-    // resterebbero applicati solo al prossimo riavvio della finestra (feedback utente).
+    // Propagates the change to the widget if open: some fields (e.g. accent color) have
+    // no dedicated IPC like ui.windowStyle/ui.alwaysOnTop and would otherwise apply only
+    // after the next window restart (user feedback).
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('settings:update', redacted);
     }
@@ -709,12 +705,12 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('window:setAlwaysOnTop', (_event: IpcMainInvokeEvent, rawValue: unknown) => {
-    const value = requireBoolean(rawValue, 'Sempre in primo piano');
+    const value = requireBoolean(rawValue, 'Always on top');
     store.set('ui.alwaysOnTop', value);
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(value, 'floating');
-    // Propaga anche alla finestra Impostazioni se aperta (es. attivato dal pin
-    // nella titlebar del widget): stessa logica di settings:set sopra, per non
-    // lasciare la checkbox "Sempre in primo piano" disallineata.
+    // Also propagates to the Settings window if open (e.g. toggled from the pin in the
+    // widget title bar): same logic as settings:set above, so that the "Always on top"
+    // checkbox does not drift.
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       settingsWindow.webContents.send('settings:update', redactSecretsForRenderer(store.store));
     }
@@ -722,7 +718,7 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('window:setStyle', (_event: IpcMainInvokeEvent, rawStyle: unknown) => {
-    const style = requireOneOf(rawStyle, WINDOW_STYLES, 'Stile finestra');
+    const style = requireOneOf(rawStyle, WINDOW_STYLES, 'Window style');
     store.set('ui.windowStyle', style);
     const wasVisible = mainWindow ? mainWindow.isVisible() : true;
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
@@ -754,8 +750,8 @@ function registerIpcHandlers(): void {
     const id = requireString(rawId, 'Account');
     const cfg = findAccount(id);
     if (!cfg) return;
-    // Disconnect completo prima di togliere la riga: per Claude cancella anche la
-    // partition, altrimenti i cookie resterebbero su disco senza più un proprietario.
+    // Full disconnect before removing the row: for Claude it also clears the partition,
+    // otherwise the cookies would stay on disk with no owner.
     await providers.disconnect(cfg);
     store.set('accounts', getAccounts().filter((a) => a.id !== id));
     broadcastSettings();
@@ -765,7 +761,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('accounts:connectClaude', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
     const id = requireString(rawId, 'Account');
     const cfg = findAccount(id);
-    if (!cfg || cfg.provider !== 'claude') throw new Error(`Account Claude non trovato: ${id}`);
+    if (!cfg || cfg.provider !== 'claude') throw new Error(`Claude account not found: ${id}`);
     const { sessionKey, capturedAt } = await captureClaudeSession(cfg.partition);
     let organizationId: string | null = null;
     try {
@@ -773,7 +769,7 @@ function registerIpcHandlers(): void {
       const orgs = await claudeService.listOrganizations(sessionKey, cookieHeader);
       organizationId = orgs[0]?.id ?? null;
     } catch (err) {
-      console.error('[main] impossibile risolvere organizationId Claude:', (err as Error).message);
+      console.error('[main] could not resolve the Claude organizationId:', (err as Error).message);
     }
     updateAccount(id, (a) => (a.provider === 'claude'
       ? { ...a, enabled: true, session: { sessionKey, organizationId, capturedAt, expiresAt: null } }
@@ -795,9 +791,9 @@ function registerIpcHandlers(): void {
     return { username };
   });
 
-  // Via sperimentale alternativa al PAT incollato a mano — vedi CLAUDE.md/RESEARCH.md
-  // §2.2: ipotesi testata e confutata per il seat aziendale, mantenuta come
-  // alternativa al PAT per il piano personale.
+  // Experimental alternative to a hand-pasted PAT — see CLAUDE.md/RESEARCH.md §2.2:
+  // hypothesis tested and disproved for company seats, kept as an alternative to the PAT
+  // for personal plans.
   ipcMain.handle('accounts:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, rawId: unknown, rawPayload: unknown) => {
     const id = requireString(rawId, 'Account');
     const payloadRecord = isPlainRecord(rawPayload) ? rawPayload : {};
@@ -819,12 +815,12 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('updates:check', () => checkForUpdates('manual'));
 
-  // L'URL da aprire viene dallo store (scritto solo da checkForUpdates), mai dal
-  // renderer, ed è comunque limitato al repository del progetto.
+  // The URL to open comes from the store (written only by checkForUpdates), never
+  // from the renderer, and is restricted to the project repository anyway.
   const openTrustedUpdateUrl = async (pick: (a: NonNullable<UpdateSettings['available']>) => string) => {
     const available = getUpdateSettings().available;
     const url = available ? pick(available) : null;
-    if (!url || !url.startsWith(TRUSTED_DOWNLOAD_PREFIX)) throw new Error('Nessun aggiornamento disponibile');
+    if (!url || !url.startsWith(TRUSTED_DOWNLOAD_PREFIX)) throw new Error('No update available');
     await shell.openExternal(url);
   };
   ipcMain.handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
@@ -841,33 +837,33 @@ function registerIpcHandlers(): void {
   });
 }
 
-// Prima delle partition per account (issue #4) i cookie claude.ai vivevano in
-// session.defaultSession: una sola volta, li spostiamo nella partition
-// dell'account Claude migrato (id 'claude', vedi store/migrate.ts) per non
-// costringere a rifare il login dopo l'aggiornamento.
+// Before per-account partitions (issue #4) claude.ai cookies lived in
+// session.defaultSession: once, we move them into the partition of the migrated
+// Claude account (id 'claude', see store/migrate.ts) so the user does not have to log
+// in again after the update.
 async function migrateLegacyClaudeCookies(): Promise<void> {
   if (store.get('meta').claudeCookiesMigrated === true) return;
   const legacy = findAccount('claude');
   try {
     if (legacy?.provider === 'claude') {
       const moved = await migrateDefaultSessionCookies(legacy.partition);
-      console.log(`[main] migrati ${moved} cookie claude.ai nella partition dell'account '${legacy.label}'`);
+      console.log(`[main] moved ${moved} claude.ai cookies into the partition of account '${legacy.label}'`);
     }
     store.set('meta.claudeCookiesMigrated', true);
   } catch (err) {
-    // Non bloccante: l'account risulterà "sessione non valida" e basterà riconnetterlo.
-    console.error('[main] migrazione cookie Claude fallita:', (err as Error).message);
+    // Not blocking: the account will show "session not valid" and reconnecting it is enough.
+    console.error('[main] Claude cookie migration failed:', (err as Error).message);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Ciclo di vita app
+// App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
-  // È un widget, non un'app documentale: la barra menu di default di Electron
-  // (File/Modifica/Vista/Finestra/Aiuto) non serve e appesantiva la skin "pieno"
-  // (feedback utente — vedi anche setMenuBarVisibility(false) su ogni finestra
-  // in main/windows.ts come difesa aggiuntiva per-finestra).
+  // It is a widget, not a document app: Electron's default menu bar
+  // (File/Edit/View/Window/Help) is not needed and weighed down the "filled" skin (user
+  // feedback — see also setMenuBarVisibility(false) on every window in main/windows.ts
+  // as an extra per-window defence).
   Menu.setApplicationMenu(null);
 
   registerIpcHandlers();
@@ -883,10 +879,10 @@ app.whenReady().then(async () => {
     store,
   });
 
-  // Il refresh al primo caricamento è già innescato dal renderer stesso
-  // (renderer/app.ts chiama requestUsageRefresh() in DOMContentLoaded, sia al primo
-  // avvio sia dopo un cambio skin che ricrea la finestra) — un secondo trigger qui
-  // duplicherebbe la chiamata alle API Claude/Copilot ad ogni apertura del widget.
+  // The refresh on first load is already triggered by the renderer itself
+  // (renderer/app.ts calls requestUsageRefresh() on DOMContentLoaded, both at first
+  // start and after a skin change that recreates the window) — a second trigger here
+  // would duplicate the Claude/Copilot API call every time the widget opens.
 
   refreshTimer = setInterval(() => { runDetached('refresh usage', refreshAndBroadcast()); }, REFRESH_INTERVAL_MS);
   startWindowHoverPolling();
@@ -898,16 +894,16 @@ app.whenReady().then(async () => {
     }
   });
 }).catch((err: unknown) => {
-  // Avvio fallito (finestra, tray, migrazione…): senza questo l'app resterebbe viva
-  // in background senza interfaccia e senza alcun messaggio. Meglio dirlo e uscire.
-  console.error('[main] avvio fallito:', err);
+  // Startup failed (window, tray, migration…): without this the app would stay alive
+  // in the background with no UI and no message at all. Better to say so and quit.
+  console.error('[main] startup failed:', err);
   dialog.showErrorBox(t('startup.failedTitle'), err instanceof Error ? err.message : String(err));
   app.quit();
 });
 
 app.on('window-all-closed', () => {
-  // L'app resta viva in tray anche a finestra chiusa (refresh in background);
-  // si esce solo dalla voce "Esci" del menu tray.
+  // The app stays alive in the tray even with the window closed (background refresh);
+  // it quits only from the "Quit" entry of the tray menu.
 });
 
 app.on('before-quit', () => {

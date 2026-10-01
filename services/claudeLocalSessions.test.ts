@@ -1,7 +1,7 @@
-// services/claudeLocalSessions.test.ts — test unitari per l'aggregazione insight
-// locali. Nessun accesso reale al filesystem/SDK: listSessions/getSessionMessages
-// vengono iniettati come dipendenze fasulle (stesso principio del mock di `fetch`
-// già usato in services/claude.test.ts/services/copilot.test.ts).
+// services/claudeLocalSessions.test.ts — unit tests for the local insights
+// aggregation. No real filesystem/SDK access: listSessions/getSessionMessages are
+// injected as fake dependencies (same principle as the `fetch` mock in
+// services/claude.test.ts/services/copilot.test.ts).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,13 +42,13 @@ function makeDeps(sessions: SDKSessionInfo[], messagesBySession: Record<string, 
   };
 }
 
-test('computeClaudeLocalInsights ritorna null se nessuna sessione è nella finestra', async () => {
+test('computeClaudeLocalInsights returns null when no session is in the window', async () => {
   const deps = makeDeps([session({ lastModified: Date.now() - 10 * DAY })], {});
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result, null);
 });
 
-test('computeClaudeLocalInsights esclude le sessioni fuori dalla finestra', async () => {
+test('computeClaudeLocalInsights excludes sessions outside the window', async () => {
   const inWindow = session({ sessionId: 'in', lastModified: Date.now() - DAY, createdAt: Date.now() - DAY - HOUR });
   const outOfWindow = session({ sessionId: 'out', lastModified: Date.now() - 30 * DAY });
   const deps = makeDeps([inWindow, outOfWindow], {
@@ -59,7 +59,7 @@ test('computeClaudeLocalInsights esclude le sessioni fuori dalla finestra', asyn
   assert.equal(result?.sessionsAnalyzed, 1);
 });
 
-test('computeClaudeLocalInsights calcola highContextSharePercent pesato sui token', async () => {
+test('computeClaudeLocalInsights computes a token-weighted highContextSharePercent', async () => {
   const s = session({ sessionId: 's1' });
   const deps = makeDeps([s], {
     s1: [
@@ -68,10 +68,10 @@ test('computeClaudeLocalInsights calcola highContextSharePercent pesato sui toke
     ],
   });
   const result = await computeClaudeLocalInsights(7, deps);
-  assert.equal(result?.highContextSharePercent, 70); // 70 dei 100 output_tokens totali vengono da turni a contesto alto
+  assert.equal(result?.highContextSharePercent, 70); // 70 of the 100 total output_tokens come from high-context turns
 });
 
-test('computeClaudeLocalInsights calcola longSessionSharePercent solo per sessioni durate 8h+', async () => {
+test('computeClaudeLocalInsights computes longSessionSharePercent only for 8h+ sessions', async () => {
   const shortSession = session({ sessionId: 'short', createdAt: Date.now() - HOUR, lastModified: Date.now() });
   const longSession = session({ sessionId: 'long', createdAt: Date.now() - 9 * HOUR, lastModified: Date.now() });
   const deps = makeDeps([shortSession, longSession], {
@@ -82,7 +82,7 @@ test('computeClaudeLocalInsights calcola longSessionSharePercent solo per sessio
   assert.equal(result?.longSessionSharePercent, 60);
 });
 
-test('computeClaudeLocalInsights tronca topTools a 5 e ordina per frequenza', async () => {
+test('computeClaudeLocalInsights truncates topTools to 5 and sorts by frequency', async () => {
   const s = session({ sessionId: 's1' });
   const messages = [
     assistantMessage({ output_tokens: 1, input_tokens: 1 }, ['Bash', 'Bash', 'Read']),
@@ -91,25 +91,25 @@ test('computeClaudeLocalInsights tronca topTools a 5 e ordina per frequenza', as
   const deps = makeDeps([s], { s1: messages });
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result?.topTools.length, 5);
-  assert.equal(at(result.topTools, 0).name, 'Bash'); // 3 occorrenze, il più frequente
+  assert.equal(at(result.topTools, 0).name, 'Bash'); // 3 occurrences, the most frequent
 });
 
-test('computeClaudeLocalInsights salta una sessione illeggibile senza interrompere le altre', async () => {
+test('computeClaudeLocalInsights skips an unreadable session without stopping the others', async () => {
   const broken = session({ sessionId: 'broken' });
   const ok = session({ sessionId: 'ok' });
   const deps: LocalSessionsDeps = {
     listSessions: (async () => [broken, ok]),
     getSessionMessages: (async (sessionId: string) => {
-      if (sessionId === 'broken') throw new Error('file corrotto');
+      if (sessionId === 'broken') throw new Error('corrupted file');
       return [assistantMessage({ output_tokens: 50, input_tokens: 1 })];
     }),
   };
   const result = await computeClaudeLocalInsights(7, deps);
-  assert.equal(result?.sessionsAnalyzed, 2); // entrambe contate come "nella finestra", solo una contribuisce dati
+  assert.equal(result?.sessionsAnalyzed, 2); // both counted as "in the window", only one contributes data
   assert.equal(result.highContextSharePercent, 0);
 });
 
-test('computeClaudeLocalInsights ritorna null se listSessions fallisce', async () => {
+test('computeClaudeLocalInsights returns null when listSessions fails', async () => {
   const deps: LocalSessionsDeps = {
     listSessions: (async () => { throw new Error('errore SDK'); }),
     getSessionMessages: (async () => []),
@@ -118,7 +118,7 @@ test('computeClaudeLocalInsights ritorna null se listSessions fallisce', async (
   assert.equal(result, null);
 });
 
-test('computeClaudeLocalInsights raggruppa i token per giorno di ultima modifica della sessione', async () => {
+test('computeClaudeLocalInsights groups tokens by the day the session was last modified', async () => {
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
   const yesterday = new Date(now - DAY).toISOString().slice(0, 10);

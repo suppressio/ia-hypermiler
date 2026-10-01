@@ -1,20 +1,20 @@
-// main/copilot-oauth.ts — cattura di un token OAuth App di GitHub per Copilot, in
-// alternativa al PAT incollato a mano (renderer/settings.ts, btn-connect-copilot).
+// main/copilot-oauth.ts — captures a GitHub OAuth App token for Copilot, as an
+// alternative to a hand-pasted PAT (renderer/settings.ts, connect-copilot-oauth).
 //
-// Differenza deliberata rispetto a main/claude-auth.ts: Copilot non ha una pagina di
-// login integrabile in una BrowserWindow con cattura cookie. Serve una vera GitHub
-// OAuth App (l'utente la registra una volta su github.com/settings/developers, con
-// Authorization callback URL http://127.0.0.1:8123/callback) e un flusso Authorization
-// Code + PKCE via loopback locale. Usiamo il browser di sistema (shell.openExternal),
-// non una webview dell'app: l'utente autentica su github.com nel proprio browser reale,
-// più corretto lato sicurezza di una BrowserWindow controllata da noi.
+// Deliberate difference from main/claude-auth.ts: Copilot has no login page that can
+// be embedded in a BrowserWindow with cookie capture. It needs a real GitHub OAuth App
+// (registered once by the user on github.com/settings/developers, with Authorization
+// callback URL http://127.0.0.1:8123/callback) and an Authorization Code + PKCE flow
+// over a local loopback. The system browser is used (shell.openExternal), not an app
+// webview: the user authenticates on github.com in their own real browser, safer than
+// a BrowserWindow controlled by us.
 //
-// Ipotesi da verificare (vedi CLAUDE.md/RESEARCH.md §2.2): un token OAuth App potrebbe
-// ricevere da copilot_internal/user una risposta con quota_snapshots completo (come
-// l'estensione Copilot Chat di VS Code), a differenza di quanto osservato con un PAT.
-// Non è confermato: questo file implementa solo l'ottenimento del token, la verifica
-// del contenuto della risposta resta in services/copilot.ts (nessuna modifica lì:
-// un token OAuth si usa esattamente come un PAT, Authorization: Bearer <token>).
+// Hypothesis tested (see CLAUDE.md/RESEARCH.md §2.2): an OAuth App token might receive
+// a full quota_snapshots response from copilot_internal/user (like the VS Code Copilot
+// Chat extension), unlike what was observed with a PAT. Disproved for company seats.
+// This file only obtains the token; the response handling stays in services/copilot.ts
+// (no change there: an OAuth token is used exactly like a PAT, Authorization: Bearer
+// <token>).
 
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -25,7 +25,7 @@ const AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const REDIRECT_PORT = 8123;
 const SCOPES = ['read:user'];
-const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minuti, stessa soglia di main/claude-auth.ts
+const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes, same threshold as main/claude-auth.ts
 
 export interface GithubOAuthConfig {
   clientId: string;
@@ -41,14 +41,14 @@ function toBase64Url(buffer: Buffer): string {
   return buffer.toString('base64').replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
 }
 
-/** PKCE (RFC 7636): estratta come funzione pura, testabile senza rete. */
+/** PKCE (RFC 7636): extracted as a pure function, testable without network. */
 export function createPkcePair(): PkcePair {
   const codeVerifier = toBase64Url(randomBytes(48));
   const codeChallenge = toBase64Url(createHash('sha256').update(codeVerifier).digest());
   return { codeVerifier, codeChallenge };
 }
 
-/** Costruisce l'URL di autorizzazione GitHub: estratta a parte per essere testabile senza rete. */
+/** Builds the GitHub authorization URL: extracted so it is testable without network. */
 export function buildAuthorizationUrl(params: {
   clientId: string;
   redirectUri: string;
@@ -112,30 +112,30 @@ async function exchangeCodeForToken(params: {
   });
 
   if (!response.ok) {
-    throw new Error(`Scambio del code OAuth GitHub fallito con stato ${response.status}`);
+    throw new Error(`GitHub OAuth code exchange failed with status ${response.status}`);
   }
 
   const payload = (await response.json()) as { access_token?: string; error?: string; error_description?: string };
   if (!payload.access_token) {
-    throw new Error(payload.error_description || payload.error || 'GitHub non ha restituito un access_token');
+    throw new Error(payload.error_description || payload.error || 'GitHub did not return an access_token');
   }
   return payload.access_token;
 }
 
 /**
- * Apre il browser di sistema sulla pagina di autorizzazione GitHub e risolve con
- * l'access_token non appena l'utente completa il consenso (loopback su 127.0.0.1).
+ * Opens the system browser on the GitHub authorization page and resolves with the
+ * access_token as soon as the user gives consent (loopback on 127.0.0.1).
  */
 export function captureGithubOAuthToken(config: GithubOAuthConfig): Promise<{ accessToken: string }> {
   return new Promise((resolve, reject) => {
     const clientId = config.clientId.trim();
     const clientSecret = config.clientSecret.trim();
     if (!clientId) {
-      reject(new Error('Copilot OAuth: Client ID mancante'));
+      reject(new Error('Copilot OAuth: missing Client ID'));
       return;
     }
     if (!clientSecret) {
-      reject(new Error('Copilot OAuth: Client Secret mancante'));
+      reject(new Error('Copilot OAuth: missing Client Secret'));
       return;
     }
 
@@ -173,13 +173,13 @@ export function captureGithubOAuthToken(config: GithubOAuthConfig): Promise<{ ac
 
       if (error) {
         finishWithHtml(t('oauth.failedTitle'), errorDescription ?? error);
-        finish(reject, new Error(errorDescription ?? `Autorizzazione GitHub fallita: ${error}`));
+        finish(reject, new Error(errorDescription ?? `GitHub authorization failed: ${error}`));
         return;
       }
 
       if (!code || returnedState !== state) {
         finishWithHtml(t('oauth.failedTitle'), t('oauth.invalidCallback'));
-        finish(reject, new Error('Validazione della callback OAuth GitHub fallita'));
+        finish(reject, new Error('GitHub OAuth callback validation failed'));
         return;
       }
 
@@ -196,16 +196,16 @@ export function captureGithubOAuthToken(config: GithubOAuthConfig): Promise<{ ac
     });
 
     const safetyTimer = setTimeout(() => {
-      finish(reject, new Error('Login GitHub scaduto: nessuna autorizzazione entro 5 minuti'));
+      finish(reject, new Error('GitHub login timed out: no authorization within 5 minutes'));
     }, MAX_WAIT_MS);
 
     server.on('error', (err) => {
-      finish(reject, new Error(`Impossibile avviare il server di callback OAuth (porta ${REDIRECT_PORT}): ${err.message}`));
+      finish(reject, new Error(`Could not start the OAuth callback server (port ${REDIRECT_PORT}): ${err.message}`));
     });
 
     server.listen(REDIRECT_PORT, '127.0.0.1', () => {
       shell.openExternal(authorizationUrl).catch((err: unknown) => {
-        finish(reject, new Error(`Impossibile aprire la pagina di accesso GitHub: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
+        finish(reject, new Error(`Could not open the GitHub sign-in page: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
       });
     });
   });

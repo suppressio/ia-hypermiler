@@ -1,28 +1,25 @@
-// services/claudeLocalSessions.ts — insight comportamentali da sessioni Claude Code
-// LOCALI (CLI + estensione VS Code, stessa sorgente — vedi RESEARCH.md §5). Non è
-// un dato dell'account claude.ai: legge le trascrizioni di sessione su questa
-// macchina tramite l'SDK ufficiale (@anthropic-ai/claude-agent-sdk) invece di fare
-// parsing diretto del formato JSONL interno — non documentato e che cambia tra
-// versioni (vedi RESEARCH.md §5.1).
+// services/claudeLocalSessions.ts — behavioural insights from LOCAL Claude Code
+// sessions (CLI + VS Code extension, same source — see RESEARCH.md §5). Not data of
+// the claude.ai account: it reads the session transcripts on this machine through the
+// official SDK (@anthropic-ai/claude-agent-sdk) instead of parsing the internal JSONL
+// format directly — undocumented and changing between versions (see RESEARCH.md §5.1).
 //
-// Disciplina sui contenuti: legge SOLO campi strutturali/numerici (usage a livello
-// di turno, nomi di tool/server MCP) — MAI il testo dei messaggi (blocchi content
-// di tipo "text"), stessa regola già applicata in services/_shape.ts per la
-// diagnostica format-drift.
+// Content discipline: it reads ONLY structural/numeric fields (turn-level usage,
+// tool/MCP server names) — NEVER message text (content blocks of type "text"), the
+// same rule already applied in services/_shape.ts for format-drift diagnostics.
 
-// @anthropic-ai/claude-agent-sdk è distribuito solo come ESM puro (nessuna
-// condizione "require" in package.json/exports, solo "default": "./sdk.mjs") —
-// un `import` statico verrebbe compilato da tsc in un `require()` (tsconfig.json
-// usa CommonJS) che nel Node bundlato da Electron 31 fallisce con ERR_REQUIRE_ESM
-// (verificato lanciando `npm start`: il Node di sistema tollera require() di ESM
-// via interop, quello dentro Electron no). Fix: import() dinamico, che tsc lascia
-// nativo anche in emit CommonJS — unico modo di caricare ESM da qui.
+// @anthropic-ai/claude-agent-sdk ships only as pure ESM (no "require" condition in
+// package.json/exports, only "default": "./sdk.mjs") — a static `import` would be
+// compiled by tsc into a `require()` (tsconfig.json uses CommonJS) that fails with
+// ERR_REQUIRE_ESM in the Node bundled with Electron 31 (verified with `npm start`: the
+// system Node tolerates require() of ESM via interop, the one inside Electron does
+// not). Fix: a native dynamic import(), see dynamicImport below.
 import type { ListSessionsOptions, GetSessionMessagesOptions, SDKSessionInfo, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { ClaudeLocalInsights, LocalDailyTokens, ToolUsageShare } from '../types/index';
 
-const HIGH_CONTEXT_THRESHOLD = 150_000; // token di contesto stimato, stessa soglia del pannello VS Code che ha ispirato questa funzionalità
+const HIGH_CONTEXT_THRESHOLD = 150_000; // estimated context tokens, same threshold as the VS Code panel that inspired this feature
 const LONG_SESSION_HOURS = 8;
-const MAX_SESSIONS_SCANNED = 300; // margine di sicurezza: listSessions() ritorna già dal più recente
+const MAX_SESSIONS_SCANNED = 300; // safety margin: listSessions() already returns the most recent first
 const TOP_TOOLS_LIMIT = 5;
 
 type PlainRecord = Record<string, unknown>;
@@ -36,28 +33,27 @@ function readNumber(record: PlainRecord, key: string): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-/** Contesto stimato del turno: token letti dalla cache + creati in cache + input diretto. */
+/** Estimated context of a turn: tokens read from cache + written to cache + direct input. */
 function turnContextTokens(usage: PlainRecord): number {
   return readNumber(usage, 'cache_read_input_tokens') + readNumber(usage, 'cache_creation_input_tokens') + readNumber(usage, 'input_tokens');
 }
 
-// Iniettabili nei test (services/claudeLocalSessions.test.ts) per evitare accesso
-// reale al filesystem/SDK — stesso principio del mock di `fetch` già usato in
-// services/claude.test.ts e services/copilot.test.ts.
+// Injectable in tests (services/claudeLocalSessions.test.ts) to avoid real
+// filesystem/SDK access — same principle as the `fetch` mock in
+// services/claude.test.ts and services/copilot.test.ts.
 export interface LocalSessionsDeps {
   listSessions: (options?: ListSessionsOptions) => Promise<SDKSessionInfo[]>;
   getSessionMessages: (sessionId: string, options?: GetSessionMessagesOptions) => Promise<SessionMessage[]>;
 }
 
-// tsc, con tsconfig.json a "module": "CommonJS", trasforma ANCHE un `import()`
-// dinamico in `Promise.resolve().then(() => require(...))` — stesso ERR_REQUIRE_ESM
-// del require() statico (verificato con una build reale). L'unico modo di ottenere
-// un import() nativo da un file compilato in CommonJS è nasconderlo dall'analisi
-// statica del compilatore passando per un Function costruito a runtime — pattern
-// noto per questo esatto scenario (caricare un pacchetto ESM-only da codice CJS),
-// non un aggiramento accidentale. Verificato funzionante sia in Node diretto sia
-// dentro Electron 31 (lanciando `npm start`).
-// eslint-disable-next-line @typescript-eslint/no-implied-eval -- unico modo di un import() nativo da codice compilato in CommonJS, vedi commento sopra
+// tsc, with tsconfig.json at "module": "CommonJS", turns EVEN a dynamic `import()`
+// into `Promise.resolve().then(() => require(...))` — the same ERR_REQUIRE_ESM as the
+// static require() (verified with a real build). The only way to get a native
+// import() from a file compiled to CommonJS is to hide it from the compiler's static
+// analysis through a Function built at runtime — a known pattern for this exact
+// scenario (loading an ESM-only package from CJS code), not an accidental workaround.
+// Verified both in plain Node and inside Electron 31 (with `npm start`).
+// eslint-disable-next-line @typescript-eslint/no-implied-eval -- the only way to get a native import() from code compiled to CommonJS, see the comment above
 const dynamicImport = new Function('specifier', 'return import(specifier)') as (
   specifier: string,
 ) => Promise<typeof import('@anthropic-ai/claude-agent-sdk')>;
@@ -75,10 +71,10 @@ function loadSdkDeps(): Promise<LocalSessionsDeps> {
 }
 
 /**
- * Aggrega insight comportamentali sulle sessioni Claude Code locali degli ultimi
- * `windowDays` giorni. Le quote sono pesate per volume di output_tokens (l'uso che
- * consuma davvero credito), non per conteggio di turni. Ritorna null se non ci sono
- * sessioni nella finestra — non un errore, solo niente da mostrare.
+ * Aggregates behavioural insights over the local Claude Code sessions of the last
+ * `windowDays` days. Shares are weighted by output_tokens volume (the usage that
+ * really consumes credit), not by turn count. Returns null when there are no sessions
+ * in the window — not an error, just nothing to show.
  */
 export async function computeClaudeLocalInsights(
   windowDays: number,
@@ -89,7 +85,7 @@ export async function computeClaudeLocalInsights(
   try {
     sessions = await resolvedDeps.listSessions({ limit: MAX_SESSIONS_SCANNED });
   } catch (err) {
-    console.error('[services/claudeLocalSessions] listSessions fallita:', (err as Error).message);
+    console.error('[services/claudeLocalSessions] listSessions failed:', (err as Error).message);
     return null;
   }
 
@@ -102,11 +98,11 @@ export async function computeClaudeLocalInsights(
   let longSessionOutputTokens = 0;
   const toolCounts = new Map<string, number>();
   let totalToolCalls = 0;
-  // Token per giorno, per l'incrocio con il consumo di quota (budget.tokenYield /
-  // budget.consumptionCause). L'SDK non espone un timestamp per singolo messaggio
-  // (SessionMessage non ne ha), quindi l'intera sessione è attribuita al giorno
-  // della sua ultima modifica: approssimazione dichiarata in UI. Data in formato
-  // YYYY-MM-DD UTC, la stessa convenzione di history.dailyUsage (main.ts).
+  // Tokens per day, to cross with quota consumption (budget.tokenYield /
+  // budget.consumptionCause). The SDK exposes no per-message timestamp (SessionMessage
+  // has none), so the whole session is attributed to the day it was last modified: an
+  // approximation stated in the UI. Dates as YYYY-MM-DD UTC, the same convention as
+  // history.dailyUsage (main.ts).
   const daily = new Map<string, LocalDailyTokens>();
 
   for (const session of inWindow) {
@@ -120,10 +116,10 @@ export async function computeClaudeLocalInsights(
     try {
       messages = await resolvedDeps.getSessionMessages(session.sessionId);
     } catch (err) {
-      // Una sessione illeggibile (file corrotto, formato interno cambiato) non deve
-      // interrompere l'aggregazione delle altre — stessa filosofia di resilienza
-      // già applicata al resto dell'app (mai un crash per un singolo dato mancante).
-      console.error(`[services/claudeLocalSessions] sessione ${session.sessionId} illeggibile, saltata:`, (err as Error).message);
+      // An unreadable session (corrupted file, changed internal format) must not stop the
+      // aggregation of the others — the same resilience as the rest of the app (never a
+      // crash because of a single missing datum).
+      console.error(`[services/claudeLocalSessions] session ${session.sessionId} unreadable, skipped:`, (err as Error).message);
       continue;
     }
 
@@ -143,8 +139,8 @@ export async function computeClaudeLocalInsights(
       }
       if (isLongSession) longSessionOutputTokens += outputTokens;
 
-      // Solo il nome del tool/server MCP invocato — mai i parametri della chiamata
-      // né altri blocchi content (es. type "text", il testo reale dei messaggi).
+      // Only the name of the invoked tool/MCP server — never the call parameters nor other
+      // content blocks (e.g. type "text", the real message text).
       const content = entry.message.content;
       if (Array.isArray(content)) {
         for (const block of content) {

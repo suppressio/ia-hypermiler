@@ -1,5 +1,5 @@
-// main/windows.ts — creazione e gestione delle finestre (vedi ARCHITECTURE.md §2, §6)
-// Isolato da main.ts per non appesantirlo con la logica delle due skin.
+// main/windows.ts — window creation and management (see ARCHITECTURE.md §2, §6)
+// Kept apart from main.ts so it is not weighed down by the skin logic.
 
 import { BrowserWindow } from 'electron';
 import path from 'path';
@@ -7,11 +7,11 @@ import type Store from 'electron-store';
 import type { AppSettings } from '../types/index';
 
 const ROOT = path.join(__dirname, '..');
-// renderer/assets/ (non build/, che non viene copiata in dist/ — vedi scripts/generate-icons.js)
-// così la stessa icona applicativa arriva anche a `npm start` non pacchettizzato.
+// renderer/assets/ (not build/, which is not copied into dist/ — see scripts/generate-icons.js)
+// so the same app icon reaches an unpackaged `npm start` too.
 const ICON_PATH = path.join(ROOT, 'renderer', 'assets', 'app-icon.png');
 
-/** Crea la finestra principale (widget), nello stile scelto dall'utente. */
+/** Creates the main window (widget) in the style chosen by the user. */
 export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
   const ui = store.get('ui');
   const isTransparent = ui.windowStyle === 'transparent-digital';
@@ -19,20 +19,20 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
   const win = new BrowserWindow({
     width: ui.bounds.width,
     height: ui.bounds.height,
-    // Posizione solo se mai salvata: senza, Electron centra la finestra.
+    // Position only if ever saved: without it, Electron centers the window.
     ...(ui.bounds.x !== undefined && ui.bounds.y !== undefined ? { x: ui.bounds.x, y: ui.bounds.y } : {}),
     minWidth: 260,
     minHeight: 320,
-    // Sempre senza cornice nativa, in entrambe le skin (feedback utente — con
-    // frame:true la skin "pieno" mostrava la titlebar nativa del sistema operativo
-    // sopra alla titlebar custom dell'app, duplicata e con la barra menu). I
-    // controlli finestra sono sempre quelli custom in renderer/index.html, con
-    // trascinamento gestito via CSS -webkit-app-region (vedi renderer/style.css).
+    // Always without a native frame, in every skin (user feedback — with frame:true the
+    // "filled" skin showed the OS native title bar above the app's custom title bar,
+    // duplicated and with the menu bar). Window controls are always the custom ones in
+    // renderer/index.html, with dragging handled via CSS -webkit-app-region (see
+    // renderer/style.css).
     frame: false,
     transparent: isTransparent,
-    // Colore iniziale della finestra prima che il CSS venga applicato (evita un
-    // flash nel colore sbagliato) — per skin "filled-dark" deve essere lo stesso
-    // esadecimale di --bg-filled-dark in renderer/style.css.
+    // Initial window color before the CSS is applied (avoids a flash in the wrong
+    // color) — for the "filled-dark" skin it must be the same hex as --bg-filled-dark in
+    // renderer/style.css.
     backgroundColor: isTransparent ? '#00000000' : ui.windowStyle === 'filled-dark' ? '#1a1a1a' : '#fafafa',
     alwaysOnTop: ui.alwaysOnTop,
     show: true,
@@ -44,16 +44,16 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
     },
   });
 
-  // Difesa per-finestra oltre a Menu.setApplicationMenu(null) globale in main.ts:
-  // senza questo, la skin "pieno" (frame: true) mostrava la barra menu di default
-  // di Electron (File/Modifica/Vista/Finestra/Aiuto) sopra al widget (feedback utente).
+  // Per-window defence in addition to the global Menu.setApplicationMenu(null) in
+  // main.ts: without it, the "filled" skin (frame: true) showed Electron's default menu
+  // bar (File/Edit/View/Window/Help) above the widget (user feedback).
   win.setMenuBarVisibility(false);
-  // Un fallimento qui è una finestra bianca: almeno resta traccia nel log.
+  // A failure here is a blank window: at least it leaves a trace in the log.
   win.loadFile(path.join(ROOT, 'renderer', 'index.html')).catch((err: unknown) => {
-    console.error('[windows] caricamento widget fallito:', err);
+    console.error('[windows] widget load failed:', err);
   });
 
-  // Persistenza posizione/dimensione (debounce semplice per non scrivere ad ogni pixel)
+  // Position/size persistence (simple debounce so it is not written on every pixel)
   let saveBoundsTimer: NodeJS.Timeout | null = null;
   const persistBounds = () => {
     if (saveBoundsTimer) clearTimeout(saveBoundsTimer);
@@ -69,7 +69,7 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
   return win;
 }
 
-/** Crea (o riporta in primo piano) la finestra impostazioni. */
+/** Creates (or brings to front) the Settings window. */
 export function createSettingsWindow(existing?: BrowserWindow | null): BrowserWindow {
   if (existing && !existing.isDestroyed()) {
     existing.focus();
@@ -77,7 +77,7 @@ export function createSettingsWindow(existing?: BrowserWindow | null): BrowserWi
   }
 
   const win = new BrowserWindow({
-    // Più larga di prima per la tabella account (issue #4).
+    // Wider than before for the accounts table (issue #4).
     width: 620,
     height: 680,
     resizable: true,
@@ -93,7 +93,7 @@ export function createSettingsWindow(existing?: BrowserWindow | null): BrowserWi
 
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(ROOT, 'renderer', 'settings.html')).catch((err: unknown) => {
-    console.error('[windows] caricamento Impostazioni fallito:', err);
+    console.error('[windows] Settings load failed:', err);
   });
 
   return win;

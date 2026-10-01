@@ -1,22 +1,21 @@
-// store/index.ts — wrapper electron-store
-// Schema definito in ARCHITECTURE.md §1. Segreti (sessionKey, PAT/token) restano
-// cifrati via encryptionKey e non passano mai al renderer se non tramite IPC nel main.
+// store/index.ts — electron-store wrapper
+// Schema defined in ARCHITECTURE.md §1. Secrets (sessionKey, PAT/token) stay encrypted
+// via encryptionKey and never reach the renderer except through IPC in the main
+// process.
 //
-// NOTA sicurezza: la encryptionKey qui sotto è un placeholder di sviluppo.
-// Prima di qualunque distribuzione va sostituita con una chiave generata in modo
-// sicuro (es. da un secret manager o da un valore legato alla macchina), MAI committata.
+// SECURITY NOTE: the encryptionKey below is a development placeholder. Before any
+// distribution it must be replaced with a securely generated key (e.g. from a secret
+// manager or a machine-bound value), NEVER committed.
 //
-// NOTA electron-store/conf: i DEFAULTS si applicano con un merge SHALLOW
-// (Object.assign(defaults, fileStore) in conf/dist/source/index.js) — su
-// un'installazione con un file già persistito, un campo nuovo aggiunto dentro un
-// oggetto annidato che esiste già nel file (es. `history`, `accounts.claude`) non
-// viene fuso: l'intero oggetto persistito sovrascrive quello dei default, campo
-// nuovo escluso. Bug reale scoperto aggiungendo `history.recentSamples` (vedi
-// CLAUDE.md, gauge "consumo istantaneo"): `store.get('history.recentSamples')`
-// tornava `undefined` su installazioni preesistenti, non `[]`. Ogni lettura di un
-// campo nested aggiunto dopo il primo rilascio veniva perso. Risolto alla radice
-// da normalizeSettings() in fondo a questo file (merge profondo all'avvio):
-// basta aggiungere il campo nuovo ai DEFAULTS qui sotto.
+// electron-store/conf NOTE: DEFAULTS are applied with a SHALLOW merge
+// (Object.assign(defaults, fileStore) in conf/dist/source/index.js) — on an
+// installation with an existing file, a new field added inside a nested object that
+// already exists in the file (e.g. `history`, an account) is not merged: the whole
+// persisted object overrides the default one, new field excluded. Real bug found when
+// adding `history.recentSamples` (see CLAUDE.md, instant consumption gauge):
+// `store.get('history.recentSamples')` returned `undefined` on existing installations,
+// not `[]`. Fixed at the root by normalizeSettings() at the bottom of this file (deep
+// merge at startup): adding the new field to DEFAULTS (store/defaults.ts) is enough.
 
 import Store from 'electron-store';
 import type { AppSettings } from '../types/index';
@@ -31,12 +30,11 @@ const store = new Store<AppSettings>({
   defaults: DEFAULTS,
 });
 
-// Normalizzazione all'avvio (store/normalize.ts): riporta il file su disco alla
-// forma di AppSettings — campi mancanti (merge shallow di electron-store), tipi
-// sbagliati, schema account legacy `{ claude, copilot }` → `AccountConfig[]`
-// (issue #4, migrazione una tantum). Da qui in poi i tipi di AppSettings dicono
-// il vero e nessuna lettura ha bisogno di fallback. Si riscrive il file solo se
-// qualcosa è davvero cambiato.
+// Normalization at startup (store/normalize.ts): brings the file on disk back to the
+// AppSettings shape — missing fields (electron-store shallow merge), wrong types,
+// legacy `{ claude, copilot }` account schema → `AccountConfig[]` (issue #4, one-off
+// migration). From here on the AppSettings types tell the truth and no read needs a
+// fallback. The file is rewritten only when something really changed.
 const normalized = normalizeSettings(store.store, DEFAULTS);
 if (JSON.stringify(normalized) !== JSON.stringify(store.store)) {
   store.store = normalized;

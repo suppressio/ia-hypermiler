@@ -1,11 +1,11 @@
-// budget.ts — logica di calcolo budget/efficienza/previsionale (vedi ARCHITECTURE.md §0 e §3)
+// budget.ts — budget/efficiency/projection logic (see ARCHITECTURE.md §0 and §3)
 //
-// Modello: ogni account (Claude/Copilot) espone una o più QuotaWindow:
+// Model: every account (Claude/Copilot) exposes one or more QuotaWindow:
 //   { id, label, periodType, periodLength, unit: 'percentage'|'count', used, total, resetsAt }
-// - unit 'percentage': used è già 0-100 (caso Claude: nessun totale in token noto).
-// - unit 'count': used/total sono valori assoluti (caso Copilot: premium requests/crediti).
+// - unit 'percentage': used is already 0-100 (Claude case: no known total in tokens).
+// - unit 'count': used/total are absolute values (Copilot case: premium requests/credits).
 //
-// Tutte le funzioni sono pure (nessun I/O), testabili da terminale/test runner.
+// All functions are pure (no I/O), testable from the terminal/test runner.
 
 import { addDays, differenceInCalendarDays, isBefore, startOfDay, setDate, addMonths } from 'date-fns';
 import type {
@@ -26,13 +26,11 @@ import type {
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 /**
- * Unità lavorativa di un singolo giorno di calendario: 1 (full), 0.5 (half), 0 (off).
- * Se `workSchedule.enabled` è esplicitamente `false` (calendario disattivato, es.
- * account personale senza giorni/ore da rispettare), ogni giorno vale 1 a
- * prescindere da `days` — il pacing torna a considerare i giorni di calendario
- * uniformemente. `undefined` (installazioni precedenti a questo campo, vedi
- * l'avviso sul merge shallow di electron-store in store/index.ts) è trattato come
- * "attivo", preservando il comportamento già in uso.
+ * Working unit of a single calendar day: 1 (full), 0.5 (half), 0 (off).
+ * When `workSchedule.enabled` is false (schedule disabled, e.g. a personal account
+ * with no days/hours to respect), every day counts as 1 regardless of `days` — pacing
+ * goes back to treating calendar days uniformly. The field is always present: older
+ * stores get it from store/normalize.ts.
  */
 export function getDayUnit(date: Date, workSchedule: WorkSchedule): number {
   if (!workSchedule.enabled) return 1;
@@ -45,8 +43,8 @@ export function getDayUnit(date: Date, workSchedule: WorkSchedule): number {
 }
 
 /**
- * Somma le unità lavorative sui giorni di calendario nell'intervallo [startDate, endDate).
- * Se endDate precede startDate, ritorna 0 (nessuna unità negativa).
+ * Sums the working units over the calendar days in [startDate, endDate).
+ * If endDate precedes startDate, returns 0 (no negative units).
  */
 export function workingUnitsBetween(startDate: Date | string, endDate: Date | string, workSchedule: WorkSchedule): number {
   const start = startOfDay(new Date(startDate));
@@ -62,7 +60,7 @@ export function workingUnitsBetween(startDate: Date | string, endDate: Date | st
   return units;
 }
 
-/** Utilizzo normalizzato a percentuale 0-100, o null se non calcolabile (count senza total). */
+/** Utilization normalized to a 0-100 percentage, or null when it cannot be computed (count without total). */
 export function normalizedUtilization(win: QuotaWindow): number | null {
   if (win.unit === 'percentage') return win.used;
   if (typeof win.total === 'number' && win.total > 0) {
@@ -71,7 +69,7 @@ export function normalizedUtilization(win: QuotaWindow): number | null {
   return null;
 }
 
-/** Sceglie la finestra di quota più critica (utilizzo normalizzato più alto). */
+/** Picks the most critical quota window (highest normalized utilization). */
 export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | null {
   const [first] = quotaWindows;
   if (!first) return null;
@@ -91,10 +89,9 @@ export interface PeriodContext {
 }
 
 /**
- * Indice di efficienza: rapporto tra ritmo ideale e ritmo reale, calcolato sulle
- * unità lavorative (non giorni di calendario). ~1 = in linea col budget;
- * >1 = si sta consumando meno del previsto; <1 = si sta consumando più del sostenibile.
- * Ritorna null se non calcolabile (dati insufficienti).
+ * Efficiency index: ratio between the ideal pace and the actual pace, computed on
+ * working units (not calendar days). ~1 = on budget; >1 = consuming less than planned;
+ * <1 = consuming more than sustainable. Returns null when it cannot be computed.
  */
 export function efficiencyIndex({ window, workSchedule, periodStart, periodEnd, now = new Date() }: PeriodContext): number | null {
   const utilization = normalizedUtilization(window);
@@ -112,8 +109,8 @@ export function efficiencyIndex({ window, workSchedule, periodStart, periodEnd, 
 }
 
 /**
- * Proiezione dell'utilizzo (%) alla fine del periodo, estrapolando il ritmo medio
- * reale sulle unità lavorative rimanenti. Limitata a 100.
+ * Projected usage (%) at the end of the period, extrapolating the actual average
+ * pace over the remaining working units. Capped at 100.
  */
 export function projectedUsage({ window, workSchedule, periodStart, periodEnd, now = new Date() }: PeriodContext): number | null {
   const utilization = normalizedUtilization(window);
@@ -128,20 +125,20 @@ export function projectedUsage({ window, workSchedule, periodStart, periodEnd, n
   return Math.round(Math.min(100, projected) * 10) / 10;
 }
 
-/** Giorni di calendario mancanti al reset (>= 0). */
+/** Calendar days left until the reset (>= 0). */
 export function daysUntilReset(resetsAt: Date | string, now: Date = new Date()): number {
   return Math.max(0, differenceInCalendarDays(new Date(resetsAt), now));
 }
 
-/** Giorni/unità lavorative mancanti al reset (>= 0). */
+/** Working days/units left until the reset (>= 0). */
 export function workingDaysUntilReset(resetsAt: Date | string, workSchedule: WorkSchedule, now: Date = new Date()): number {
   return workingUnitsBetween(now, resetsAt, workSchedule);
 }
 
 /**
- * Stima delle unità lavorative di autonomia residua al ritmo medio attuale
- * (quante unità lavorative mancano prima di raggiungere il 100%).
- * Ritorna Infinity se il ritmo attuale è ~0 (nessun consumo osservato).
+ * Estimated remaining autonomy in working units at the current average pace
+ * (how many working units are left before reaching 100%).
+ * Returns Infinity when the current pace is ~0 (no consumption observed).
  */
 export function estimatedAutonomyWorkingDays({ window, workSchedule, periodStart, now = new Date() }: Omit<PeriodContext, 'periodEnd'>): number | null {
   const utilization = normalizedUtilization(window);
@@ -159,8 +156,8 @@ export function estimatedAutonomyWorkingDays({ window, workSchedule, periodStart
 }
 
 /**
- * Per finestre count-based (es. Copilot premium requests): quante unità residue
- * ci si può permettere per ogni unità lavorativa rimanente. Null se non applicabile.
+ * For count-based windows (e.g. Copilot premium requests): how many remaining
+ * units can be afforded per remaining working unit. Null when not applicable.
  */
 export function remainingBudgetPerWorkingDay({ window, workSchedule, periodEnd, now = new Date() }: Omit<PeriodContext, 'periodStart'>): number | null {
   if (window.unit !== 'count' || typeof window.total !== 'number') return null;
@@ -171,13 +168,12 @@ export function remainingBudgetPerWorkingDay({ window, workSchedule, periodEnd, 
 }
 
 /**
- * Ritmo di consumo recente (%/ora), calcolato tra il campione più vecchio e quello
- * più recente disponibili entro `lookbackMinutes` (default 3h). Non è un valore
- * realmente istantaneo (il refresh è ogni 30 min, vedi CLAUDE.md), ma il ritmo
- * osservato nella finestra recente. Ritorna null se i campioni sono
- * insufficienti o l'intervallo è troppo corto (< 5 min) per essere significativo.
- * Un delta negativo (reset della finestra di quota nel mezzo) viene clampato a 0
- * invece di mostrare un ritmo negativo privo di senso per l'utente.
+ * Recent consumption pace (%/h), computed between the oldest and the newest sample
+ * available within `lookbackMinutes` (default 3h). Not truly instantaneous (refresh
+ * runs every 30 min, see CLAUDE.md), but the pace observed in the recent window.
+ * Returns null when samples are insufficient or the interval is too short (< 5 min)
+ * to be meaningful. A negative delta (quota window reset in between) is clamped to 0
+ * instead of showing a negative pace that means nothing to the user.
  */
 export function instantaneousRate(
   samples: { timestamp: Date | string; used: number }[],
@@ -207,13 +203,13 @@ export function instantaneousRate(
 }
 
 /**
- * Ritmo orario massimo (%/ora) sostenibile per arrivare esattamente al 100% al
- * reset della finestra — il "pallino target" del gauge di consumo istantaneo.
- * Usa solo `window.resetsAt`, non `periodStart`/`workSchedule`: a differenza di
- * `efficiencyIndex`/`projectedUsage` funziona anche per finestre con periodo di
- * riferimento sconosciuto (es. crediti una tantum, vedi main.ts canEstimatePacing),
- * perché non serve sapere quando il periodo è iniziato per sapere quanto manca alla
- * scadenza. Ritorna null se `resetsAt` è assente o l'utilizzo non è calcolabile.
+ * Maximum sustainable hourly pace (%/h) to reach exactly 100% at the window
+ * reset — the "target" marker of the instant consumption gauge. Uses only
+ * `window.resetsAt`, not `periodStart`/`workSchedule`: unlike
+ * `efficiencyIndex`/`projectedUsage` it also works for windows with an unknown
+ * reference period (e.g. one-off credits, see main.ts canEstimatePacing), because
+ * knowing when the period started is not needed to know how much time is left.
+ * Returns null when `resetsAt` is missing or utilization cannot be computed.
  */
 export function sustainableHourlyRate(window: QuotaWindow, now: Date = new Date()): number | null {
   const utilization = normalizedUtilization(window);
@@ -229,17 +225,15 @@ export function sustainableHourlyRate(window: QuotaWindow, now: Date = new Date(
 const EFFICIENCY_RATING_MAX_RATIO = 3;
 
 /**
- * Rating efficienza a stelle (1-5) sugli ultimi `days` giorni: media del rapporto
- * tra quota ideale del giorno e consumo osservato quel giorno (>1 = si è
- * consumato meno dell'ideale). A differenza di `efficiencyIndex` (istantanea
- * cumulativa dall'inizio del periodo), qui si guarda giorno per giorno su una
- * finestra mobile — quanto costantemente si è rimasti vicini al ritmo ideale
- * nell'ultima settimana, non solo il totale ad oggi. Un giorno non lavorativo è
- * escluso (nessuna quota ideale da rispettare); un delta negativo (reset della
- * finestra nel mezzo) è escluso allo stesso modo di instantaneousRate, non
- * attribuibile all'uso di quel giorno. Ogni rapporto è limitato a
- * EFFICIENCY_RATING_MAX_RATIO per evitare che un singolo giorno a consumo zero
- * domini la media. Ritorna null se non ci sono abbastanza dati validi.
+ * Star efficiency rating (1-5) over the last `days` days: average ratio between the
+ * day's ideal share and the consumption observed that day (>1 = consumed less than the
+ * ideal). Unlike `efficiencyIndex` (cumulative snapshot since the start of the
+ * period), this looks day by day over a moving window — how consistently usage stayed
+ * close to the ideal pace lately, not just the total so far. A non-working day is
+ * excluded (no ideal share to respect); a negative delta (window reset in between) is
+ * excluded as in instantaneousRate, not attributable to that day's usage. Each ratio
+ * is capped at EFFICIENCY_RATING_MAX_RATIO so a single zero-consumption day does not
+ * dominate the average. Returns null when there is not enough valid data.
  */
 export function efficiencyRating(
   dailyHistory: DailyUsagePoint[],
@@ -265,15 +259,15 @@ export function efficiencyRating(
 }
 
 /**
- * Consumo di ogni giorno (differenza con il punto precedente dello storico, in
- * punti percentuali di quota) affiancato alla quota ideale di quel giorno —
- * EVOLUTION.md punto 1: il grafico del widget mostra questo, non più la %
- * cumulata per giorno che ricalcava la dashboard del provider.
- * - `delta` null: la finestra si è resettata in mezzo (delta negativo), il valore
- *   non è attribuibile all'uso di quel giorno (stessa regola di instantaneousRate);
- * - `idealShare` null: pacing non disponibile (periodo di durata ignota,
- *   totalPeriodWorkingUnits <= 0); 0 in un giorno non lavorativo.
- * Il primo punto dello storico non ha un precedente e non produce un delta.
+ * Consumption of each day (difference with the previous history point, in quota
+ * percentage points) next to that day's ideal share — EVOLUTION.md point 1: the
+ * widget chart shows this, no longer the cumulative % per day that mirrored the
+ * provider dashboard.
+ * - `delta` null: the window was reset in between (negative delta), the value is not
+ *   attributable to that day's usage (same rule as instantaneousRate);
+ * - `idealShare` null: pacing not available (period of unknown length,
+ *   totalPeriodWorkingUnits <= 0); 0 on a non-working day.
+ * The first history point has no predecessor and produces no delta.
  */
 export function dailyDeltas(
   dailyHistory: DailyUsagePoint[],
@@ -298,11 +292,11 @@ export function dailyDeltas(
 }
 
 /**
- * Picco/media del consumo giornaliero e streak di giorni consecutivi (dal più
- * recente) entro la quota ideale — calcolati sui delta di `dailyDeltas`, non sul
- * valore cumulato: sul cumulato il "picco" coincideva sempre con l'ultimo giorno
- * e lo streak non aveva significato. I giorni con reset (delta null) sono
- * ignorati; lo streak è null senza pacing (nessuna quota ideale con cui confrontare).
+ * Daily consumption peak/average and streak of consecutive days (from the most
+ * recent) within the ideal share — computed on the `dailyDeltas` deltas, not on the
+ * cumulative value: on the cumulative value the "peak" was always the last day and
+ * the streak meant nothing. Days with a reset (delta null) are ignored; the streak is
+ * null without pacing (no ideal share to compare with).
  */
 export function deltaStats(deltas: DailyDelta[]): DeltaStats {
   const valid = deltas.filter((d): d is DailyDelta & { delta: number } => d.delta !== null);
@@ -330,11 +324,11 @@ export interface WindowVerdictContext {
 }
 
 /**
- * Verdetto sintetico di una finestra di quota per la lista finestre del widget
- * (EVOLUTION.md punto 1: al posto delle tab che affiancavano solo le metriche del
- * provider). In ordine di gravità: esaurita → a rischio (autonomia più corta del
- * tempo al reset, o proiezione oltre il 100%) → in linea → pacing non disponibile.
- * Il testo è composto dal renderer (formattazione della data di reset lato UI).
+ * Short verdict of a quota window for the widget window list (EVOLUTION.md point 1:
+ * replacing tabs that only lined up the provider's metrics). By severity: exhausted →
+ * at risk (autonomy shorter than the time to reset, or projection above 100%) → on
+ * track → pacing not available. The text is composed by the renderer (reset date
+ * formatting is a UI concern).
  */
 export function windowVerdict(ctx: WindowVerdictContext): WindowVerdict {
   const utilization = normalizedUtilization(ctx.window);
@@ -354,15 +348,15 @@ export function windowVerdict(ctx: WindowVerdictContext): WindowVerdict {
 }
 
 // ---------------------------------------------------------------------------
-// Valore per token (EVOLUTION.md punto 4): incrocio tra i token prodotti nelle
-// sessioni Claude Code locali (services/claudeLocalSessions.ts, per giorno) e il
-// consumo di quota dello stesso giorno (dailyDeltas). Si confrontano solo i giorni
-// presenti in entrambe le fonti: un giorno con quota consumata ma nessuna sessione
-// locale (es. uso di claude.ai dal browser) non sarebbe attribuibile.
+// Value per token (EVOLUTION.md point 4): crossing the tokens produced in local Claude
+// Code sessions (services/claudeLocalSessions.ts, per day) with the same day's quota
+// consumption (dailyDeltas). Only days present in both sources are compared: a day
+// with quota used but no local session (e.g. claude.ai in the browser) could not be
+// attributed.
 // ---------------------------------------------------------------------------
 
 const TOKEN_YIELD_MIN_DAYS = 3;
-const TOKEN_YIELD_MIN_TOTAL_DELTA = 1; // punti % di quota: sotto, il rapporto è rumore
+const TOKEN_YIELD_MIN_TOTAL_DELTA = 1; // quota percentage points: below this the ratio is noise
 const CAUSE_MIN_DAYS = 5;
 const CAUSE_MIN_RATIO = 1.5;
 const CAUSE_MIN_GAP_POINTS = 20;
@@ -397,12 +391,11 @@ function yieldOf(days: PairedDay[]): number | null {
 }
 
 /**
- * "Resa": token di output prodotti per ogni punto percentuale di quota consumato,
- * sui giorni presenti in entrambe le fonti. È una misura di valore, non di ritmo:
- * a parità di lavoro prodotto, una resa più bassa significa che ogni token è
- * costato più quota (tipicamente contesto molto ampio riletto ad ogni turno).
- * Trend: resa della seconda metà dei giorni confrontati rispetto alla prima.
- * null con meno di TOKEN_YIELD_MIN_DAYS giorni o consumo totale troppo basso.
+ * "Yield": output tokens produced per percentage point of quota used, on days
+ * present in both sources. A measure of value, not of pace: for the same work, a lower
+ * yield means each token cost more quota (typically a very large context re-read on
+ * every turn). Trend: yield of the second half of the compared days vs the first.
+ * null with fewer than TOKEN_YIELD_MIN_DAYS days or a too low total consumption.
  */
 export function tokenYield(localDaily: LocalDailyTokens[], deltas: DailyDelta[]): TokenYield | null {
   const paired = pairDays(localDaily, deltas);
@@ -420,12 +413,12 @@ export function tokenYield(localDaily: LocalDailyTokens[], deltas: DailyDelta[])
 }
 
 /**
- * Legame tra consumo di quota e contesto ampio, dichiarato SOLO se netto:
- * almeno CAUSE_MIN_DAYS giorni confrontati, e nei giorni sopra la mediana di
- * consumo la quota di token prodotti a contesto >150k è almeno CAUSE_MIN_RATIO
- * volte (e CAUSE_MIN_GAP_POINTS punti sopra) quella dei giorni sotto la mediana.
- * Altrimenti null: meglio nessuna frase che una correlazione debole presentata
- * come causa (EVOLUTION.md, "un cattivo insight mina la fiducia più di nessun insight").
+ * Link between quota consumption and large context, stated ONLY when clear: at
+ * least CAUSE_MIN_DAYS compared days, and on days above the consumption median the
+ * share of tokens produced with context >150k is at least CAUSE_MIN_RATIO times (and
+ * CAUSE_MIN_GAP_POINTS points above) that of days below the median. Otherwise null:
+ * better no sentence than a weak correlation presented as a cause (EVOLUTION.md, "a bad
+ * insight undermines trust more than no insight").
  */
 export function consumptionCause(localDaily: LocalDailyTokens[], deltas: DailyDelta[]): ConsumptionCause | null {
   const paired = pairDays(localDaily, deltas);
@@ -466,7 +459,7 @@ export interface DailyTipContext {
   instantRate: number | null;
   sustainableRate: number | null;
   efficiencyRating: EfficiencyRating | null;
-  // Solo per l'account Claude con insight locali attivi — vedi consumptionCause.
+  // Only for the Claude account with local insights enabled — see consumptionCause.
   consumptionCause?: ConsumptionCause | null;
 }
 
@@ -565,10 +558,10 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
 }
 
 /**
- * Risolve la prossima data di rinnovo abbonamento a partire da una renewalRule.
- * Supporta oggi solo { type: 'dayOfMonth', day }. { type: 'rrule', rrule } non è
- * ancora implementato (richiederebbe una libreria dedicata, da valutare se serve
- * davvero una ricorrenza più complessa del semplice giorno del mese).
+ * Resolves the next subscription renewal date from a renewalRule.
+ * Only { type: 'dayOfMonth', day } is supported today. { type: 'rrule', rrule } is not
+ * implemented yet (it would need a dedicated library; to be evaluated if a recurrence
+ * more complex than a day of the month is ever really needed).
  */
 export function resolveRenewalDate(renewalRule: RenewalRule, referenceDate: Date = new Date()): Date {
   if (renewalRule.type === 'dayOfMonth' && typeof renewalRule.day === 'number') {
@@ -579,5 +572,5 @@ export function resolveRenewalDate(renewalRule: RenewalRule, referenceDate: Date
     }
     return candidate;
   }
-  throw new Error(`resolveRenewalDate: renewalRule.type "${renewalRule.type}" non supportato`);
+  throw new Error(`resolveRenewalDate: renewalRule.type "${renewalRule.type}" not supported`);
 }

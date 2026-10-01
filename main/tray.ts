@@ -1,4 +1,4 @@
-// main/tray.ts — system tray cross-platform (vedi ARCHITECTURE.md §4)
+// main/tray.ts — cross-platform system tray (see ARCHITECTURE.md §4)
 
 import { Tray, Menu, nativeImage, app, BrowserWindow, MenuItem } from 'electron';
 import path from 'path';
@@ -15,18 +15,18 @@ export interface CreateTrayDeps {
   store: Store<AppSettings>;
 }
 
-/** Crea l'icona di tray con menu contestuale. */
+/** Creates the tray icon with its context menu. */
 export interface TrayHandle {
   tray: Tray;
-  // Ricostruisce il menu (es. dopo un controllo aggiornamenti): Electron non
-  // aggiorna da solo un context menu già impostato.
+  // Rebuilds the menu (e.g. after an update check or a language change): Electron
+  // does not refresh a context menu that is already set.
   refreshMenu: () => void;
 }
 
 export function createTray({ getMainWindow, openSettings, refreshNow, store }: CreateTrayDeps): TrayHandle {
-  // Se l'icona custom non esiste ancora (asset da fornire in Sessione 2 avanzata),
-  // usiamo un'icona vuota di fallback: Electron non crasha, ma va sostituita
-  // prima della build finale con un asset reale multi-piattaforma.
+  // If the custom icon does not exist (missing asset), an empty fallback icon is used:
+  // Electron does not crash, but a real cross-platform asset must ship in builds (see
+  // scripts/generate-icons.js).
   let icon;
   try {
     icon = nativeImage.createFromPath(ICON_PATH);
@@ -73,9 +73,9 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
 
   tray.setContextMenu(buildMenu());
 
-  // Click sinistro: toggle su Windows/Linux. Su macOS il click sinistro apre
-  // di norma il menu nativo del tray: la voce "Mostra/Nascondi" nel menu copre
-  // comunque il caso, garantendo un comportamento uniforme su tutte le piattaforme.
+  // Left click: toggle on Windows/Linux. On macOS a left click usually opens the
+  // native tray menu: its "Show/Hide" entry covers that case, giving the same behaviour
+  // on every platform.
   tray.on('click', toggleMainWindow);
 
   return { tray, refreshMenu: () => { tray.setContextMenu(buildMenu()); } };

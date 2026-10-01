@@ -1,15 +1,15 @@
-// services/_shape.ts — riduzione di un payload alla sola struttura (nomi di campo
-// e tipo), MAI il valore reale. Usato quando un service riceve una risposta con un
-// formato non riconosciuto: serve per capire cosa è cambiato senza esporre dati
-// potenzialmente sensibili (percentuali di utilizzo, importi, date di rinnovo — vedi
-// il caso reale in CLAUDE.md, "Stato avanzamento", che ha esposto used_dollars/
-// limit_dollars di un account reale) in una eventuale segnalazione pubblica.
+// services/_shape.ts — reduces a payload to its structure only (field names and
+// types), NEVER the real value. Used when a service receives a response in an
+// unrecognized format: it helps understand what changed without exposing potentially
+// sensitive data (usage percentages, amounts, renewal dates — see the real case in the
+// CLAUDE.md progress log that exposed used_dollars/limit_dollars of a real account)
+// in a public report.
 
 /**
- * Sostituisce ricorsivamente ogni valore foglia con il suo `typeof` (o `'null'`),
- * mantenendo solo i nomi delle chiavi (ordinati, per una firma stabile) e la forma
- * degli array (un solo elemento rappresentativo, per non dover troncare array lunghi).
- * Non ritorna mai numeri, stringhe o date reali.
+ * Recursively replaces every leaf value with its `typeof` (or `'null'`), keeping
+ * only the key names (sorted, for a stable signature) and the shape of arrays (a
+ * single representative element, so long arrays need no truncation).
+ * Never returns real numbers, strings or dates.
  */
 export function extractShape(value: unknown, depth = 0): unknown {
   if (depth > 4) return 'truncated';
@@ -29,9 +29,9 @@ export function extractShape(value: unknown, depth = 0): unknown {
 }
 
 /**
- * Firma deterministica (non crittografica, non serve) di una shape già estratta —
- * usata per deduplicare le segnalazioni: se la stessa forma si ripresenta al
- * refresh successivo, non riapriamo una seconda bozza di issue (vedi main.ts).
+ * Deterministic signature (not cryptographic, no need) of an already extracted
+ * shape — used to deduplicate reports: when the same shape comes back on the next
+ * refresh, a second issue draft is not opened (see main.ts).
  */
 export function shapeSignature(shape: unknown): string {
   const json = JSON.stringify(shape);
@@ -43,9 +43,9 @@ export function shapeSignature(shape: unknown): string {
 }
 
 /**
- * Errore lanciato dai service quando la risposta di un endpoint non corrisponde
- * al formato atteso. Porta con sé solo `shape` (mai il payload originale): chi
- * intercetta questo errore (main.ts) non ha mai accesso ai valori reali.
+ * Error thrown by services when an endpoint response does not match the expected
+ * format. It carries only `shape` (never the original payload): whoever catches this
+ * error (main.ts) never has access to the real values.
  */
 export class FormatDriftError extends Error {
   readonly endpointLabel: string;

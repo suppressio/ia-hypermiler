@@ -1,9 +1,9 @@
-name: Build multipiattaforma
+name: Cross-platform build
 
-# Parte solo sui tag di versione (es. v0.1.0) o manualmente da Actions.
-# I pacchetti vengono sia caricati come artifact della run sia allegati
-# direttamente alla Release GitHub del tag corrente (electron-builder
-# --publish=always, vedi CLAUDE.md, sezione "Build e test").
+# Runs only on version tags (e.g. v0.1.0) or manually from Actions.
+# Packages are both uploaded as run artifacts and attached directly to the GitHub
+# Release of the current tag (electron-builder --publish=always, see CLAUDE.md,
+# "Build and test").
 "on":
   push:
     tags:
@@ -40,30 +40,29 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Installa dipendenze
+      - name: Install dependencies
         run: npm ci
 
-      # Lint con regole basate sui tipi (eslint.config.mjs): una segnalazione
-      # blocca il rilascio, come un test che fallisce.
+      # Lint with type-aware rules (eslint.config.mjs): a finding blocks the release, like
+      # a failing test.
       - name: Lint
         run: npm run lint
 
       - name: Build + test
         run: npm test
 
-      - name: Pacchettizza (electron-builder) e pubblica sulla Release del tag
+      - name: Package (electron-builder) and publish to the tag Release
         run: npx electron-builder ${{ matrix.flag }} --publish=always
         env:
-          # Evita che electron-builder cerchi un'identità di firma su macOS
-          # (nessun certificato disponibile per questo progetto): build non firmata.
+          # Prevents electron-builder from looking for a signing identity on macOS (no
+          # certificate available for this project): unsigned build.
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          # Con --publish=always electron-builder usa questo token per allegare
-          # i pacchetti alla Release GitHub del tag corrente (o per crearla come
-          # bozza se non esiste ancora). Richiede il permesso "contents: write"
-          # impostato sopra a livello di job.
+          # With --publish=always electron-builder uses this token to attach the packages to
+          # the GitHub Release of the current tag (or to create it as a draft if it does not
+          # exist yet). Requires the "contents: write" permission set above at job level.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Carica pacchetto come artifact
+      - name: Upload package as artifact
         uses: actions/upload-artifact@v4
         with:
           name: ia-hypermiler-${{ matrix.artifact }}

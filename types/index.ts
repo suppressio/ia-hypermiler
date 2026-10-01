@@ -1,10 +1,10 @@
-// types/index.ts — tipi condivisi tra processo main (Node) e renderer (browser).
-// Solo dichiarazioni di tipo: nessun codice a runtime, quindi sicuro da importare
-// (con `import type`) da entrambi i contesti senza alcun accoppiamento reale.
+// types/index.ts — types shared by the main process (Node) and the renderer (browser).
+// Type declarations only: no runtime code, so it is safe to import (with
+// `import type`) from both contexts without any real coupling.
 
-// Id di un'ISTANZA di account (es. 'claude', 'copilot' per gli account migrati
-// dallo schema a due slot, un id generato per quelli aggiunti dopo) — non più il
-// nome del provider: con N account (issue #4) due account Claude hanno id diversi.
+// Id of an account INSTANCE (e.g. 'claude', 'copilot' for accounts migrated from
+// the two-slot schema, a generated id for those added later) — no longer the provider
+// name: with N accounts (issue #4) two Claude accounts have different ids.
 export type AccountId = string;
 export type ProviderId = 'claude' | 'copilot';
 export type AccountScope = 'personal' | 'organization';
@@ -31,18 +31,18 @@ export interface WorkScheduleDays {
 }
 
 export interface WorkSchedule {
-  // Se false, il pacing ignora `days` e tratta ogni giorno di calendario come
-  // giornata lavorativa piena (vedi budget.getDayUnit) — pensato per un account
-  // personale, dove non ha senso limitarsi a giorni/ore specifici della settimana
-  // come invece utile per un account aziendale (feedback utente).
+  // When false, pacing ignores `days` and treats every calendar day as a full
+  // working day (see budget.getDayUnit) — meant for a personal account, where limiting
+  // to specific days/hours of the week makes no sense, unlike a company account (user
+  // feedback).
   enabled: boolean;
   days: WorkScheduleDays;
-  // Riservato per un futuro pacing infra-giornaliero (vedi CLAUDE.md): non ancora
-  // usato dalla logica di budget, che lavora a granularità giorno/mezza-giornata.
+  // Reserved for future intra-day pacing (see CLAUDE.md): not used yet by the budget
+  // logic, which works at day/half-day granularity.
   hoursPerDay: number;
 }
 
-/** Una singola finestra di quota (vedi ARCHITECTURE.md §0). */
+/** A single quota window (see ARCHITECTURE.md §0). */
 export interface QuotaWindow {
   id: string;
   label: string;
@@ -54,7 +54,7 @@ export interface QuotaWindow {
   resetsAt: Date | string | null;
 }
 
-/** Dato grezzo restituito da un service (services/claude.ts, services/copilot.ts). */
+/** Raw data returned by a service (services/claude.ts, services/copilot.ts). */
 export interface RawAccountUsage {
   planTier: string | null;
   subscriptionRenewsAt: Date | string | null;
@@ -70,10 +70,10 @@ export interface DailyUsagePoint {
 }
 
 /**
- * Campione grezzo con timestamp preciso (non una data di calendario), usato solo
- * per il gauge di consumo istantaneo (vedi budget.instantaneousRate). Distinto da
- * DailyUsagePoint: qui ogni refresh riuscito aggiunge un punto (append), mentre
- * DailyUsagePoint tiene un solo valore per giorno (sovrascritto ad ogni refresh).
+ * Raw sample with a precise timestamp (not a calendar date), used only by the
+ * instant consumption gauge (see budget.instantaneousRate). Unlike DailyUsagePoint,
+ * every successful refresh appends a point here, while DailyUsagePoint keeps one value
+ * per day (overwritten on every refresh).
  */
 export interface RecentUsageSample {
   timestamp: string;
@@ -82,27 +82,27 @@ export interface RecentUsageSample {
   used: number;
 }
 
-/** Punteggio eco a stelle (vedi budget.ecoScore), su una finestra mobile di giorni. */
+/** Star efficiency rating (see budget.efficiencyRating), over a moving window of days. */
 export interface EfficiencyRating {
   stars: number;
   avgRatio: number;
 }
 
-/** Consumo di un giorno vs quota ideale — vedi budget.dailyDeltas. */
+/** Consumption of one day vs the ideal share — see budget.dailyDeltas. */
 export interface DailyDelta {
   date: string;
   delta: number | null;
   idealShare: number | null;
 }
 
-/** Statistiche sul consumo giornaliero — vedi budget.deltaStats. */
+/** Daily consumption statistics — see budget.deltaStats. */
 export interface DeltaStats {
   peak: number | null;
   avg: number | null;
   streakUnderBudget: number | null;
 }
 
-/** Verdetto sintetico di una finestra — vedi budget.windowVerdict. */
+/** Short verdict of a window — see budget.windowVerdict. */
 export interface WindowVerdict {
   kind: 'exhausted' | 'at-risk' | 'on-track' | 'no-pacing';
   autonomyWorkingDays?: number;
@@ -119,15 +119,15 @@ export interface DailyTip {
 }
 
 /**
- * Metriche calcolate per UNA finestra di quota (vedi main.ts, computeWindowSnapshot).
- * Un account può avere più finestre attive contemporaneamente (es. Claude: limite
- * standard + credito extra una tantum) — il widget le mostra come tab separate invece
- * di appiattirle a una sola "finestra critica".
+ * Metrics computed for ONE quota window (see main.ts, computeWindowSnapshot).
+ * An account can have several active windows at the same time (e.g. Claude: standard
+ * limit + one-off extra credit) — the widget lists them separately instead of
+ * flattening them to a single "critical window".
  */
 export interface QuotaWindowSnapshot {
   window: QuotaWindow;
   dailyHistory: DailyUsagePoint[];
-  // Consumo giornaliero vs quota ideale (grafico del widget) e relative statistiche.
+  // Daily consumption vs ideal share (widget chart) and related statistics.
   dailyDeltas: DailyDelta[];
   deltaStats: DeltaStats;
   verdict: WindowVerdict;
@@ -136,35 +136,35 @@ export interface QuotaWindowSnapshot {
   daysUntilReset: number | null;
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
-  // Consumo istantaneo (%/ora, dai campioni recenti) e ritmo orario sostenibile
-  // per arrivare esattamente al 100% al reset — vedi budget.instantaneousRate /
+  // Instant consumption (%/h, from recent samples) and sustainable hourly pace to
+  // reach exactly 100% at the reset — see budget.instantaneousRate /
   // budget.sustainableHourlyRate.
   instantRate: number | null;
   sustainableRate: number | null;
-  // Rating efficienza a stelle sugli ultimi giorni (vedi budget.efficiencyRating).
+  // Star efficiency rating over the last days (see budget.efficiencyRating).
   efficiencyRating: EfficiencyRating | null;
-  // "Consiglio del giorno": frase generata da fatti reali sui dati di questa
-  // finestra, mai una frase generica — vedi budget.generateDailyTip.
+  // "Tip of the day": derived from real facts about this window's data, never a
+  // generic sentence — see budget.generateDailyTip.
   dailyTip: DailyTip;
-  // Solo per l'account Claude con insight locali attivi (null altrimenti) — vedi budget.tokenYield.
+  // Only for the Claude account with local insights enabled (null otherwise) — see budget.tokenYield.
   tokenYield: TokenYield | null;
 }
 
-/** Quota d'uso (in volume di token) di un singolo tool/server MCP — vedi services/claudeLocalSessions.ts. */
+/** Usage share (by token volume) of a single tool/MCP server — see services/claudeLocalSessions.ts. */
 export interface ToolUsageShare {
   name: string;
   sharePercent: number;
 }
 
 /**
- * Insight comportamentali calcolati da sessioni Claude Code LOCALI (CLI/estensione
- * VS Code, stessa sorgente — vedi RESEARCH.md §5), non dall'account claude.ai.
- * Solo per Claude: Copilot non ha una sorgente locale equivalente. Cross-finestra
- * (non legato a una QuotaWindow specifica): vive su AccountSnapshot, non su
- * QuotaWindowSnapshot. Le quote sono pesate per volume di token (output_tokens),
- * non per conteggio di turni — coerente con "% del tuo utilizzo" del pannello
- * VS Code che l'ha ispirato. Mai calcolato da contenuto reale dei messaggi, solo
- * da campi strutturali (usage, nomi di tool) — vedi services/claudeLocalSessions.ts.
+ * Behavioural insights computed from LOCAL Claude Code sessions (CLI/VS Code
+ * extension, same source — see RESEARCH.md §5), not from the claude.ai account.
+ * Claude only: Copilot has no equivalent local source. Cross-window (not tied to a
+ * specific QuotaWindow): lives on AccountSnapshot, not on QuotaWindowSnapshot. Shares
+ * are weighted by token volume (output_tokens), not by turn count — consistent with
+ * the "% of your usage" of the VS Code panel that inspired it. Never computed from real
+ * message content, only from structural fields (usage, tool names) — see
+ * services/claudeLocalSessions.ts.
  */
 export interface ClaudeLocalInsights {
   computedAt: string;
@@ -173,7 +173,7 @@ export interface ClaudeLocalInsights {
   highContextSharePercent: number | null;
   longSessionSharePercent: number | null;
   topTools: ToolUsageShare[];
-  // Token di output per giorno (sessione attribuita al giorno di ultima modifica).
+  // Output tokens per day (a session is attributed to the day it was last modified).
   daily: LocalDailyTokens[];
 }
 
@@ -183,33 +183,33 @@ export interface LocalDailyTokens {
   highContextOutputTokens: number;
 }
 
-/** "Resa": token di output per 1% di quota consumata — vedi budget.tokenYield. */
+/** "Yield": output tokens per 1% of quota used — see budget.tokenYield. */
 export interface TokenYield {
   tokensPerPercent: number;
-  // Variazione % della resa tra seconda e prima metà dei giorni confrontati (null se non calcolabile).
+  // % change of the yield between the second and the first half of the compared days (null when not computable).
   trendPercent: number | null;
   daysCompared: number;
 }
 
-/** Legame osservato tra giorni di consumo alto e contesto ampio — vedi budget.consumptionCause. */
+/** Observed link between high-consumption days and large context — see budget.consumptionCause. */
 export interface ConsumptionCause {
   highDaysHighContextPercent: number;
   lowDaysHighContextPercent: number;
   daysCompared: number;
 }
 
-/** Snapshot arricchito inviato al renderer via IPC (vedi main.ts). */
+/** Enriched snapshot sent to the renderer via IPC (see main.ts). */
 export interface AccountSnapshot extends RawAccountUsage {
   accountId: AccountId;
   provider: ProviderId;
   label: string;
   windows: QuotaWindowSnapshot[];
-  // Presente solo sull'account Claude con `localInsights: true` nelle Impostazioni
-  // (al massimo uno) — vedi main.ts/computeLocalInsightsIfNeeded.
+  // Present only on the Claude account with `localInsights: true` in Settings (at most
+  // one) — see main.ts/computeLocalInsightsIfNeeded.
   localInsights?: ClaudeLocalInsights | null;
-  // Campi derivati dalla finestra più critica (budget.pickCriticalWindow), mantenuti per
-  // compatibilità (notifica soglia 80%, vista di default nel widget) — vedi anche
-  // QuotaWindowSnapshot in `windows` per le altre finestre dell'account.
+  // Fields derived from the most critical window (budget.pickCriticalWindow), kept for
+  // compatibility (80% threshold notification, default widget view) — see also
+  // QuotaWindowSnapshot in `windows` for the account's other windows.
   criticalWindow: QuotaWindow | null;
   dailyHistory: DailyUsagePoint[];
   efficiencyIndex: number | null;
@@ -224,14 +224,15 @@ export interface AccountSnapshot extends RawAccountUsage {
 
 export interface UsageSnapshot {
   generatedAt: string;
-  // Un elemento per account abilitato e connesso, nello stesso ordine di
+  // One item per enabled and connected account, in the same order as
   // AppSettings.accounts.
   accounts: AccountSnapshot[];
 }
 
 /**
- * Parte comune a ogni account, indipendente dal provider (issue #4): la parte
- * specifica vive nelle interfacce che la estendono, discriminate su `provider`.
+ * Part common to every account, independent of the provider (issue #4): the
+ * provider-specific part lives in the interfaces extending it, discriminated on
+ * `provider`.
  */
 export interface AccountConfigBase {
   id: AccountId;
@@ -252,24 +253,24 @@ export interface ClaudeAccountSettings extends AccountConfigBase {
     expiresAt: string | null;
   };
   planTier: 'free' | 'pro' | 'max_5x' | 'max_20x' | 'team' | 'enterprise';
-  // Partition Electron dedicata (`persist:account-<id>`): cookie claude.ai isolati
-  // per account. Prima tutti vivevano in session.defaultSession — un "Disconnetti"
-  // non li cancellava e il login successivo riprendeva la stessa sessione (issue #4).
+  // Dedicated Electron partition (`persist:account-<id>`): claude.ai cookies isolated
+  // per account. They all used to live in session.defaultSession — "Disconnect" did not
+  // clear them and the next login resumed the same session (issue #4).
   partition: string;
-  // Sessioni Claude Code di QUESTA macchina attribuite a questo account (opt-in,
-  // al massimo un account Claude alla volta) — vedi services/claudeLocalSessions.ts.
+  // Claude Code sessions of THIS machine attributed to this account (opt-in, at most
+  // one Claude account at a time) — see services/claudeLocalSessions.ts.
   localInsights: boolean;
 }
 
 export interface CopilotAccountSettings extends AccountConfigBase {
   provider: 'copilot';
-  // Sceglie quale pannello di connessione mostrare in Impostazioni (PAT vs OAuth) e viene
-  // aggiornato automaticamente dal metodo usato per l'ultima connessione riuscita — vedi
-  // renderer/settings.ts (updateCopilotAuthMethodVisibility) e main.ts (auth:connectCopilot*).
+  // Chooses which connection panel to show in Settings (PAT vs OAuth) and is updated
+  // automatically from the method used for the last successful connection — see
+  // renderer/settings.ts (applyAccountDetailState) and main.ts (accounts:connectCopilot*).
   authMethod: 'pat' | 'oauth';
   credentials: { token: string | null; username: string | null };
-  // Client ID di una GitHub OAuth App registrata dall'utente (non è un segreto — vedi
-  // renderer/settings.ts): via sperimentale alternativa al PAT, vedi CLAUDE.md.
+  // Client ID of a GitHub OAuth App registered by the user (not a secret — see
+  // renderer/settings.ts): experimental alternative to the PAT, see CLAUDE.md.
   oauthApp: { clientId: string | null };
   manualQuota: number;
   planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise';
@@ -291,30 +292,30 @@ export interface UiSettings {
 export interface HistorySettings {
   dailyUsage: DailyUsagePoint[];
   retentionDays: number;
-  // Buffer di campioni ravvicinati (append-only, pruning per età non per giorni)
-  // usato solo dal gauge di consumo istantaneo — vedi RecentUsageSample sopra.
+  // Buffer of closely spaced samples (append-only, pruned by age, not by days) used
+  // only by the instant consumption gauge — see RecentUsageSample above.
   recentSamples: RecentUsageSample[];
   // Chiave = AccountId.
   lastGood?: Record<AccountId, RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string }>;
 }
 
 /**
- * Segnalazione automatica di "format drift" (vedi services/_shape.ts, main.ts,
- * diagnostics/githubIssue.ts): quando un service non riconosce più il formato di
- * un endpoint, l'app apre una bozza di issue GitHub precompilata (mai valori
- * reali, solo struttura) e la deduplica per firma per non riaprirla ad ogni refresh.
+ * Automatic "format drift" report (see services/_shape.ts, main.ts,
+ * diagnostics/githubIssue.ts): when a service no longer recognizes an endpoint
+ * format, the app opens a pre-filled GitHub issue draft (never real values, only
+ * structure) and deduplicates it by signature so it is not reopened on every refresh.
  */
 export interface DiagnosticsSettings {
   autoReportFormatDrift: boolean;
-  reportedSignatures: Record<string, string>; // firma -> timestamp ISO di prima segnalazione
+  reportedSignatures: Record<string, string>; // signature -> ISO timestamp of the first report
 }
 
-/** Nuova versione disponibile — vedi services/updates.ts (issue #5). */
+/** New version available — see services/updates.ts (issue #5). */
 export interface UpdateInfo {
   version: string;
   publishedAt: string | null;
   releaseUrl: string;
-  // Pacchetto per l'OS in uso; se nessuno è adatto (es. Mac Intel), la pagina della release.
+  // Package for the current OS; when none fits (e.g. Intel Mac), the release page.
   downloadUrl: string;
   assetName: string | null;
 }
@@ -324,13 +325,13 @@ export interface UpdateSettings {
   lastCheckedAt: string | null;
   lastError: string | null;
   available: UpdateInfo | null;
-  // Versione già notificata con una notifica di sistema: non ripetere ad ogni controllo.
+  // Version already announced with a system notification: not repeated on every check.
   notifiedVersion: string | null;
 }
 
 export interface AppSettings {
-  // Registro di N account (issue #4) — prima due slot fissi `{ claude, copilot }`,
-  // convertiti all'avvio da store/migrate.ts.
+  // Registry of N accounts (issue #4) — previously two fixed slots `{ claude, copilot }`,
+  // converted at startup by store/normalize.ts → store/migrate.ts.
   accounts: AccountConfig[];
   workSchedule: WorkSchedule;
   ui: UiSettings;
@@ -338,15 +339,15 @@ export interface AppSettings {
   advisorCache: { generatedAt: string | null; adviceText: string | null };
   meta: {
     notifiedToday: Record<string, boolean>;
-    // Copia una tantum dei cookie claude.ai da session.defaultSession alla
-    // partition dell'account Claude migrato (vedi main.ts, migrateLegacyClaudeCookies).
+    // One-off copy of the claude.ai cookies from session.defaultSession into the
+    // partition of the migrated Claude account (see main.ts, migrateLegacyClaudeCookies).
     claudeCookiesMigrated?: boolean;
   };
   diagnostics: DiagnosticsSettings;
   updates: UpdateSettings;
-  // Cache gestita dall'app (non impostazione utente), stesso pattern di advisorCache:
-  // evita di riscandire tutte le sessioni Claude Code locali ad ogni refresh di 30 min
-  // — vedi main.ts LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
+  // App-managed cache (not a user setting), same pattern as advisorCache: avoids
+  // rescanning all local Claude Code sessions on every 30-minute refresh — see main.ts
+  // LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
   localInsightsCache: { claudeCode: ClaudeLocalInsights | null };
 }
 
@@ -355,11 +356,11 @@ export interface ClaudeCredentials {
   sessionKey: string;
   organizationId?: string | null;
   planTier?: string | null;
-  // Header Cookie completo (sessionKey + cf_clearance + eventuali altri cookie
-  // Cloudflare/claude.ai), letto fresco dalla sessione Electron al momento della
-  // richiesta — vedi main/claude-auth.ts:buildClaudeCookieHeader(). Se assente,
-  // si ricade sul solo sessionKey (compatibilità/test), ma senza cf_clearance
-  // claude.ai risponde con la pagina di verifica Cloudflare invece dei dati.
+  // Full Cookie header (sessionKey + cf_clearance + any other Cloudflare/claude.ai
+  // cookie), read fresh from the account's Electron session at request time — see
+  // main/claude-auth.ts:buildClaudeCookieHeader(). When missing, only the sessionKey is
+  // sent (compatibility/tests), but without cf_clearance claude.ai answers with the
+  // Cloudflare challenge page instead of the data.
   cookieHeader?: string | null;
 }
 
@@ -370,7 +371,7 @@ export interface CopilotCredentials {
   manualQuota?: number | null;
 }
 
-/** API esposta dal preload sul renderer (`window.hypermiler`). */
+/** API exposed by the preload to the renderer (`window.hypermiler`). */
 export interface HypermilerBridge {
   getSettings(): Promise<AppSettings>;
   setSettings(patch: Partial<AppSettings>): Promise<AppSettings>;

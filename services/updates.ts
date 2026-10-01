@@ -1,23 +1,23 @@
-// services/updates.ts — controllo di una nuova versione dell'app (issue #5).
-// Nessuna dipendenza aggiuntiva (niente electron-updater, scelta esplicita
-// dell'utente): si legge l'elenco delle Release GitHub del progetto e si propone
-// il pacchetto giusto per l'OS in uso, da scaricare nel browser e installare a
-// mano — funziona allo stesso modo sui 3 OS anche con pacchetti non firmati.
+// services/updates.ts — check for a new app version (issue #5).
+// No extra dependency (no electron-updater, the user's explicit choice): it reads the
+// project's GitHub Releases list and offers the right package for the current OS, to
+// download in the browser and install by hand — works the same on the 3 OSes even
+// with unsigned packages.
 //
-// Endpoint: GET /repos/{owner}/{repo}/releases (API REST ufficiale GitHub, senza
-// autenticazione). NON /releases/latest: esclude le pre-release, e tutte le
-// release di questo progetto lo sono (`releaseType: "prerelease"` in package.json).
-// Nessun dato dell'utente esce nella richiesta: è una GET anonima a un repo pubblico.
+// Endpoint: GET /repos/{owner}/{repo}/releases (official GitHub REST API, no
+// authentication). NOT /releases/latest: it skips pre-releases, and every release of
+// this project is one (`releaseType: "prerelease"` in package.json). No user data
+// leaves in the request: it is an anonymous GET to a public repository.
 //
-// Funzioni pure (compareVersions/pickLatestRelease/pickDownloadAsset) + un solo
-// punto di rete (fetchLatestUpdate, via services/_http.ts: timeout 10s, errori espliciti).
+// Pure functions (compareVersions/pickLatestRelease/pickDownloadAsset) + a single
+// network point (fetchLatestUpdate, via services/_http.ts: 10s timeout, explicit errors).
 
 import { fetchJson } from './_http';
 import type { UpdateInfo } from '../types/index';
 
 const REPO = 'suppressio/ia-hypermiler';
 export const RELEASES_API_URL = `https://api.github.com/repos/${REPO}/releases?per_page=20`;
-/** Ogni URL aperto dal pulsante "Scarica" deve stare sotto questo prefisso (vedi main.ts). */
+/** Every URL opened by the "Download" button must be under this prefix (see main.ts). */
 export const TRUSTED_DOWNLOAD_PREFIX = `https://github.com/${REPO}/`;
 
 export interface GithubReleaseAsset {
@@ -48,15 +48,15 @@ function parseVersion(version: string): ParsedVersion | null {
 }
 
 /**
- * Confronto semver (con pre-release): < 0 se a < b, 0 se uguali, > 0 se a > b.
- * Prefisso "v" ignorato. Una versione senza pre-release vince sulla stessa con
- * pre-release (0.2.1-beta < 0.2.1). Lancia su una versione non semver: meglio un
- * errore esplicito che un aggiornamento proposto (o taciuto) per sbaglio.
+ * Semver comparison (with pre-releases): < 0 if a < b, 0 if equal, > 0 if a > b.
+ * The "v" prefix is ignored. A version without pre-release wins over the same one with
+ * a pre-release (0.2.1-beta < 0.2.1). Throws on a non-semver version: better an explicit
+ * error than an update offered (or hidden) by mistake.
  */
 export function compareVersions(a: string, b: string): number {
   const pa = parseVersion(a);
   const pb = parseVersion(b);
-  if (!pa || !pb) throw new Error(`Versione non valida: ${!pa ? a : b}`);
+  if (!pa || !pb) throw new Error(`Invalid version: ${!pa ? a : b}`);
 
   const coreDiff = pa.core.map((value, i) => value - (pb.core[i] ?? 0)).find((diff) => diff !== 0);
   if (coreDiff !== undefined) return coreDiff;
@@ -76,7 +76,7 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** Release più recente (bozze e tag non semver esclusi), o null se non è più nuova di `currentVersion`. */
+/** Most recent release (drafts and non-semver tags excluded), or null when it is not newer than `currentVersion`. */
 export function pickLatestRelease(releases: GithubRelease[], currentVersion: string): GithubRelease | null {
   let best: GithubRelease | null = null;
   for (const release of releases) {
@@ -88,11 +88,11 @@ export function pickLatestRelease(releases: GithubRelease[], currentVersion: str
 }
 
 /**
- * Pacchetto adatto all'OS in uso, secondo i nomi prodotti dalla CI
- * (.github/workflows/build.yml): Windows `.exe` (NSIS), macOS `.dmg` della stessa
- * architettura (oggi la CI produce solo arm64: su un Mac Intel nessun asset è
- * adatto), Linux `.AppImage` se l'app sta girando come AppImage, altrimenti `.deb`.
- * null = nessun asset adatto → il chiamante ripiega sulla pagina della release.
+ * Package fitting the current OS, according to the names produced by CI
+ * (.github/workflows/build.yml): Windows `.exe` (NSIS), macOS `.dmg` of the same
+ * architecture (CI builds only arm64 today: on an Intel Mac no asset fits), Linux
+ * `.AppImage` when the app runs as an AppImage, `.deb` otherwise.
+ * null = no fitting asset → the caller falls back to the release page.
  */
 export function pickDownloadAsset(
   assets: GithubReleaseAsset[],
@@ -107,7 +107,7 @@ export function pickDownloadAsset(
     case 'darwin': {
       const dmgs = byExt('.dmg');
       const archTag = arch === 'arm64' ? 'arm64' : arch === 'x64' ? 'x64' : arch;
-      // Senza suffisso d'architettura electron-builder produce il dmg x64.
+      // Without an architecture suffix electron-builder produces the x64 dmg.
       return dmgs.find((a) => a.name.includes(`-${archTag}.dmg`))
         ?? (archTag === 'x64' ? dmgs.find((a) => !/-(arm64|universal)\.dmg$/.test(a.name)) : undefined)
         ?? dmgs.find((a) => a.name.includes('-universal.dmg'))
@@ -129,13 +129,13 @@ export interface UpdateEnvironment {
   isAppImage: boolean;
 }
 
-/** Controlla le Release GitHub: UpdateInfo se c'è una versione più recente, null altrimenti. Lancia su errore. */
+/** Checks GitHub Releases: UpdateInfo when a newer version exists, null otherwise. Throws on error. */
 export async function fetchLatestUpdate(currentVersion: string, env: UpdateEnvironment): Promise<UpdateInfo | null> {
   const releases = await fetchJson(RELEASES_API_URL, {
     headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ia-hypermiler' },
     label: 'GitHub Releases',
   });
-  if (!Array.isArray(releases)) throw new Error('GitHub Releases: risposta inattesa (non un elenco)');
+  if (!Array.isArray(releases)) throw new Error('GitHub Releases: unexpected response (not a list)');
 
   const latest = pickLatestRelease(releases as GithubRelease[], currentVersion);
   if (!latest) return null;

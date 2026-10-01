@@ -1,19 +1,18 @@
-// tests/integration/claude.integration.test.ts — test contro il vero endpoint
-// claude.ai (RESEARCH.md v3 §1). NON eseguiti in CI o in ambienti senza rete verso
-// claude.ai: si attivano solo se sono presenti le variabili d'ambiente giuste.
+// tests/integration/claude.integration.test.ts — tests against the real claude.ai
+// endpoint (RESEARCH.md v3 §1). NOT run in CI or in environments without network
+// access to claude.ai: they activate only when the right environment variables are set.
 //
-// Come fornire le credenziali (in LOCALE, mai in chat, mai committate):
-//   1. Copia .env.test.example in .env.test (già in .gitignore).
-//   2. Compila HYPERMILER_TEST_CLAUDE_SESSION_KEY con il cookie `sessionKey`
-//      catturato da un login reale (puoi leggerlo con gli strumenti developer del
-//      browser dopo esserti autenticato su claude.ai, oppure — meglio — usa il
-//      flusso "Connetti" dell'app stessa e ricopia il valore da store cifrato
-//      solo per il test, mai in chiaro altrove).
-//   3. (Opzionale) HYPERMILER_TEST_CLAUDE_ORG_ID se vuoi saltare la risoluzione
-//      automatica dell'organizzazione.
-//   4. Esegui `npm test` — Node carica automaticamente .env.test se presente
-//      (grazie a --env-file-if-exists, vedi package.json) e questi test si
-//      attivano da soli invece di essere skippati.
+// How to provide the credentials (LOCALLY, never in chat, never committed):
+//   1. Copy .env.test.example to .env.test (already in .gitignore).
+//   2. Fill HYPERMILER_TEST_CLAUDE_SESSION_KEY with the `sessionKey` cookie captured
+//      from a real login (readable with the browser developer tools after signing in
+//      to claude.ai, or — better — use the app's own "Connect" flow and copy the value
+//      from the encrypted store just for the test, never in clear elsewhere).
+//   3. (Optional) HYPERMILER_TEST_CLAUDE_ORG_ID to skip the automatic organization
+//      resolution.
+//   4. Run `npm test` — Node loads .env.test automatically when present (thanks to
+//      --env-file-if-exists, see package.json) and these tests activate on their own
+//      instead of being skipped.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,26 +23,26 @@ const organizationId = process.env.HYPERMILER_TEST_CLAUDE_ORG_ID;
 
 const skipReason = sessionKey
   ? false
-  : 'HYPERMILER_TEST_CLAUDE_SESSION_KEY non impostata — vedi intestazione del file per come fornirla in locale';
+  : 'HYPERMILER_TEST_CLAUDE_SESSION_KEY not set — see the file header for how to provide it locally';
 
-test('listOrganizations su account reale ritorna almeno un\'organizzazione', { skip: skipReason }, async () => {
+test('listOrganizations on a real account returns at least one organization', { skip: skipReason }, async () => {
   const orgs = await claudeService.listOrganizations(sessionKey as string);
   assert.ok(Array.isArray(orgs));
-  assert.ok(orgs.length > 0, 'nessuna organizzazione trovata per questo account');
+  assert.ok(orgs.length > 0, 'no organization found for this account');
   for (const org of orgs) {
     assert.equal(typeof org.id, 'string');
   }
 });
 
-test('fetchUsage su account reale ritorna finestre di quota valide', { skip: skipReason }, async () => {
+test('fetchUsage on a real account returns valid quota windows', { skip: skipReason }, async () => {
   const result = await claudeService.fetchUsage({ sessionKey: sessionKey as string, organizationId: organizationId ?? null });
 
   assert.ok(Array.isArray(result.quotaWindows));
-  assert.ok(result.quotaWindows.length > 0, 'RESEARCH.md prevedeva almeno una finestra (five_hour/seven_day/seven_day_opus): formato endpoint forse cambiato');
+  assert.ok(result.quotaWindows.length > 0, 'RESEARCH.md expected at least one window (five_hour/seven_day/seven_day_opus): the endpoint format may have changed');
 
   for (const win of result.quotaWindows) {
     assert.equal(win.unit, 'percentage');
     assert.equal(typeof win.used, 'number');
-    assert.ok(win.used >= 0 && win.used <= 100, `utilization fuori range: ${win.used}`);
+    assert.ok(win.used >= 0 && win.used <= 100, `utilization out of range: ${win.used}`);
   }
 });

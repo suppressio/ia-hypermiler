@@ -1,5 +1,5 @@
-// store/migrate.test.ts — migrazione dallo schema a due slot `{ claude, copilot }`
-// al registro `AccountConfig[]` (issue #4). Funzioni pure, nessun electron-store.
+// store/migrate.test.ts — migration from the two-slot schema `{ claude, copilot }` to
+// the `AccountConfig[]` registry (issue #4). Pure functions, no electron-store.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,13 +34,13 @@ const legacyCopilot = {
   experimentalWarningAcknowledged: true,
 };
 
-test('migrateAccounts: legacy → array, id preservati per non invalidare lo storico', () => {
+test('migrateAccounts: legacy → array, ids kept so the history stays valid', () => {
   const result = migrateAccounts({ claude: legacyClaude, copilot: legacyCopilot }, false);
   assert.deepEqual(result.map((a) => a.id), ['claude', 'copilot']);
   assert.deepEqual(result.map((a) => a.provider), ['claude', 'copilot']);
 });
 
-test('migrateAccounts: conserva credenziali e configurazione, aggiunge partition', () => {
+test('migrateAccounts: keeps credentials and configuration, adds the partition', () => {
   const migrated = migrateAccounts({ claude: legacyClaude, copilot: legacyCopilot }, false);
   const claude = at(migrated, 0);
   const copilot = at(migrated, 1);
@@ -57,17 +57,17 @@ test('migrateAccounts: conserva credenziali e configurazione, aggiunge partition
   assert.equal(copilot.oauthApp.clientId, 'Iv1.x');
 });
 
-test('migrateAccounts: il vecchio flag globale localInsights passa all\'account Claude', () => {
+test('migrateAccounts: the old global localInsights flag moves to the Claude account', () => {
   const claude = at(migrateAccounts({ claude: legacyClaude }, true), 0);
   assert.equal(claude.provider === 'claude' && claude.localInsights, true);
 });
 
-test('migrateAccounts: slot legacy mai configurato non genera righe fantasma', () => {
+test('migrateAccounts: a never-configured legacy slot creates no ghost rows', () => {
   const neverUsed = { claude: { ...legacyClaude, enabled: false, session: { sessionKey: null } }, copilot: { ...legacyCopilot, enabled: false, credentials: { token: null, username: null } } };
   assert.deepEqual(migrateAccounts(neverUsed, false), []);
 });
 
-test('migrateAccounts: slot legacy incompleto (merge shallow electron-store) riceve i default mancanti', () => {
+test('migrateAccounts: an incomplete legacy slot (electron-store shallow merge) gets the missing defaults', () => {
   const partial = { claude: { enabled: true, session: { sessionKey: 'sk' } } };
   const claude = at(migrateAccounts(partial, false), 0);
   assert.equal(claude.provider, 'claude');
@@ -76,24 +76,24 @@ test('migrateAccounts: slot legacy incompleto (merge shallow electron-store) ric
   assert.deepEqual(claude.subscription.renewalRule, { type: 'dayOfMonth', day: 1 });
 });
 
-test('migrateAccounts: idempotente su un array già migrato', () => {
+test('migrateAccounts: idempotent on an already migrated array', () => {
   const already = [defaultClaudeAccount('claude-abc')];
   assert.deepEqual(migrateAccounts(already, true), already);
 });
 
-test('migrateAccounts: valore non valido → nessun account', () => {
+test('migrateAccounts: invalid value → no account', () => {
   assert.deepEqual(migrateAccounts(undefined, false), []);
   assert.deepEqual(migrateAccounts('x', false), []);
 });
 
-test('nextAccountLabel: numerazione progressiva per provider', () => {
+test('nextAccountLabel: progressive numbering per provider', () => {
   const existing = [defaultClaudeAccount('a'), defaultClaudeAccount('b', 'Claude 2'), defaultCopilotAccount('c')];
   assert.equal(nextAccountLabel('claude', existing), 'Claude 3');
   assert.equal(nextAccountLabel('copilot', existing), 'GitHub Copilot 2');
   assert.equal(nextAccountLabel('claude', []), 'Claude');
 });
 
-test('enforceSingleLocalInsights: al massimo un account Claude con insight locali', () => {
+test('enforceSingleLocalInsights: at most one Claude account with local insights', () => {
   const a = { ...defaultClaudeAccount('a'), localInsights: true };
   const b = { ...defaultClaudeAccount('b'), localInsights: true };
   const result = enforceSingleLocalInsights([a, defaultCopilotAccount('c'), b]);

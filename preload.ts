@@ -1,6 +1,6 @@
-// preload.ts — bridge sicuro renderer <-> main via contextBridge
-// nodeIntegration: false e contextIsolation: true sono obbligatori (vedi CLAUDE.md).
-// Espone solo i canali IPC necessari, nessun accesso diretto a Node/Electron nel renderer.
+// preload.ts — secure renderer <-> main bridge via contextBridge
+// nodeIntegration: false and contextIsolation: true are mandatory (see CLAUDE.md).
+// Exposes only the needed IPC channels, no direct Node/Electron access in the renderer.
 
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AppSettings, HypermilerBridge, UsageSnapshot } from './types/index';
@@ -14,16 +14,16 @@ const bridge: HypermilerBridge = {
     ipcRenderer.on('usage:update', listener);
     return () => ipcRenderer.removeListener('usage:update', listener);
   },
-  // Notifica il widget quando le Impostazioni cambiano (es. colore accento) mentre
-  // è già aperto: senza, un campo che non ha un IPC dedicato (a differenza di
-  // ui.windowStyle/ui.alwaysOnTop) restava applicato solo al prossimo riavvio.
+  // Notifies the widget when Settings change (e.g. accent color, language) while it
+  // is open: without it, a field with no dedicated IPC (unlike
+  // ui.windowStyle/ui.alwaysOnTop) applied only after the next restart.
   onSettingsUpdate: (callback: (settings: AppSettings) => void) => {
     const listener = (_event: unknown, settings: AppSettings) => { callback(settings); };
     ipcRenderer.on('settings:update', listener);
     return () => ipcRenderer.removeListener('settings:update', listener);
   },
-  // Stato hover finestra calcolato lato main (screen.getCursorScreenPoint), non
-  // da eventi mouse DOM: vedi main.ts (startWindowHoverPolling) per il perché.
+  // Window hover state computed in the main process (screen.getCursorScreenPoint), not
+  // from DOM mouse events: see main.ts (startWindowHoverPolling) for why.
   onWindowHoverChanged: (callback: (isHovering: boolean) => void) => {
     const listener = (_event: unknown, isHovering: boolean) => { callback(isHovering); };
     ipcRenderer.on('window:hoverChanged', listener);
@@ -38,7 +38,7 @@ const bridge: HypermilerBridge = {
   minimizeWindow: () => { ipcRenderer.send('window:minimize'); },
   closeWindow: () => { ipcRenderer.send('window:close'); },
 
-  // Registro account (issue #4): ogni operazione è per id di account, non per provider.
+  // Account registry (issue #4): every operation is per account id, not per provider.
   addAccount: (provider) => ipcRenderer.invoke('accounts:add', provider),
   removeAccount: (id) => ipcRenderer.invoke('accounts:remove', id),
   connectClaude: (id) => ipcRenderer.invoke('accounts:connectClaude', id),
@@ -46,7 +46,7 @@ const bridge: HypermilerBridge = {
   connectCopilotOAuth: (id, clientId, clientSecret) => ipcRenderer.invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret }),
   disconnectAccount: (id) => ipcRenderer.invoke('accounts:disconnect', id),
 
-  // Aggiornamenti (issue #5): l'URL da aprire lo decide il main, mai il renderer.
+  // Updates (issue #5): the URL to open is decided by the main process, never by the renderer.
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
   downloadUpdate: () => ipcRenderer.invoke('updates:download'),

@@ -1,7 +1,7 @@
-// store/migrate.ts — registro account: default per provider e migrazione dallo
-// schema legacy a due slot `{ claude, copilot }` all'array `AccountConfig[]`
-// (issue #4, EVOLUTION.md punto 3). Funzioni pure, nessuna dipendenza da Electron:
-// testate in store/migrate.test.ts.
+// store/migrate.ts — account registry: per-provider defaults and migration from the
+// legacy two-slot schema `{ claude, copilot }` to the `AccountConfig[]` array (issue
+// #4, EVOLUTION.md point 3). Pure functions, no Electron dependency: tested in
+// store/migrate.test.ts.
 
 import type {
   AccountConfig,
@@ -48,8 +48,8 @@ export function defaultCopilotAccount(id: AccountId, label = PROVIDER_DISPLAY_NA
     authMethod: 'pat',
     credentials: { token: null, username: null },
     oauthApp: { clientId: null },
-    // L'API di billing Copilot non espone la quota totale del piano: valore
-    // configurato manualmente (vedi ARCHITECTURE.md §0 e RESEARCH.md v3 §3).
+    // Copilot's billing API does not expose the plan's total quota: value configured
+    // by hand (see ARCHITECTURE.md §0 and RESEARCH.md v3 §3).
     manualQuota: 300,
     planTier: 'individual',
     experimentalWarningAcknowledged: false,
@@ -60,7 +60,7 @@ export function defaultAccountFor(provider: ProviderId, id: AccountId, label?: s
   return provider === 'claude' ? defaultClaudeAccount(id, label) : defaultCopilotAccount(id, label);
 }
 
-/** Nome visualizzato di un nuovo account: "Claude", poi "Claude 2", "Claude 3"… */
+/** Display name of a new account: "Claude", then "Claude 2", "Claude 3"… */
 export function nextAccountLabel(provider: ProviderId, existing: AccountConfig[]): string {
   const base = PROVIDER_DISPLAY_NAMES[provider];
   const labels = new Set(existing.map((a) => a.label));
@@ -71,12 +71,12 @@ export function nextAccountLabel(provider: ProviderId, existing: AccountConfig[]
 }
 
 /**
- * Converte `accounts` in `AccountConfig[]`. Idempotente: un array già migrato
- * torna com'è. Gli account legacy mantengono id `'claude'`/`'copilot'` — gli
- * stessi valori già usati come `accountId` in history.dailyUsage/recentSamples/
- * lastGood, che così restano validi senza alcuna riscrittura dello storico.
- * Uno slot legacy mai configurato (né abilitato né con credenziali) non genera
- * un account: la tabella in Impostazioni parte vuota invece che con righe fantasma.
+ * Converts `accounts` into `AccountConfig[]`. Idempotent: an already migrated array
+ * comes back normalized. Legacy accounts keep the ids `'claude'`/`'copilot'` — the same
+ * values already used as `accountId` in history.dailyUsage/recentSamples/lastGood,
+ * which therefore stay valid without rewriting the history. A legacy slot never
+ * configured (neither enabled nor with credentials) produces no account: the Settings
+ * table starts empty instead of with ghost rows.
  */
 export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled: boolean): AccountConfig[] {
   if (Array.isArray(rawAccounts)) return normalizeAccounts(rawAccounts);
@@ -112,9 +112,9 @@ export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled
 }
 
 /**
- * Al massimo un account Claude può avere `localInsights: true`: le sessioni
- * Claude Code locali non dicono a quale account appartengono. Se più d'uno lo
- * ha (patch arrivata dal renderer), vince il primo in ordine.
+ * At most one Claude account can have `localInsights: true`: local Claude Code
+ * sessions do not say which account they belong to. If more have it (patch from the
+ * renderer), the first in order wins.
  */
 export function enforceSingleLocalInsights(accounts: AccountConfig[]): AccountConfig[] {
   let seen = false;
@@ -127,11 +127,11 @@ export function enforceSingleLocalInsights(accounts: AccountConfig[]): AccountCo
 }
 
 /**
- * Registro account su disco (già nel formato ad array) → AccountConfig[] validi:
- * ogni voce è completata con i default del suo provider (campi aggiunti in versioni
- * successive, tipi sbagliati), le voci senza id o con un provider sconosciuto sono
- * scartate. `provider`, `id` e (per Claude) `partition` non si possono cambiare dal
- * contenuto su disco: la partition deriva sempre dall'id.
+ * Account registry on disk (already in array form) → valid AccountConfig[]: each
+ * entry is completed with its provider's defaults (fields added in later versions,
+ * wrong types), entries without an id or with an unknown provider are dropped.
+ * `provider`, `id` and (for Claude) `partition` cannot be changed by the content on
+ * disk: the partition always derives from the id.
  */
 export function normalizeAccounts(rawAccounts: unknown[]): AccountConfig[] {
   const result: AccountConfig[] = [];

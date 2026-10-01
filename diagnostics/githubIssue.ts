@@ -1,12 +1,12 @@
-// diagnostics/githubIssue.ts — costruisce l'URL di una issue GitHub precompilata
-// quando un service rileva che il formato di un endpoint è cambiato (vedi
-// services/_shape.ts, main.ts). Funzione pura, nessuna dipendenza da Electron:
-// l'apertura vera e propria del browser (shell.openExternal) resta in main.ts.
+// diagnostics/githubIssue.ts — builds the URL of a pre-filled GitHub issue when a
+// service detects that an endpoint format changed (see services/_shape.ts, main.ts).
+// Pure function, no Electron dependency: actually opening the browser
+// (shell.openExternal) stays in main.ts. The issue goes to a public repository, so its
+// text is in English regardless of the UI language.
 //
-// Deliberatamente NON automatizza la creazione della issue via API GitHub: apre
-// solo una bozza precompilata che l'utente deve rivedere e confermare — scelta
-// esplicita per non pubblicare mai dati reali senza un click umano di conferma
-// (vedi CLAUDE.md).
+// It deliberately does NOT automate issue creation through the GitHub API: it only
+// opens a pre-filled draft that the user must review and submit — an explicit choice
+// never to publish real data without a confirming human click (see CLAUDE.md).
 
 import type { ProviderId } from '../types/index';
 
@@ -21,24 +21,24 @@ export interface FormatDriftIssueParams {
 
 export function buildFormatDriftIssueUrl({ provider, endpointLabel, shape }: FormatDriftIssueParams): string {
   const serviceName = provider === 'claude' ? 'Claude' : 'Copilot';
-  const title = `Formato risposta cambiato: ${serviceName} (${endpointLabel})`;
+  const title = `Response format changed: ${serviceName} (${endpointLabel})`;
 
   const body = [
-    `Rilevato automaticamente da IA Hypermiler il ${new Date().toISOString()}.`,
+    `Detected automatically by IA Hypermiler on ${new Date().toISOString()}.`,
     '',
-    `Servizio: **${serviceName}**`,
+    `Service: **${serviceName}**`,
     `Endpoint: \`${endpointLabel}\``,
     '',
-    'Struttura della risposta ricevuta — solo nomi di campo e tipo, **mai valori reali** ' +
-      '(percentuali di utilizzo, importi, date di rinnovo non vengono mai inclusi qui, vedi CLAUDE.md):',
+    'Structure of the received response — field names and types only, **never real values** ' +
+      '(usage percentages, amounts and renewal dates are never included here, see CLAUDE.md):',
     '',
     '```json',
     JSON.stringify(shape, null, 2),
     '```',
     '',
-    `Formato precedentemente atteso: vedi \`RESEARCH.md\` e \`services/${provider}.ts\`.`,
+    `Previously expected format: see \`RESEARCH.md\` and \`services/${provider}.ts\`.`,
     '',
-    '_Bozza generata automaticamente — rivedi il contenuto prima di inviare._',
+    '_Draft generated automatically — review the content before submitting._',
   ].join('\n');
 
   const url = new URL(`https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new`);
