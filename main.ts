@@ -676,7 +676,8 @@ function reportConfig(cfg: AccountConfig): Record<string, unknown> {
         authMethod: cfg.authMethod,
         accountScope: cfg.accountScope,
         host: cfg.host === DEFAULT_GITHUB_HOST ? DEFAULT_GITHUB_HOST : 'a .ghe.com tenant',
-        manualQuota: cfg.manualQuota,
+        // Read only by the personal-scope fallback: on a company seat it is not used.
+        ...(cfg.accountScope === 'personal' ? { manualQuota: cfg.manualQuota } : {}),
       };
   }
 }
