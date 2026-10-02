@@ -75,7 +75,7 @@ export const it: Record<MessageKey, string> = {
   'tips.cause': "Nei giorni in cui consumi più quota di {window}, il {highPercent}% dei token è prodotto a contesto oltre 150k (contro il {lowPercent}% negli altri giorni, su {days}gg): ridurre il contesto (/clear tra un task e l'altro, /compact) abbassa il costo di ogni turno.",
   'tips.rebalanceDown': "Su {window}, per arrivare al rinnovo restano circa {perUnit}% per giorno lavorativo nei prossimi {days} giorni lavorativi, invece dell'ideale {idealPerUnit}%.",
   'tips.rebalanceUp': 'Su {window} hai consumato meno del previsto: hai {perUnit}% per giorno lavorativo nei prossimi {days} giorni lavorativi (ideale {idealPerUnit}%).',
-  'tips.nextReset': 'il prossimo reset',
+  'tips.nextReset': 'fine periodo',
 
   'verdict.exhausted': 'esaurita',
   'verdict.exhaustedReset': 'esaurita · rinnovo {moment}',

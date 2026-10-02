@@ -182,6 +182,9 @@ body.style-transparent-digital #app {
   border: 1px solid rgba(127, 168, 154, 0.35);
   border-radius: 8px;
   margin: 4px;
+  /* The 4px margin above and below is outside the shared height (body has
+     overflow: hidden): without subtracting it the bottom border was cut off. */
+  height: calc(100vh - 32px - 8px);
 }
 /* Invisible by default, revealed when hovering the whole window (.window-hover class,
    see renderer/app.ts) or the buttons themselves (no-drag, so their CSS hover is always
