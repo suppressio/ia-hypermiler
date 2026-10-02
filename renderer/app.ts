@@ -16,6 +16,7 @@ import type {
   WindowVerdict,
 } from './types';
 import { byId } from './dom.js';
+import { applySeverity, severityLevel } from './severity.js';
 import { localDateKey, parseDateKey } from './dates.js';
 import {
   applyTranslations,
@@ -112,6 +113,12 @@ function budgetNormalizedUtilization(win: QuotaWindow): number | null {
   return null;
 }
 
+// Red threshold of percent-of-quota values (issue #13): the notification threshold, so
+// colour and notification agree; the default before settings are loaded.
+function warningThreshold(): number {
+  return state.settings?.ui.notificationThresholdPercent ?? 80;
+}
+
 function formatPercent(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '--%';
   return `${formatNumber(value, 1)}%`;
@@ -205,8 +212,8 @@ function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
 }
 
 // Today's budget (budget.todayBudget): today's consumption against the share of the
-// quota today can use, with what is left or how far over. Shown in the warning colour
-// once over budget. The hint also carries the remaining quota redistributed per
+// quota today can use, with what is left or how far over. Coloured like the other
+// percent-of-quota values (renderer/severity.ts) on its share of today's budget. The hint also carries the remaining quota redistributed per
 // working day (budget.redistributedQuota), also on a non-working day.
 function renderTodayBudget(winSnap: QuotaWindowSnapshot | undefined): void {
   const valueEl = byId('metric-today', HTMLElement);
@@ -220,16 +227,18 @@ function renderTodayBudget(winSnap: QuotaWindowSnapshot | undefined): void {
       ideal: formatPercent(redistribution.idealPerUnit),
     }));
   }
-  valueEl.classList.remove('over-budget');
+  applySeverity(valueEl, 'none');
   if (!today) {
     valueEl.textContent = '--';
     hintEl.textContent = hints.join(' · ');
     return;
   }
   valueEl.textContent = `${formatPercent(today.usedToday)} / ${formatPercent(today.budget)}`;
+  // Today's consumption as a percentage of today's budget, same thresholds as the quota.
+  if (today.budget > 0) applySeverity(valueEl, severityLevel((today.usedToday / today.budget) * 100, warningThreshold()));
+  else if (today.usedToday > 0) applySeverity(valueEl, 'warning');
   const diff = today.budget - today.usedToday;
   if (diff < 0) {
-    valueEl.classList.add('over-budget');
     hints.push(t('widget.metric.todayOver', { value: formatPercent(-diff) }));
   } else {
     hints.push(t('widget.metric.todayLeft', { value: formatPercent(diff) }));
@@ -568,6 +577,9 @@ function renderWindowList(account: AccountSnapshot): void {
     bar.className = 'window-row-bar';
     const fill = document.createElement('span');
     fill.style.width = `${Math.max(0, Math.min(100, utilization ?? 0))}%`;
+    // An at-risk/exhausted verdict keeps its red bar even below the threshold.
+    const alarmed = winSnap.verdict.kind === 'at-risk' || winSnap.verdict.kind === 'exhausted';
+    applySeverity(fill, alarmed ? 'warning' : severityLevel(utilization, warningThreshold()));
     bar.appendChild(fill);
     const pct = document.createElement('span');
     pct.className = 'window-row-pct';
@@ -632,6 +644,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
 
   byId('current-value').textContent =
     utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
+  applySeverity(byId('current-value'), severityLevel(utilization, warningThreshold()));
 
   let label = t('widget.waiting');
   if (win) {
@@ -657,6 +670,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   byId('metric-efficiency-hint').textContent = formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
   renderTodayBudget(winSnap);
   byId('metric-projected').textContent = formatPercent(winSnap?.projectedUsage ?? null);
+  applySeverity(byId('metric-projected'), severityLevel(winSnap?.projectedUsage, warningThreshold()));
   // Projection and autonomy extrapolated from less than two working days.
   const preliminaryHint = winSnap?.preliminary ? t('widget.metric.preliminary') : '';
   byId('metric-projected-hint').textContent = preliminaryHint;
@@ -726,10 +740,13 @@ async function init(): Promise<void> {
   // on top from Settings/tray, language) — see preload.ts/main.ts, settings:update.
   window.hypermiler.onSettingsUpdate((updated) => {
     const languageChanged = updated.ui.language !== state.settings?.ui.language;
+    const thresholdChanged = updated.ui.notificationThresholdPercent !== state.settings?.ui.notificationThresholdPercent;
     state.settings = updated;
     applyAccentColor(updated.ui.accentColor);
     updatePinButton(updated.ui.alwaysOnTop);
     if (languageChanged) applyLanguage(updated);
+    // The warning colours follow the notification threshold (renderer/severity.ts).
+    else if (thresholdChanged && state.latestSnapshot) renderSnapshot(state.latestSnapshot);
   });
   window.hypermiler.requestUsageRefresh();
 }

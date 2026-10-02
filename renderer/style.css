@@ -11,6 +11,9 @@
 :root {
   --accent: #2563eb;
   --warning: #dc2626;
+  /* Orange "getting close" step before --warning (issue #13, renderer/severity.ts):
+     darker on the light skin for contrast, lighter on the dark ones (below). */
+  --caution: #c2410c;
   --bg-filled: #fafafa;
   --text-filled: #1a1a1a;
   --muted-filled: #6b7280;
@@ -126,6 +129,8 @@ body.style-filled.window-hover .titlebar-drag::after {
 /* ---------- Skin "pieno (dark)" ---------- */
 /* Same structure as the "filled (classic)" skin above, only with the -filled-dark
    tokens instead of -filled (inverted colors, user request). */
+body.style-filled-dark,
+body.style-transparent-digital { --caution: #fb923c; }
 body.style-filled-dark {
   background: var(--bg-filled-dark);
   color: var(--text-filled-dark);
@@ -323,8 +328,14 @@ body.style-transparent-digital .account-tabs button.active {
 .metric-label { font-size: 11px; opacity: 0.65; }
 .metric-value { font-size: 16px; font-weight: 600; }
 .metric-hint { font-size: 10px; opacity: 0.6; }
-/* Today's consumption above today's budget: same warning colour as an at-risk window. */
-.metric-value.over-budget { color: var(--warning); }
+/* Percent-of-quota values close to / over the limit (issue #13, renderer/severity.ts):
+   current value, projection, today's consumption over today's budget, window bars.
+   #app in the selector so the per-skin text colours (e.g. the digital skin) do not
+   win over it. */
+#app .severity-caution { color: var(--caution); }
+#app .severity-warning { color: var(--warning); }
+#app .window-row-bar > span.severity-caution { background: var(--caution); }
+#app .window-row-bar > span.severity-warning { background: var(--warning); }
 
 /* Efficiency index + star rating kept together (same concept, two different time
    windows — user feedback: "they should stay next to the efficiency index"), across

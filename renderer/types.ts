@@ -235,6 +235,7 @@ export interface AppSettings {
     alwaysOnTop: boolean;
     chartRange: 'week' | 'month';
     accentColor: string;
+    notificationThresholdPercent: number;
   };
   [key: string]: unknown;
 }
