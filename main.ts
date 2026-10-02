@@ -21,7 +21,7 @@ import { fetchLatestUpdate, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
 import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost';
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
-import { buildFormatDriftIssueUrl } from './diagnostics/githubIssue';
+import { buildFormatDriftIssueUrl, buildResponseReportIssueUrl } from './diagnostics/githubIssue';
 import { formatNumber, resolveLocale, setLocale, t } from './main/i18n/index';
 import { randomUUID } from 'crypto';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -116,10 +116,21 @@ function recordDailyUsage(accountId: AccountId, window: QuotaWindow, periodStart
   const own = history
     .filter((h) => h.accountId === accountId && h.windowId === window.id)
     .sort((a, b) => a.date.localeCompare(b.date));
+  // First point stored with the wrong baseline on the period start day (see
+  // budget.repairFirstDayBaseline): fixed in place before today's point is computed.
+  const repaired = budget.repairFirstDayBaseline(own, periodStart);
+  if (repaired) {
+    const at = history.findIndex((h) => h.date === repaired.date && h.accountId === accountId && h.windowId === window.id);
+    if (at >= 0) history[at] = repaired;
+    const ownAt = own.findIndex((h) => h.date === repaired.date);
+    if (ownAt >= 0) own[ownAt] = repaired;
+  }
   const today = own.find((h) => h.date === todayKey);
   const previous = own.filter((h) => h.date < todayKey).at(-1);
+  // Same rounding as the recent samples (recordRecentSample): a baseline rounded to 0.1
+  // against samples rounded to 0.01 read as activity (budget.todayActivitySpan).
   const entry = budget.updateDailyPoint({
-    today, previous, accountId, windowId: window.id, used: Math.round(utilization * 10) / 10, periodStart, now,
+    today, previous, accountId, windowId: window.id, used: Math.round(utilization * 100) / 100, periodStart, now,
   });
   const idx = history.findIndex((h) => h.date === todayKey && h.accountId === accountId && h.windowId === window.id);
   if (idx >= 0) history[idx] = entry;
@@ -233,16 +244,6 @@ function resolvePeriodBounds(
 // too little data: the widget marks them as a preliminary estimate.
 const PRELIMINARY_WORKING_UNITS = 2;
 
-// A "billing-cycle" window with an unknown periodLength (e.g. credits recognized
-// only by the shape of the value in services/claude.ts, both recurring and one-off:
-// there is no way to tell them apart without guessing an undocumented format) has no
-// period start that can be derived with certainty: no pacing fabricated on a fictitious
-// span (see resolvePeriodBounds above), only daysUntilReset. Known monthly windows
-// (Claude spend limit, Copilot quotas) declare periodLength 1 and get full pacing.
-function canEstimatePacing(window: QuotaWindow): boolean {
-  return window.periodType !== 'billing-cycle' || window.periodLength !== null;
-}
-
 function computeWindowSnapshot(
   accountId: AccountId,
   window: QuotaWindow,
@@ -261,7 +262,7 @@ function computeWindowSnapshot(
   const dailyHistory = getDailyHistory(accountId, window.id, chartDays + 1);
   const recentSamples = getRecentSamples(accountId, window.id);
 
-  const pacingAvailable = canEstimatePacing(window);
+  const pacingAvailable = budget.hasPacing(window);
   const totalPeriodWorkingUnits = budget.workingUnitsBetween(periodStart, periodEnd, workSchedule);
   const isRollingHours = window.periodType === 'rolling-hours';
   // Same gate as the rating: on a window of a few hours a "daily" delta spans several
@@ -309,7 +310,7 @@ function computeWindowSnapshot(
     : null;
   const sustainableRate = budget.sustainableHourlyRate(window, window.resetsAt ?? (pacingAvailable ? periodEnd : null), now, workingHoursLeft);
   const efficiencyRating = ratingAvailable
-    ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, chartDays)
+    ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, now, chartDays)
     : null;
   // Value per token (EVOLUTION.md point 4): only when the account has local insights
   // enabled — crosses tokens per day with this window's deltas.
@@ -317,6 +318,9 @@ function computeWindowSnapshot(
   const todayBudget = pacingAvailable && !isRollingHours
     ? budget.todayBudget(ctx, todayPoint?.dayStartUsed ?? null)
     : null;
+  // The remaining quota redistributed per working day: the verdict and the "rebalance"
+  // tip rest on it (same scope as todayBudget: no daily budget on rolling hours).
+  const redistribution = pacingAvailable && !isRollingHours ? budget.redistributedQuota(ctx) : null;
   const preliminary = pacingAvailable
     && budget.elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule, todayElapsedUnits) < PRELIMINARY_WORKING_UNITS;
 
@@ -324,14 +328,15 @@ function computeWindowSnapshot(
     window,
     dailyHistory,
     dailyDeltas: dailyDeltasForWindow,
-    deltaStats: budget.deltaStats(dailyDeltasForWindow),
-    verdict: budget.windowVerdict({ window, projectedUsage, workingDaysUntilReset, estimatedAutonomyWorkingDays }),
+    deltaStats: budget.deltaStats(dailyDeltasForWindow, now),
+    verdict: budget.windowVerdict({ window, projectedUsage, workingDaysUntilReset, estimatedAutonomyWorkingDays, redistribution }),
     efficiencyIndex,
     projectedUsage,
     daysUntilReset,
     workingDaysUntilReset,
     estimatedAutonomyWorkingDays,
     todayBudget,
+    redistribution,
     preliminary,
     instantRate,
     sustainableRate,
@@ -348,6 +353,8 @@ function computeWindowSnapshot(
       sustainableRate,
       efficiencyRating,
       consumptionCause: localDaily ? budget.consumptionCause(localDaily, dailyDeltasForWindow) : null,
+      redistribution,
+      preliminary,
     }),
   };
 }
@@ -924,6 +931,19 @@ function registerIpcHandlers(): void {
   };
   ipcMain.handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
   ipcMain.handle('updates:openReleaseNotes', () => openTrustedUpdateUrl((a) => a.releaseUrl));
+
+  // Manual diagnostic (Settings, Claude account detail): the account's raw usage
+  // response, redacted, as a GitHub issue draft opened in the browser — never sent by
+  // the app. The URL is built here with the fixed repository prefix.
+  ipcMain.handle('diagnostics:reportResponse', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
+    const id = requireString(rawId, 'Account');
+    const cfg = findAccount(id);
+    if (!cfg || !providers.isConnected(cfg)) throw new Error(t('error.reportNotConnected'));
+    const raw = await providers.fetchRawResponse(cfg);
+    if (!raw) throw new Error(t('error.reportNotSupported', { provider: providers.providerDisplayName(cfg.provider) }));
+    const url = buildResponseReportIssueUrl({ provider: cfg.provider, ...raw, appVersion: app.getVersion() });
+    await shell.openExternal(url);
+  });
 
   ipcMain.handle('accounts:disconnect', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
     const id = requireString(rawId, 'Account');

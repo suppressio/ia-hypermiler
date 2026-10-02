@@ -74,6 +74,21 @@ test('pickCriticalWindow picks the window with the highest utilization', () => {
   assert.equal(picked?.id, 'c'); // 90% > 70% > 30%
 });
 
+test('pickCriticalWindow: on equal utilization the window with pacing wins', () => {
+  const unpaced = pctWindow(11.9, { id: 'extra_usage', periodType: 'billing-cycle', periodLength: null });
+  const paced = pctWindow(11.9, { id: 'spend', periodType: 'billing-cycle', periodLength: 1 });
+  assert.equal(budget.pickCriticalWindow([unpaced, paced])?.id, 'spend');
+  assert.equal(budget.pickCriticalWindow([paced, unpaced])?.id, 'spend');
+  // A higher utilization still wins, paced or not.
+  assert.equal(budget.pickCriticalWindow([{ ...unpaced, used: 12 }, paced])?.id, 'extra_usage');
+});
+
+test('hasPacing: only a billing cycle of unknown length has none', () => {
+  assert.equal(budget.hasPacing(pctWindow(1, { periodType: 'billing-cycle', periodLength: null })), false);
+  assert.equal(budget.hasPacing(pctWindow(1, { periodType: 'billing-cycle', periodLength: 1 })), true);
+  assert.equal(budget.hasPacing(pctWindow(1, { periodType: 'rolling-hours', periodLength: 5 })), true);
+});
+
 test('pickCriticalWindow returns null on an empty list', () => {
   assert.equal(budget.pickCriticalWindow([]), null);
 });
@@ -204,6 +219,11 @@ test("todayActivitySpan: an earlier local session moves the start back; yesterda
   assert.deepEqual(other?.start, new Date(2026, 6, 13, 10, 0));
 });
 
+test('todayActivitySpan: a rise within rounding (0.1-rounded baseline vs 0.01 samples) is not activity', () => {
+  const samples = [sample(8, 0, 11.93), sample(8, 30, 11.93), sample(9, 0, 11.94)];
+  assert.equal(budget.todayActivitySpan(samples, 11.9, new Date(2026, 6, 13, 10), null), null);
+});
+
 test('todayElapsedUnits: no activity yet today → 0 (today still entirely ahead)', () => {
   assert.equal(budget.todayElapsedUnits(new Date(2026, 6, 13, 10), null, FULL_WEEK_SCHEDULE), 0);
 });
@@ -267,6 +287,18 @@ test('todayBudget: null on a non-working day or without a baseline; a reset leav
   assert.deepEqual(budget.todayBudget(periodCtx(3, new Date(2026, 6, 13, 12)), 60), { budget: 4, usedToday: 3 });
 });
 
+test('redistributedQuota: what is left now over the working units from today, next to the even share', () => {
+  // 10 working days in the period; Wednesday 15, 40% used, today + 7 more days = 8 units.
+  assert.deepEqual(budget.redistributedQuota(periodCtx(40, new Date(2026, 6, 15, 9))), { perUnit: 7.5, idealPerUnit: 10, unitsLeft: 8 });
+  // Light start: 10% used → more per day than the even share.
+  assert.deepEqual(budget.redistributedQuota(periodCtx(10, new Date(2026, 6, 15, 9))), { perUnit: 11.25, idealPerUnit: 10, unitsLeft: 8 });
+  // Also on a non-working day (the verdict must not disappear at the weekend).
+  assert.deepEqual(budget.redistributedQuota(periodCtx(50, new Date(2026, 6, 18, 12))), { perUnit: 10, idealPerUnit: 10, unitsLeft: 5 });
+  // Period over, or utilization unknown.
+  assert.equal(budget.redistributedQuota(periodCtx(50, new Date(2026, 6, 27, 12))), null);
+  assert.equal(budget.redistributedQuota({ ...periodCtx(0, new Date(2026, 6, 15)), window: pctWindow(0, { unit: 'count', total: null }) }), null);
+});
+
 // ---------------------------------------------------------------------------
 // updateDailyPoint — baseline of the day and first activity
 // ---------------------------------------------------------------------------
@@ -307,9 +339,32 @@ test('updateDailyPoint: reset since the previous point → baseline 0; no histor
   });
   assert.equal(dropped.dayStartUsed, 0); // value dropped: reset in between
   const first = budget.updateDailyPoint({
-    today: undefined, previous: undefined, accountId: 'acc', windowId: 'w', used: 30, periodStart: P_START, now,
+    today: undefined, previous: undefined, accountId: 'acc', windowId: 'w', used: 30, periodStart: P_START, now: new Date(2026, 6, 15, 10),
   });
-  assert.equal(first.dayStartUsed, 30);
+  assert.equal(first.dayStartUsed, 30); // period started earlier: consumption before the first refresh is unknown
+});
+
+test('updateDailyPoint: no history on the period start day → baseline 0 (everything was used today)', () => {
+  // The Claude spend window, first read on the afternoon of its reset day.
+  const created = budget.updateDailyPoint({
+    today: undefined, previous: undefined, accountId: 'acc', windowId: 'w', used: 11.9, periodStart: P_START, now: new Date(2026, 6, 13, 15),
+  });
+  assert.equal(created.dayStartUsed, 0);
+  // A period starting later today (rolling window reset this evening) is not "started today" yet.
+  const notYet = budget.updateDailyPoint({
+    today: undefined, previous: undefined, accountId: 'acc', windowId: 'w', used: 40, periodStart: new Date(2026, 6, 13, 20), now: new Date(2026, 6, 13, 15),
+  });
+  assert.equal(notYet.dayStartUsed, 40);
+});
+
+test('repairFirstDayBaseline: first point on the period start day with a non-zero baseline → 0', () => {
+  const stored = [point('2026-07-14', 11.9, { dayStartUsed: 11.9 }), point('2026-07-13', 11.9, { dayStartUsed: 11.9 })];
+  assert.deepEqual(budget.repairFirstDayBaseline(stored, P_START), point('2026-07-13', 11.9, { dayStartUsed: 0 }));
+  // Nothing to do: already 0, no baseline, or the first point is not on the period start day.
+  assert.equal(budget.repairFirstDayBaseline([point('2026-07-13', 11.9, { dayStartUsed: 0 })], P_START), null);
+  assert.equal(budget.repairFirstDayBaseline([point('2026-07-13', 11.9)], P_START), null);
+  assert.equal(budget.repairFirstDayBaseline([point('2026-07-10', 5, { dayStartUsed: 5 })], P_START), null);
+  assert.equal(budget.repairFirstDayBaseline([], P_START), null);
 });
 
 test('dailyDeltas uses the day baseline: the reset day and the first day get a real bar', () => {
@@ -423,6 +478,9 @@ test('sustainableHourlyRate returns 0 when already at 100% or the reset has pass
 // efficiencyRating — rating a stelle
 // ---------------------------------------------------------------------------
 
+// A moment after every date used in these tests: all their days are completed.
+const LATER = new Date(2026, 6, 31, 12);
+
 function dayPoint(date: string, used: number): DailyUsagePoint {
   return { date, accountId: 'claude', windowId: 'test-window', used };
 }
@@ -430,7 +488,7 @@ function dayPoint(date: string, used: number): DailyUsagePoint {
 test('efficiencyRating averages the ideal/actual ratios over valid working days', () => {
   const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15), dayPoint('2026-07-15', 17)];
   // Period with 20 total working units => ideal share 5% per full day.
-  const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20);
+  const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20, LATER);
   assert.ok(result !== null);
   assert.equal(result.avgRatio, 1.75); // rapporti 5/5=1 e 5/2=2.5, media 1.75
   assert.equal(result.stars, 5);
@@ -443,19 +501,28 @@ test('efficiencyRating drops a day with a negative delta (window reset)', () => 
     dayPoint('2026-07-15', 17),
     dayPoint('2026-07-16', 3), // reset: the value goes down instead of up
   ];
-  const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20);
+  const result = budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20, LATER);
   assert.equal(result!.avgRatio, 1.75); // identical to the previous test: the reset day does not change the average
+});
+
+test('efficiencyRating and deltaStats ignore today (still running)', () => {
+  const history = [dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 20), dayPoint('2026-07-15', 20)];
+  const wednesdayMorning = new Date(2026, 6, 15, 9);
+  // Only Tuesday counts (10 vs ideal 5 → ratio 0.5), not today's 0 (which scored 3×).
+  assert.deepEqual(budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20, wednesdayMorning), { stars: 1, avgRatio: 0.5 });
+  const deltas = budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 20);
+  assert.deepEqual(budget.deltaStats(deltas, wednesdayMorning), { peak: 10, avg: 10, streakUnderBudget: 0 });
 });
 
 test('efficiencyRating excludes non-working days', () => {
   // 2026-07-17 is a Friday, 2026-07-18 a Saturday (off in the test schedule).
   const history = [dayPoint('2026-07-17', 20), dayPoint('2026-07-18', 25)];
-  assert.equal(budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20), null);
+  assert.equal(budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20, LATER), null);
 });
 
 test('efficiencyRating returns null with insufficient data', () => {
-  assert.equal(budget.efficiencyRating([dayPoint('2026-07-13', 10)], FULL_WEEK_SCHEDULE, 20), null);
-  assert.equal(budget.efficiencyRating([dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15)], FULL_WEEK_SCHEDULE, 0), null);
+  assert.equal(budget.efficiencyRating([dayPoint('2026-07-13', 10)], FULL_WEEK_SCHEDULE, 20, LATER), null);
+  assert.equal(budget.efficiencyRating([dayPoint('2026-07-13', 10), dayPoint('2026-07-14', 15)], FULL_WEEK_SCHEDULE, 0, LATER), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -473,6 +540,8 @@ function baseTipContext(overrides: Partial<budget.DailyTipContext> = {}): budget
     instantRate: null,
     sustainableRate: null,
     efficiencyRating: null,
+    redistribution: null,
+    preliminary: false,
     ...overrides,
   };
 }
@@ -559,35 +628,90 @@ test('dailyDeltas: without pacing (0 total units) deltas remain, ideal share is 
 
 test('deltaStats: peak/average on deltas (not on the cumulative value) and streak within the ideal share', () => {
   const stats = budget.deltaStats([
-    { date: 'a', delta: 8, idealShare: 5 },
-    { date: 'b', delta: null, idealShare: 5 },
-    { date: 'c', delta: 2, idealShare: 5 },
-    { date: 'd', delta: 4, idealShare: 5 },
-  ]);
+    { date: '2026-07-13', delta: 8, idealShare: 5 },
+    { date: '2026-07-14', delta: null, idealShare: 5 },
+    { date: '2026-07-15', delta: 2, idealShare: 5 },
+    { date: '2026-07-16', delta: 4, idealShare: 5 },
+  ], LATER);
   assert.deepEqual(stats, { peak: 8, avg: 4.67, streakUnderBudget: 2 });
 });
 
 test('deltaStats: no data → all null; without pacing the streak is null', () => {
-  assert.deepEqual(budget.deltaStats([]), { peak: null, avg: null, streakUnderBudget: null });
-  assert.equal(budget.deltaStats([{ date: 'a', delta: 3, idealShare: null }]).streakUnderBudget, null);
+  assert.deepEqual(budget.deltaStats([], LATER), { peak: null, avg: null, streakUnderBudget: null });
+  assert.equal(budget.deltaStats([{ date: '2026-07-13', delta: 3, idealShare: null }], LATER).streakUnderBudget, null);
 });
 
-test('windowVerdict: exhausted, at risk (autonomy or projection), on track, no pacing', () => {
-  const base = { projectedUsage: 80, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 12 };
+test('windowVerdict without a redistribution (rolling hours): exhausted, at risk (autonomy or projection), on track, no pacing', () => {
+  const base = { projectedUsage: 80, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 12, redistribution: null };
   assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(100) }), { kind: 'exhausted' });
   assert.deepEqual(
     budget.windowVerdict({ ...base, window: pctWindow(60), estimatedAutonomyWorkingDays: 3.04 }),
     { kind: 'at-risk', autonomyWorkingDays: 3 },
   );
   assert.deepEqual(
-    budget.windowVerdict({ window: pctWindow(60), projectedUsage: 130.44, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null }),
+    budget.windowVerdict({ window: pctWindow(60), projectedUsage: 130.44, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution: null }),
     { kind: 'at-risk', projectedUsage: 130.4 },
   );
   assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(60) }), { kind: 'on-track' });
   assert.deepEqual(
-    budget.windowVerdict({ window: pctWindow(60), projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null }),
+    budget.windowVerdict({ window: pctWindow(60), projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution: null }),
     { kind: 'no-pacing' },
   );
+});
+
+test('windowVerdict with a redistribution: at risk / behind / on track / ahead by quota left per day', () => {
+  const base = { projectedUsage: 300, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 1, window: pctWindow(40) };
+  const verdict = (perUnit: number) => budget.windowVerdict({ ...base, redistribution: { perUnit, idealPerUnit: 5, unitsLeft: 10 } });
+  assert.deepEqual(verdict(2.4), { kind: 'at-risk', perUnit: 2.4, idealPerUnit: 5 });
+  assert.deepEqual(verdict(4.4), { kind: 'behind', perUnit: 4.4, idealPerUnit: 5 });
+  assert.deepEqual(verdict(4.6), { kind: 'behind', perUnit: 4.6, idealPerUnit: 5 });
+  assert.deepEqual(verdict(4.8), { kind: 'on-track', perUnit: 4.8, idealPerUnit: 5 });
+  assert.deepEqual(verdict(5.25), { kind: 'on-track', perUnit: 5.25, idealPerUnit: 5 });
+  assert.deepEqual(verdict(6), { kind: 'ahead', perUnit: 6, idealPerUnit: 5 });
+  // Projection/autonomy no longer decide (300% / 1 day above), exhausted still comes first.
+  assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(100), redistribution: { perUnit: 0, idealPerUnit: 5, unitsLeft: 10 } }), { kind: 'exhausted' });
+});
+
+test('generateDailyTip: rebalance tips outside the on-track band; projection tips skipped while preliminary', () => {
+  const down = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 4.4, idealPerUnit: 5.13, unitsLeft: 18.5 } }));
+  assert.deepEqual(down, { key: 'rebalanceDown', params: { perUnit: 4.4, idealPerUnit: 5.13, days: 18.5 } });
+  const up = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 6, idealPerUnit: 5, unitsLeft: 9 } }));
+  assert.equal(up.key, 'rebalanceUp');
+  const even = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 5.1, idealPerUnit: 5, unitsLeft: 9 } }));
+  assert.deepEqual(even, budget.NO_TIP);
+  const preliminary = budget.generateDailyTip(baseTipContext({
+    preliminary: true, window: pctWindow(12), projectedUsage: 185, estimatedAutonomyWorkingDays: 9, workingDaysUntilReset: 18,
+  }));
+  assert.deepEqual(preliminary, budget.NO_TIP);
+});
+
+test('scenario 2026-10-02: heavy first day of a monthly spend window, the day after (Friday half day)', () => {
+  const schedule: WorkSchedule = { ...FULL_WEEK_SCHEDULE, days: { ...FULL_WEEK_SCHEDULE.days, fri: 'half' } };
+  const periodStart = new Date(2026, 9, 1);
+  const periodEnd = new Date(2026, 10, 1);
+  const window = pctWindow(11.9, { id: 'spend', periodType: 'billing-cycle', periodLength: 1 });
+  const morning = new Date(2026, 9, 2, 9, 4);
+  // Oct 1: first read in the afternoon, stored with its own value as baseline (old rule), repaired.
+  const stored = [point('2026-10-01', 11.9, { dayStartUsed: 11.9 })];
+  const repaired = budget.repairFirstDayBaseline(stored, periodStart);
+  assert.ok(repaired);
+  const today = budget.updateDailyPoint({
+    today: undefined, previous: repaired, accountId: 'acc', windowId: 'w', used: 11.93, periodStart, now: morning,
+  });
+  assert.equal(today.dayStartUsed, 11.9);
+  // No phantom work this morning: 11.93 against 11.9 is rounding.
+  assert.equal(budget.todayActivitySpan([{ timestamp: morning, used: 11.93 }], today.dayStartUsed ?? null, morning, null), null);
+
+  const ctx = { window, workSchedule: schedule, periodStart, periodEnd, now: morning };
+  // Oct 2026: 17 full days + 5 half Fridays = 19.5 units; from today on 18.5.
+  const redistribution = budget.redistributedQuota(ctx);
+  assert.deepEqual(redistribution, { perUnit: 4.76, idealPerUnit: 5.13, unitsLeft: 18.5 });
+  assert.deepEqual(budget.todayBudget(ctx, today.dayStartUsed ?? null), { budget: 2.38, usedToday: 0 });
+  assert.equal(budget.windowVerdict({ window, projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution }).kind, 'behind');
+
+  const deltas = budget.dailyDeltas([repaired, today], schedule, 19.5);
+  assert.deepEqual(budget.deltaStats(deltas, morning), { peak: 11.9, avg: 11.9, streakUnderBudget: 0 });
+  assert.equal(budget.efficiencyRating([repaired, today], schedule, 19.5, morning)?.stars, 1);
 });
 
 // ---------------------------------------------------------------------------

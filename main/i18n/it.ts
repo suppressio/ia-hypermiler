@@ -27,5 +27,7 @@ export const it: Record<MainMessageKey, string> = {
 
   'error.sessionExpired': "Sessione scaduta o non valida — riconnetti l'account da Impostazioni. ({detail})",
   'error.invalidGithubHost': 'Dominio GitHub non supportato: usa github.com oppure il dominio aziendale <nome>.ghe.com.',
+  'error.reportNotConnected': "Collega l'account prima di segnalarne la risposta.",
+  'error.reportNotSupported': 'La segnalazione della risposta non è ancora disponibile per {provider}.',
   'error.copilotEnterpriseManaged': "Questo account github.com non ha dati di consumo Copilot. Se la tua azienda usa un proprio dominio GitHub (<nome>.ghe.com), impostalo nell'account e ricollegati con un account di quel dominio.",
 };

@@ -51,6 +51,28 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
 }
 
 /**
+ * The raw usage response of the account, for the manual "report response" diagnostic
+ * (main.ts, diagnostics/githubIssue.ts). Null for a provider that does not support it
+ * yet: Copilot reads several endpoints with fallbacks, there is no single response.
+ */
+export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLabel: string; response: unknown } | null> {
+  switch (cfg.provider) {
+    case 'claude':
+      return {
+        endpointLabel: claudeService.USAGE_ENDPOINT_LABEL,
+        response: await claudeService.fetchUsageResponse({
+          sessionKey: cfg.session.sessionKey as string,
+          organizationId: cfg.session.organizationId,
+          planTier: cfg.planTier,
+          cookieHeader: await buildClaudeCookieHeader(cfg.partition),
+        }),
+      };
+    case 'copilot':
+      return null;
+  }
+}
+
+/**
  * Removes credentials and, for Claude, the partition cookies — not only the
  * sessionKey in the store (cause of issue #4). Returns the updated, disabled config: a
  * disconnected account stays disconnected until "Connect" is done again.

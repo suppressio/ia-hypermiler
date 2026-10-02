@@ -13,7 +13,7 @@ export interface RenewalSource {
   next: string | null;
 }
 
-// Same rule as main.ts canEstimatePacing: a billing cycle of unknown length gets no
+// Same rule as budget.hasPacing: a billing cycle of unknown length gets no
 // pacing, so it needs no period end either.
 function isPaced(win: QuotaWindow): boolean {
   return win.periodType !== 'billing-cycle' || win.periodLength !== null;

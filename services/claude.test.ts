@@ -254,6 +254,13 @@ test('fetchUsage resolves organizationId when missing, then calls /usage', async
   assert.equal(at(result.quotaWindows, 0).used, 12);
 });
 
+test('fetchUsageResponse returns the raw response as received, uninterpreted', async () => {
+  const raw = { extra_usage: { utilization: 11.9 }, spend: { percent: 11.9, enabled: true }, limits: [] };
+  installFetchMock(async () => jsonResponse(raw));
+  assert.deepEqual(await claudeService.fetchUsageResponse({ sessionKey: 'sess-abc', organizationId: 'org-xyz' }), raw);
+  await assert.rejects(() => claudeService.fetchUsageResponse({ sessionKey: '' }), /missing sessionKey/);
+});
+
 test('fetchUsage throws an explicit error without sessionKey', async () => {
   await assert.rejects(() => claudeService.fetchUsage({ sessionKey: '' }), /missing sessionKey/);
 });

@@ -40,9 +40,10 @@ export const en = {
   'widget.metric.efficiencyBelow': 'below the ideal pace',
   'widget.metric.efficiencyAbove': 'above the ideal pace',
   'widget.metric.today': 'Today: used / budget',
-  'widget.metric.todayHelp': "Today's consumption against today's budget: what was left this morning spread over the working days until renewal.",
+  'widget.metric.todayHelp': "Today's consumption against today's budget: what was left this morning spread over the working days until renewal. Below: what is left now per working day, next to the even share of the period.",
   'widget.metric.todayLeft': '{value} left today',
   'widget.metric.todayOver': '{value} over budget',
+  'widget.metric.todayQuota': '{perUnit}/working day redistributed (ideal {ideal})',
   'widget.metric.preliminary': 'preliminary estimate',
   'widget.metric.projected': 'Projection',
   'widget.metric.daysLeft': 'Days to reset',
@@ -79,6 +80,8 @@ export const en = {
   'tips.nearResetToday': 'Less than a day until {window} renews and you are already at {utilization}%: consider consolidating the remaining requests before the reset.',
   'tips.projected': 'At this pace {window} would reach {projectedUsage}% by renewal: it would go over the limit if the pace stays the same.',
   'tips.cause': 'On days when you use more {window} quota, {highPercent}% of tokens are produced with context over 150k (vs {lowPercent}% on other days, over {days} days): reducing context (/clear between tasks, /compact) lowers the cost of each turn.',
+  'tips.rebalanceDown': 'On {window}, to last until renewal about {perUnit}% per working day is left for the next {days} working days, instead of the ideal {idealPerUnit}%.',
+  'tips.rebalanceUp': 'You are below plan on {window}: {perUnit}% per working day is available over the next {days} working days (ideal {idealPerUnit}%).',
   'tips.nextReset': 'the next reset',
 
   // --- Quota window verdicts (budget.windowVerdict) --------------------------
@@ -87,6 +90,10 @@ export const en = {
   'verdict.atRiskAutonomy': 'at risk · runs out in {days} working',
   'verdict.atRiskProjection': 'at risk · projection {value}',
   'verdict.onTrack': 'on track',
+  'verdict.atRiskQuota': 'at risk · {perUnit}/working day left (ideal {ideal})',
+  'verdict.behind': 'quota reduced · {perUnit}/working day (ideal {ideal})',
+  'verdict.onTrackQuota': 'on track · {perUnit}/working day',
+  'verdict.ahead': 'room to spare · {perUnit}/working day (ideal {ideal})',
   'verdict.preliminary': '{verdict} · preliminary',
   'verdict.noPacing': 'no pacing',
   'verdict.noPacingReset': 'no pacing · renews {moment}',
@@ -166,6 +173,9 @@ export const en = {
   'settings.claude.localInsights': 'Attribute this machine’s Claude Code sessions to this account (local insights, experimental)',
   'settings.claude.localInsightsHint': 'Reads local Claude Code sessions (CLI and VS Code extension — same source) to show how much of your usage happens with a very large context or in very long sessions, which tools/MCP servers you use most and how many tokens you produce per point of quota. It only reads token counts and tool names — never message content. Local sessions do not say which account they belong to: enable it on one Claude account only, the one you use with Claude Code. Sessions older than about 30 days are no longer available.',
   'settings.claude.loginHint': 'Login opens in a claude.ai window dedicated to this account (works with company SSO too): no cookie to paste by hand.',
+  'settings.claude.reportResponse': 'Report usage response (GitHub)',
+  'settings.claude.reportResponseHint': 'Opens in the browser a GitHub issue draft with the usage response of this account as claude.ai sends it: it includes real values (percentages, amounts, dates), ids and names are redacted. Nothing is sent: you can just copy the link.',
+  'settings.claude.reportResponseOpened': 'Report draft opened in the browser.',
 
   // --- Settings: Copilot detail -------------------------------------------------
   'settings.copilot.orgWarning': 'Company seat: usage is read from the unofficial endpoint VS Code uses, and it may change without notice. If your company has its own GitHub domain (<name>.ghe.com), set it below and connect with an account of that domain: a github.com account linked to an enterprise has no usage data.',

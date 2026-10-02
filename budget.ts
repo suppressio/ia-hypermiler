@@ -22,6 +22,7 @@ import type {
   DailyTip,
   ConsumptionCause,
   TodayBudget,
+  Redistribution,
 } from './types/index';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -92,14 +93,32 @@ export function normalizedUtilization(win: QuotaWindow): number | null {
   return null;
 }
 
-/** Picks the most critical quota window (highest normalized utilization). */
+/**
+ * Whether a window's period start can be derived, so that pacing (efficiency,
+ * projection, today's budget, verdict) can be computed. A "billing-cycle" window with
+ * an unknown periodLength (e.g. credits recognized only by the shape of the value in
+ * services/claude.ts, both recurring and one-off: there is no way to tell them apart
+ * without guessing an undocumented format) has no certain period start: no pacing
+ * fabricated on a fictitious span, only daysUntilReset. Known monthly windows (Claude
+ * spend limit, Copilot quotas) declare periodLength 1 and get full pacing.
+ */
+export function hasPacing(window: QuotaWindow): boolean {
+  return window.periodType !== 'billing-cycle' || window.periodLength !== null;
+}
+
+/**
+ * Picks the most critical quota window (highest normalized utilization). On equal
+ * utilization a window with pacing wins: two windows reporting the same money (Claude
+ * `extra_usage` and `spend`, both 11.9%) made the unpaced one the default view, with
+ * every pacing metric empty.
+ */
 export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | null {
   const [first] = quotaWindows;
   if (!first) return null;
   const [top] = quotaWindows
     .map((w) => ({ window: w, utilization: normalizedUtilization(w) }))
     .filter((x): x is { window: QuotaWindow; utilization: number } => x.utilization !== null)
-    .sort((a, b) => b.utilization - a.utilization);
+    .sort((a, b) => b.utilization - a.utilization || Number(hasPacing(b.window)) - Number(hasPacing(a.window)));
   return top ? top.window : first;
 }
 
@@ -107,6 +126,9 @@ export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | n
 // right after the first refresh with consumption a few minutes of work would turn a
 // normal first increment into an absurd pace (2% in 15 min → "out of quota by noon").
 const MIN_OBSERVED_WORK_HOURS = 2;
+
+// Smallest rise (quota percentage points) counted as activity — see todayActivitySpan.
+const ACTIVITY_EPSILON = 0.05;
 
 /**
  * Today's working span, from the day's own data (user feedback: "from the first data
@@ -119,7 +141,9 @@ const MIN_OBSERVED_WORK_HOURS = 2;
  *   saw it). Moved earlier to `sessionStart` (first local Claude Code session of the
  *   day) when that is earlier;
  * - `end`: the last increase — once work stops the span stops growing.
- * Null when nothing rose today. Samples of other days are ignored.
+ * Null when nothing rose today. Samples of other days are ignored. A rise of at most
+ * ACTIVITY_EPSILON is rounding, not work: baselines stored rounded to 0.1 against
+ * samples rounded to 0.01 turned an idle 11.93 vs 11.9 into two hours "worked".
  */
 export function todayActivitySpan(
   samples: { timestamp: Date | string; used: number }[],
@@ -138,7 +162,7 @@ export function todayActivitySpan(
   for (const [i, sample] of today.entries()) {
     const previous = today[i - 1];
     const base = previous ? previous.used : dayStartUsed;
-    if (base === null || sample.used <= base) continue;
+    if (base === null || sample.used - base <= ACTIVITY_EPSILON) continue;
     start ??= previous ? previous.time : sample.time;
     end = sample.time;
   }
@@ -341,6 +365,30 @@ export function todayBudget(ctx: Omit<PeriodContext, 'todayElapsedUnits' | 'rece
 }
 
 /**
+ * The remaining quota redistributed (user feedback, 2026-10-02: "a redefinition of
+ * the remaining quota based on what was consumed, whether too much or too little"):
+ * what is left NOW spread over the working units from today on (today counted whole,
+ * as in todayBudget) — down after heavy days, up after light ones — next to the even
+ * share of the whole period. The primary pacing signal (windowVerdict, tip
+ * `rebalance`): it needs no history, so it is there from the first refresh of the
+ * morning, and it follows today's consumption while the day runs (todayBudget stays
+ * fixed). Null when utilization is unknown or no working unit is left.
+ */
+export function redistributedQuota(ctx: Omit<PeriodContext, 'todayElapsedUnits' | 'recentPacePerUnit'>): Redistribution | null {
+  const { window, workSchedule, periodStart, periodEnd, now = new Date() } = ctx;
+  const utilization = normalizedUtilization(window);
+  if (utilization === null) return null;
+  const unitsLeft = remainingWorkingUnits(periodEnd, now, workSchedule, 0);
+  const totalUnits = workingUnitsBetween(periodStart, periodEnd, workSchedule);
+  if (unitsLeft <= 0 || totalUnits <= 0) return null;
+  return {
+    perUnit: round2(Math.max(0, 100 - utilization) / unitsLeft),
+    idealPerUnit: round2(100 / totalUnits),
+    unitsLeft: round1(unitsLeft),
+  };
+}
+
+/**
  * Recent consumption pace (%/h), computed between the oldest and the newest sample
  * available within `lookbackMinutes` (default 3h). Not truly instantaneous (refresh
  * runs every 30 min, see CLAUDE.md), but the pace observed in the recent window.
@@ -380,7 +428,7 @@ export function instantaneousRate(
  * reset — the "target" marker of the instant consumption gauge. Needs only the reset
  * moment, not `periodStart`: unlike `efficiencyIndex`/`projectedUsage` it also works
  * for windows with an unknown reference period (e.g. one-off credits with their own
- * `resetsAt`, see main.ts canEstimatePacing), because knowing when the period started
+ * `resetsAt`, see budget.hasPacing), because knowing when the period started
  * is not needed to know how much time is left. `resetsAt` is passed explicitly: a
  * window without its own (e.g. a monthly spend limit) resets at the end of the
  * billing period resolved by the caller.
@@ -419,17 +467,22 @@ const EFFICIENCY_RATING_MAX_RATIO = 3;
  * excluded (no ideal share to respect); a negative delta (window reset in between) is
  * excluded as in instantaneousRate, not attributable to that day's usage. Each ratio
  * is capped at EFFICIENCY_RATING_MAX_RATIO so a single zero-consumption day does not
- * dominate the average. Returns null when there is not enough valid data.
+ * dominate the average. Only completed days: today is still running, and in the
+ * morning its 0% scored as a perfect day. Returns null when there is not enough
+ * valid data.
  */
 export function efficiencyRating(
   dailyHistory: DailyUsagePoint[],
   workSchedule: WorkSchedule,
   totalPeriodWorkingUnits: number,
+  now: Date,
   days = 7,
 ): EfficiencyRating | null {
-  if (!Array.isArray(dailyHistory) || dailyHistory.length < 2 || totalPeriodWorkingUnits <= 0) return null;
+  const todayKey = localDateKey(now);
+  const completed = Array.isArray(dailyHistory) ? dailyHistory.filter((p) => p.date < todayKey) : [];
+  if (completed.length === 0 || totalPeriodWorkingUnits <= 0) return null;
 
-  const sorted = [...dailyHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-(days + 1));
+  const sorted = [...completed].sort((a, b) => a.date.localeCompare(b.date)).slice(-(days + 1));
   const ratios: number[] = [];
 
   for (const { delta, idealShare } of dailyDeltas(sorted, workSchedule, totalPeriodWorkingUnits)) {
@@ -486,10 +539,11 @@ export function dailyDeltas(
  * utilization (already rounded by the caller):
  * - `dayStartUsed` (set once, when the day's point is created): the previous point's
  *   value when it belongs to the current period; 0 when the period started after it
- *   or the value dropped (reset in between); the current value when there is no
- *   history at all (consumption before the first refresh is unknown).
+ *   or the value dropped (reset in between); with no history at all, 0 when the
+ *   period started today (everything used so far was used today), otherwise the
+ *   current value (consumption before the first refresh is unknown).
  * An older point of today without a baseline (recorded before the field existed)
- * gets one computed the same way.
+ * gets one computed the same way. See also repairFirstDayBaseline.
  */
 export function updateDailyPoint(args: {
   today: DailyUsagePoint | undefined;
@@ -503,11 +557,31 @@ export function updateDailyPoint(args: {
   const { today, previous, accountId, windowId, used, periodStart, now } = args;
   let dayStartUsed = today?.dayStartUsed;
   if (dayStartUsed === undefined) {
-    if (!previous) dayStartUsed = today?.used ?? used;
+    if (!previous) dayStartUsed = periodStartedToday(periodStart, now) ? 0 : today?.used ?? used;
     else if (previous.used > used || isBefore(parseDateKey(previous.date), startOfDay(new Date(periodStart)))) dayStartUsed = 0;
     else dayStartUsed = previous.used;
   }
   return { date: localDateKey(now), accountId, windowId, used, dayStartUsed };
+}
+
+function periodStartedToday(periodStart: Date | string, now: Date): boolean {
+  const start = new Date(periodStart);
+  return localDateKey(start) === localDateKey(now) && start.getTime() <= now.getTime();
+}
+
+/**
+ * Repairs the baseline of a window's FIRST history point when it is dated on the
+ * period start day (`points` = one window's points): before updateDailyPoint knew
+ * that rule, it stored the first value read — on a window first seen in the
+ * afternoon of its reset day (the Claude `spend` window, v0.4.2 on 2026-10-01) the
+ * whole day's consumption became 0 (empty chart, 5 stars, "room for a longer
+ * session"). Returns the point to store again, or null when nothing changes.
+ */
+export function repairFirstDayBaseline(points: DailyUsagePoint[], periodStart: Date | string): DailyUsagePoint | null {
+  const [first] = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  if (!first?.dayStartUsed) return null;
+  if (first.date !== localDateKey(new Date(periodStart))) return null;
+  return { ...first, dayStartUsed: 0 };
 }
 
 /**
@@ -515,10 +589,12 @@ export function updateDailyPoint(args: {
  * recent) within the ideal share — computed on the `dailyDeltas` deltas, not on the
  * cumulative value: on the cumulative value the "peak" was always the last day and
  * the streak meant nothing. Days with a reset (delta null) are ignored; the streak is
- * null without pacing (no ideal share to compare with).
+ * null without pacing (no ideal share to compare with). Only completed days: today is
+ * still running (in the morning its 0% lowered the average and lengthened the streak).
  */
-export function deltaStats(deltas: DailyDelta[]): DeltaStats {
-  const valid = deltas.filter((d): d is DailyDelta & { delta: number } => d.delta !== null);
+export function deltaStats(deltas: DailyDelta[], now: Date): DeltaStats {
+  const todayKey = localDateKey(now);
+  const valid = deltas.filter((d): d is DailyDelta & { delta: number } => d.delta !== null && d.date < todayKey);
   if (valid.length === 0) return { peak: null, avg: null, streakUnderBudget: null };
   const values = valid.map((d) => d.delta);
   const peak = round2(Math.max(...values));
@@ -540,18 +616,44 @@ export interface WindowVerdictContext {
   projectedUsage: number | null;
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
+  // The remaining quota redistributed (redistributedQuota); null on windows without a
+  // daily budget (rolling hours) or without pacing.
+  redistribution: Redistribution | null;
 }
+
+// Redistributed quota over the ideal one (see windowVerdict): below AT_RISK the days
+// left get less than half of their even share; within the ON_TRACK band the
+// difference is noise. Narrow on purpose: one heavy day (2.3× the even share, then
+// spread over 18 days) lowers the quota by only ~7%, and the user wants to see that.
+export const REDISTRIBUTION_AT_RISK_RATIO = 0.5;
+export const REDISTRIBUTION_ON_TRACK_LOW = 0.95;
+export const REDISTRIBUTION_ON_TRACK_HIGH = 1.05;
 
 /**
  * Short verdict of a quota window for the widget window list (EVOLUTION.md point 1:
- * replacing tabs that only lined up the provider's metrics). By severity: exhausted →
- * at risk (autonomy shorter than the time to reset, or projection above 100%) → on
- * track → pacing not available. The text is composed by the renderer (reset date
- * formatting is a UI concern).
+ * replacing tabs that only lined up the provider's metrics). The text is composed by
+ * the renderer (reset date formatting is a UI concern).
+ * - exhausted first;
+ * - with a redistribution (every paced window except rolling hours): how the quota
+ *   left per working day compares with the even share — at risk / behind (less per
+ *   day than planned) / on track / ahead (more). Not projection/autonomy: on the day
+ *   after a heavy day they extrapolate that day to the whole period ("runs out in 9
+ *   days" while the user is compensating), the redistribution says what is left to
+ *   spend instead;
+ * - otherwise (rolling-hours windows) autonomy/projection as before → no pacing.
  */
 export function windowVerdict(ctx: WindowVerdictContext): WindowVerdict {
   const utilization = normalizedUtilization(ctx.window);
   if (utilization !== null && utilization >= 100) return { kind: 'exhausted' };
+  const r = ctx.redistribution;
+  if (r && r.idealPerUnit > 0) {
+    const params = { perUnit: r.perUnit, idealPerUnit: r.idealPerUnit };
+    const ratio = r.perUnit / r.idealPerUnit;
+    if (ratio < REDISTRIBUTION_AT_RISK_RATIO) return { kind: 'at-risk', ...params };
+    if (ratio < REDISTRIBUTION_ON_TRACK_LOW) return { kind: 'behind', ...params };
+    if (ratio <= REDISTRIBUTION_ON_TRACK_HIGH) return { kind: 'on-track', ...params };
+    return { kind: 'ahead', ...params };
+  }
   if (
     ctx.estimatedAutonomyWorkingDays !== null &&
     ctx.workingDaysUntilReset !== null &&
@@ -680,6 +782,11 @@ export interface DailyTipContext {
   efficiencyRating: EfficiencyRating | null;
   // Only for the Claude account with local insights enabled — see consumptionCause.
   consumptionCause?: ConsumptionCause | null;
+  // The remaining quota redistributed (redistributedQuota), null without a daily budget.
+  redistribution: Redistribution | null;
+  // Projection/autonomy rest on too little data (see main.ts PRELIMINARY_WORKING_UNITS):
+  // the tips built on them are skipped.
+  preliminary: boolean;
 }
 
 export const NO_TIP: DailyTip = { key: 'none', params: {} };
@@ -704,6 +811,8 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
     sustainableRate,
     efficiencyRating,
     consumptionCause: cause,
+    redistribution,
+    preliminary,
   } = ctx;
   const utilization = normalizedUtilization(window);
   const candidates: DailyTip[] = [];
@@ -712,6 +821,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
   // the reset: a concrete risk of running out first. Includes the slowdown
   // needed to make it (ratio between the two durations).
   if (
+    !preliminary &&
     estimatedAutonomyWorkingDays !== null && Number.isFinite(estimatedAutonomyWorkingDays) &&
     workingDaysUntilReset !== null && workingDaysUntilReset > 0 &&
     estimatedAutonomyWorkingDays < workingDaysUntilReset
@@ -753,7 +863,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
 
   // 5. The linear projection to the end of the period exceeds 100%, even though
   // it has not been reached yet — earlier signal than case 1 (which needs autonomy).
-  if (projectedUsage !== null && projectedUsage >= 100 && utilization !== null && utilization < 100) {
+  if (!preliminary && projectedUsage !== null && projectedUsage >= 100 && utilization !== null && utilization < 100) {
     candidates.push({ key: 'projected', params: { projectedUsage: round1(projectedUsage) } });
   }
 
@@ -768,6 +878,18 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
         days: cause.daysCompared,
       },
     });
+  }
+
+  // 7. The quota left per working day is clearly below or above the even share:
+  // how much per day from now on (the redistribution, see redistributedQuota).
+  if (redistribution && redistribution.idealPerUnit > 0) {
+    const ratio = redistribution.perUnit / redistribution.idealPerUnit;
+    if (ratio < REDISTRIBUTION_ON_TRACK_LOW || ratio > REDISTRIBUTION_ON_TRACK_HIGH) {
+      candidates.push({
+        key: ratio < 1 ? 'rebalanceDown' : 'rebalanceUp',
+        params: { perUnit: redistribution.perUnit, idealPerUnit: redistribution.idealPerUnit, days: redistribution.unitsLeft },
+      });
+    }
   }
 
   // Index capped to the last candidate: an injected random returning 1

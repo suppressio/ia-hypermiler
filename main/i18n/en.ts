@@ -28,6 +28,8 @@ export const en = {
 
   'error.sessionExpired': 'Session expired or invalid — reconnect the account from Settings. ({detail})',
   'error.invalidGithubHost': 'GitHub domain not supported: use github.com or your company domain <name>.ghe.com.',
+  'error.reportNotConnected': 'Connect the account before reporting its response.',
+  'error.reportNotSupported': 'Reporting the response is not available for {provider} yet.',
   'error.copilotEnterpriseManaged': 'This github.com account has no Copilot usage data. If your company uses its own GitHub domain (<name>.ghe.com), set it in the account and reconnect with an account of that domain.',
 } as const;
 

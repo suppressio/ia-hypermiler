@@ -135,6 +135,8 @@ When a service receives a response whose format no longer matches the expected o
 - **Deduplicated by structure signature** (`shapeSignature()`): the same shape does not reopen a draft on every refresh. Reported signatures live in `store.diagnostics.reportedSignatures`.
 - **Can be disabled** in Settings (`diagnostics.autoReportFormatDrift`, default `true`).
 
+**Manual response report** (Settings, Claude account detail, button "Report usage response"): opens a GitHub issue draft with the raw usage response redacted by `redactResponse()` (`diagnostics/githubIssue.ts`) — numbers, booleans, null, ISO dates and short enum-like fields kept, every other string replaced by its length. Unlike the automatic drift report it **does** carry usage values, because deciding how to read a field needs them; it is user-initiated, says so in the body, and is never sent by the app (the user may just copy the link). Never credentials, ids or free text. Claude only for now (`providers.fetchRawResponse`).
+
 ### Store
 - The store on disk is normalized at startup and after every `settings:set` (`store/normalize.ts`: deep merge with `store/defaults.ts`, wrong types replaced, legacy schemas migrated). Therefore `AppSettings` types are true: read top-level keys with their types (`store.get('history').recentSamples`), **never** dotted paths with casts (`store.get('a.b') as T`) and never `?? []` fallbacks. A new field only needs to be added to `store/defaults.ts`.
 - Background: electron-store applies defaults with a SHALLOW merge, so a new nested field used to be `undefined` on existing installations — this caused real bugs before normalization existed.
@@ -172,9 +174,11 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - `pickCriticalWindow(quotaWindows)` — the window with the highest utilization
 - `efficiencyIndex`, `projectedUsage`, `estimatedAutonomyWorkingDays` — pacing on working units, not calendar days; projection and autonomy blend the period average 50/50 with `recentPacePerUnit` (last 3 completed working days); projection NOT capped at 100
 - `todayBudget` — today's budget (what was left at the start of the day over the working units from today on) vs today's consumption; `PACE_ALERT_RATIO`
+- `redistributedQuota` — what is left NOW over the working units from today on (`perUnit`) next to the even share (`idealPerUnit`): the primary pacing signal, needs no history
 - `daysUntilReset` / `workingDaysUntilReset`
 - `instantaneousRate`, `sustainableHourlyRate`, `efficiencyRating` — instant gauge (sustainable %/h spread over remaining WORKING hours when a schedule applies) and star rating
-- `dailyDeltas`, `deltaStats`, `windowVerdict` — daily consumption chart, peak/average/streak, per-window verdict
+- `dailyDeltas`, `deltaStats`, `windowVerdict` — daily consumption chart, peak/average/streak (completed days only), per-window verdict from the redistribution (at risk < 0.5× / behind < 0.95× / on track / ahead > 1.05× the even share; rolling-hours windows: projection/autonomy)
+- `hasPacing`, `repairFirstDayBaseline` — a billing cycle of unknown length has no pacing (also the tie-break of `pickCriticalWindow`); first history point on the period start day gets baseline 0
 - `tokenYield`, `consumptionCause` — value per token (Claude local insights; a cause is stated only with a clear signal)
 - `generateDailyTip` — `{ key, params }` from explicit conditions on the metrics above, never a generic tip
 - `resolveRenewalDate(renewalRule, referenceDate)` — only `{ type: 'dayOfMonth', day }`; `rrule` throws "not supported". Only a fallback: the period end is the window's `resetsAt`, then the provider's `subscriptionRenewsAt`, then the manual day (`main.ts resolvePeriodBounds`); Settings locks the manual field when the provider reports every paced window's reset (`renderer/renewal.ts`)

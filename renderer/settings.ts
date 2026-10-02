@@ -384,6 +384,9 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
       const result = await window.hypermiler.connectCopilotOAuth(id, clientId, clientSecret, githubHostInput(id));
       await reloadAfterAccountAction(id);
       showSaveStatus(t('settings.accounts.connectedOauthAs', { name, user: result.username }));
+    } else if (action === 'report-response') {
+      await window.hypermiler.reportUsageResponse(id);
+      setDetailStatus(id, t('settings.claude.reportResponseOpened'));
     } else if (action === 'disconnect') {
       await window.hypermiler.disconnectAccount(id);
       await reloadAfterAccountAction(id);

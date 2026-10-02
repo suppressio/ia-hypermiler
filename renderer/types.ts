@@ -25,6 +25,17 @@ export interface TodayBudget {
   usedToday: number;
 }
 
+/**
+ * The remaining quota spread over the working units from today on (perUnit, % per
+ * full working day) next to the even share of the whole period (idealPerUnit) — see
+ * budget.redistributedQuota.
+ */
+export interface Redistribution {
+  perUnit: number;
+  idealPerUnit: number;
+  unitsLeft: number;
+}
+
 export interface DailyUsagePoint {
   date: string;
   accountId: AccountId;
@@ -50,9 +61,12 @@ export interface DeltaStats {
 }
 
 export interface WindowVerdict {
-  kind: 'exhausted' | 'at-risk' | 'on-track' | 'no-pacing';
+  kind: 'exhausted' | 'at-risk' | 'behind' | 'on-track' | 'ahead' | 'no-pacing';
   autonomyWorkingDays?: number;
   projectedUsage?: number;
+  // From the redistribution (budget.windowVerdict), when the verdict rests on it.
+  perUnit?: number;
+  idealPerUnit?: number;
 }
 
 /**
@@ -60,7 +74,7 @@ export interface WindowVerdict {
  * numbers it states; the renderer renders it in the active language.
  */
 export interface DailyTip {
-  key: 'none' | 'autonomy' | 'instantRate' | 'rating' | 'nearReset' | 'nearResetToday' | 'projected' | 'cause';
+  key: 'none' | 'autonomy' | 'instantRate' | 'rating' | 'nearReset' | 'nearResetToday' | 'projected' | 'cause' | 'rebalanceDown' | 'rebalanceUp';
   params: Record<string, number>;
 }
 
@@ -76,6 +90,7 @@ export interface QuotaWindowSnapshot {
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
   todayBudget: TodayBudget | null;
+  redistribution: Redistribution | null;
   preliminary: boolean;
   instantRate: number | null;
   sustainableRate: number | null;
@@ -242,6 +257,8 @@ export interface HypermilerBridge {
   connectCopilot(id: AccountId, token: string, host: string): Promise<{ username: string }>;
   connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string, host: string): Promise<{ username: string }>;
   disconnectAccount(id: AccountId): Promise<void>;
+  // Opens a GitHub issue draft with the account's redacted usage response (Claude only).
+  reportUsageResponse(id: AccountId): Promise<void>;
   getAppVersion(): Promise<string>;
   checkForUpdates(): Promise<UpdateSettings>;
   downloadUpdate(): Promise<void>;

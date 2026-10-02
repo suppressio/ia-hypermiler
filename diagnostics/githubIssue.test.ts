@@ -5,7 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFormatDriftIssueUrl } from './githubIssue';
+import { buildFormatDriftIssueUrl, buildResponseReportIssueUrl, redactResponse } from './githubIssue';
 import { extractShape } from '../services/_shape';
 
 test('buildFormatDriftIssueUrl points to the right repo with new issue', () => {
@@ -45,4 +45,55 @@ test('buildFormatDriftIssueUrl includes a manual review reminder in the body', (
   const url = buildFormatDriftIssueUrl({ provider: 'copilot', endpointLabel: 'ep', shape: {} });
   const body = new URL(url).searchParams.get('body') || '';
   assert.match(body, /review the content before submitting/i);
+});
+
+// ---------------------------------------------------------------------------
+// Manual response report: values kept, strings redacted.
+// ---------------------------------------------------------------------------
+
+test('redactResponse keeps numbers, booleans, null, dates and enum-like fields; redacts other strings', () => {
+  const response = {
+    extra_usage: { utilization: 11.9, is_enabled: true, monthly_limit: null, resets_at: '2026-11-01T00:00:00+00:00' },
+    spend: { percent: 11.9, used: { amount_minor: 1190, currency: 'USD', exponent: 2 }, severity: 'normal', disclaimer: 'Some long free text' },
+    organization_uuid: '0b8c1d2e-aaaa-bbbb-cccc-1234567890ab',
+    limits: [{ name: 'Jane Doe', value: 3 }],
+  };
+  assert.deepEqual(redactResponse(response), {
+    extra_usage: { is_enabled: true, monthly_limit: null, resets_at: '2026-11-01T00:00:00+00:00', utilization: 11.9 },
+    limits: [{ name: '<string, 8 chars>', value: 3 }],
+    organization_uuid: '<string, 36 chars>',
+    spend: {
+      disclaimer: '<string, 19 chars>',
+      percent: 11.9,
+      severity: 'normal',
+      used: { amount_minor: 1190, currency: 'USD', exponent: 2 },
+    },
+  });
+  // An enum-like key with a long value is redacted all the same.
+  assert.equal(redactResponse('x'.repeat(40), 'type'), '<string, 40 chars>');
+});
+
+test('buildResponseReportIssueUrl: values in the body, redacted strings, warning, own label', () => {
+  const url = buildResponseReportIssueUrl({
+    provider: 'claude',
+    endpointLabel: 'claude.ai/api/organizations/{id}/usage',
+    response: { spend: { percent: 11.9 }, account_email: 'someone@example.com' },
+    appVersion: '0.4.9-beta',
+  });
+  assert.match(url, /^https:\/\/github\.com\/suppressio\/ia-hypermiler\/issues\/new\?/);
+  const params = new URL(url).searchParams;
+  const body = params.get('body') ?? '';
+  assert.ok(body.includes('11.9'));
+  assert.ok(!body.includes('someone@example.com'));
+  assert.match(body, /real usage values/);
+  assert.equal(params.get('labels'), 'response-report');
+});
+
+test('buildResponseReportIssueUrl truncates a very long response', () => {
+  const response = Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`field_${String(i)}`, i]));
+  const url = buildResponseReportIssueUrl({ provider: 'claude', endpointLabel: 'ep', response, appVersion: '0' });
+  const body = new URL(url).searchParams.get('body') ?? '';
+  assert.match(body, /Truncated to fit/);
+  assert.ok(url.length <= 7500);
+  assert.ok(body.includes('"field_0":0'));
 });

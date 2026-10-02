@@ -179,42 +179,62 @@ function formatTip(tip: DailyTip, win: QuotaWindow, provider: ProviderId): strin
     case 'nearResetToday': return t('tips.nearResetToday', params);
     case 'projected': return t('tips.projected', params);
     case 'cause': return t('tips.cause', params);
+    case 'rebalanceDown': return t('tips.rebalanceDown', params);
+    case 'rebalanceUp': return t('tips.rebalanceUp', params);
   }
 }
 
 function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
   const moment = win.resetsAt ? formatResetMoment(win.resetsAt) : null;
+  // Verdicts resting on the redistribution (budget.windowVerdict) carry the quota per
+  // working day left and the even share.
+  const quota = verdict.perUnit !== undefined && verdict.idealPerUnit !== undefined
+    ? { perUnit: formatPercent(verdict.perUnit), ideal: formatPercent(verdict.idealPerUnit) }
+    : null;
   switch (verdict.kind) {
     case 'exhausted': return moment ? t('verdict.exhaustedReset', { moment }) : t('verdict.exhausted');
     case 'at-risk':
+      if (quota) return t('verdict.atRiskQuota', quota);
       if (verdict.autonomyWorkingDays !== undefined) return t('verdict.atRiskAutonomy', { days: formatDays(verdict.autonomyWorkingDays) });
       return t('verdict.atRiskProjection', { value: formatPercent(verdict.projectedUsage) });
-    case 'on-track': return t('verdict.onTrack');
+    case 'behind': return quota ? t('verdict.behind', quota) : t('verdict.onTrack');
+    case 'on-track': return quota ? t('verdict.onTrackQuota', quota) : t('verdict.onTrack');
+    case 'ahead': return quota ? t('verdict.ahead', quota) : t('verdict.onTrack');
     case 'no-pacing': return moment ? t('verdict.noPacingReset', { moment }) : t('verdict.noPacing');
   }
 }
 
 // Today's budget (budget.todayBudget): today's consumption against the share of the
 // quota today can use, with what is left or how far over. Shown in the warning colour
-// once over budget.
+// once over budget. The hint also carries the remaining quota redistributed per
+// working day (budget.redistributedQuota), also on a non-working day.
 function renderTodayBudget(winSnap: QuotaWindowSnapshot | undefined): void {
   const valueEl = byId('metric-today', HTMLElement);
   const hintEl = byId('metric-today-hint', HTMLElement);
   const today = winSnap?.todayBudget ?? null;
+  const redistribution = winSnap?.redistribution ?? null;
+  const hints: string[] = [];
+  if (redistribution) {
+    hints.push(t('widget.metric.todayQuota', {
+      perUnit: formatPercent(redistribution.perUnit),
+      ideal: formatPercent(redistribution.idealPerUnit),
+    }));
+  }
   valueEl.classList.remove('over-budget');
   if (!today) {
     valueEl.textContent = '--';
-    hintEl.textContent = '';
+    hintEl.textContent = hints.join(' · ');
     return;
   }
   valueEl.textContent = `${formatPercent(today.usedToday)} / ${formatPercent(today.budget)}`;
   const diff = today.budget - today.usedToday;
   if (diff < 0) {
     valueEl.classList.add('over-budget');
-    hintEl.textContent = t('widget.metric.todayOver', { value: formatPercent(-diff) });
+    hints.push(t('widget.metric.todayOver', { value: formatPercent(-diff) }));
   } else {
-    hintEl.textContent = t('widget.metric.todayLeft', { value: formatPercent(diff) });
+    hints.push(t('widget.metric.todayLeft', { value: formatPercent(diff) }));
   }
+  hintEl.textContent = hints.join(' · ');
 }
 
 // --- Daily chart -------------------------------------------------------------------
@@ -555,9 +575,11 @@ function renderWindowList(account: AccountSnapshot): void {
     const verdict = document.createElement('span');
     verdict.className = 'window-row-verdict';
     const verdictText = formatVerdict(winSnap.verdict, winSnap.window);
-    // A verdict resting on projection/autonomy is flagged while they are preliminary.
-    const pacedVerdict = winSnap.verdict.kind === 'at-risk' || winSnap.verdict.kind === 'on-track';
-    verdict.textContent = pacedVerdict && winSnap.preliminary
+    // A verdict resting on projection/autonomy (rolling hours) is flagged while they
+    // are preliminary; one resting on the redistribution needs no history.
+    const projectionVerdict = (winSnap.verdict.kind === 'at-risk' || winSnap.verdict.kind === 'on-track')
+      && winSnap.verdict.perUnit === undefined;
+    verdict.textContent = projectionVerdict && winSnap.preliminary
       ? t('verdict.preliminary', { verdict: verdictText })
       : verdictText;
 

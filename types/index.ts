@@ -49,7 +49,7 @@ export interface QuotaWindow {
   label: string;
   periodType: 'rolling-hours' | 'rolling-days' | 'billing-cycle';
   // Hours (rolling-hours), days (rolling-days) or months (billing-cycle); null when
-  // unknown — such a window gets no pacing (see main.ts canEstimatePacing).
+  // unknown — such a window gets no pacing (see budget.hasPacing).
   periodLength: number | null;
   unit: 'percentage' | 'count';
   used: number;
@@ -79,6 +79,17 @@ export interface DailyUsagePoint {
 export interface TodayBudget {
   budget: number;
   usedToday: number;
+}
+
+/**
+ * The remaining quota spread over the working units from today on (perUnit, % per
+ * full working day) next to the even share of the whole period (idealPerUnit) — see
+ * budget.redistributedQuota.
+ */
+export interface Redistribution {
+  perUnit: number;
+  idealPerUnit: number;
+  unitsLeft: number;
 }
 
 /**
@@ -116,9 +127,12 @@ export interface DeltaStats {
 
 /** Short verdict of a window — see budget.windowVerdict. */
 export interface WindowVerdict {
-  kind: 'exhausted' | 'at-risk' | 'on-track' | 'no-pacing';
+  kind: 'exhausted' | 'at-risk' | 'behind' | 'on-track' | 'ahead' | 'no-pacing';
   autonomyWorkingDays?: number;
   projectedUsage?: number;
+  // From the redistribution (budget.windowVerdict), when the verdict rests on it.
+  perUnit?: number;
+  idealPerUnit?: number;
 }
 
 /**
@@ -126,7 +140,7 @@ export interface WindowVerdict {
  * numbers it states; the renderer renders it in the active language.
  */
 export interface DailyTip {
-  key: 'none' | 'autonomy' | 'instantRate' | 'rating' | 'nearReset' | 'nearResetToday' | 'projected' | 'cause';
+  key: 'none' | 'autonomy' | 'instantRate' | 'rating' | 'nearReset' | 'nearResetToday' | 'projected' | 'cause' | 'rebalanceDown' | 'rebalanceUp';
   params: Record<string, number>;
 }
 
@@ -150,6 +164,9 @@ export interface QuotaWindowSnapshot {
   estimatedAutonomyWorkingDays: number | null;
   // Today's budget and consumption (budget.todayBudget), null without pacing.
   todayBudget: TodayBudget | null;
+  // The remaining quota per working day vs the even share (budget.redistributedQuota),
+  // null without pacing or on rolling-hours windows. Drives the verdict.
+  redistribution: Redistribution | null;
   // Fewer than 2 working units elapsed in the period: projection and autonomy rest on
   // too little data and are shown as a preliminary estimate.
   preliminary: boolean;
@@ -420,6 +437,8 @@ export interface HypermilerBridge {
   connectCopilot(id: AccountId, token: string, host: string): Promise<{ username: string }>;
   connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string, host: string): Promise<{ username: string }>;
   disconnectAccount(id: AccountId): Promise<void>;
+  // Opens a GitHub issue draft with the account's redacted usage response (Claude only).
+  reportUsageResponse(id: AccountId): Promise<void>;
   getAppVersion(): Promise<string>;
   checkForUpdates(): Promise<UpdateSettings>;
   downloadUpdate(): Promise<void>;

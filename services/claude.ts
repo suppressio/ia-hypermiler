@@ -61,6 +61,7 @@ interface ClaudeSpendResponse {
   limit?: ClaudeMoneyAmount | null;
 }
 
+export const USAGE_ENDPOINT_LABEL = 'claude.ai/api/organizations/{id}/usage';
 const SPEND_KEY = 'spend';
 
 // Readable labels only for the known historical names (should they come back):
@@ -238,7 +239,7 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
     const preview = JSON.stringify(usage).slice(0, 500);
     throw new FormatDriftError(
       `Claude: no quota window recognized in the response — the internal endpoint format may have changed (see RESEARCH.md). Response received: ${preview}`,
-      'claude.ai/api/organizations/{id}/usage',
+      USAGE_ENDPOINT_LABEL,
       extractShape(usage),
     );
   }
@@ -248,8 +249,17 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
   return windows;
 }
 
-export async function fetchUsage(credentials: ClaudeCredentials): Promise<RawAccountUsage> {
-  const { sessionKey, planTier, cookieHeader } = credentials;
+/**
+ * The raw usage endpoint response, before any interpretation: used by fetchUsage and,
+ * as is, by the manual "report response" diagnostic (main.ts, diagnostics/githubIssue.ts
+ * redactResponse) to look at what the endpoint really sends.
+ */
+export async function fetchUsageResponse(credentials: ClaudeCredentials): Promise<unknown> {
+  return requestUsage(credentials);
+}
+
+async function requestUsage(credentials: ClaudeCredentials): Promise<ClaudeUsageResponse | null> {
+  const { sessionKey, cookieHeader } = credentials;
   if (!sessionKey) {
     throw new Error('Claude: missing sessionKey — connect the account from Settings');
   }
@@ -263,13 +273,16 @@ export async function fetchUsage(credentials: ClaudeCredentials): Promise<RawAcc
     organizationId = firstOrg.id;
   }
 
-  const usage = await fetchJson<ClaudeUsageResponse | null>(`${BASE_URL}/organizations/${organizationId}/usage`, {
+  return fetchJson<ClaudeUsageResponse | null>(`${BASE_URL}/organizations/${organizationId}/usage`, {
     headers: authHeaders(sessionKey, cookieHeader),
-    label: 'claude.ai/api/organizations/{id}/usage',
+    label: USAGE_ENDPOINT_LABEL,
   });
+}
 
+export async function fetchUsage(credentials: ClaudeCredentials): Promise<RawAccountUsage> {
+  const usage = await requestUsage(credentials);
   return {
-    planTier: planTier || 'pro',
+    planTier: credentials.planTier || 'pro',
     // Claude does not expose the subscription billing date through this endpoint: it
     // stays a value configured by hand in Settings (account subscription).
     subscriptionRenewsAt: null,
