@@ -1,9 +1,11 @@
 name: Cross-platform build
 
-# Runs only on version tags (e.g. v0.1.0) or manually from Actions.
-# Packages are both uploaded as run artifacts and attached directly to the GitHub
-# Release of the current tag (electron-builder --publish=always, see CLAUDE.md,
-# "Build and test").
+# Two uses (see CLAUDE.md, "CI"):
+# - a version tag (e.g. v0.4.12-beta): release — packages attached to the GitHub
+#   Release of the tag (electron-builder --publish=always) and uploaded as artifacts;
+# - a manual run (Actions → Run workflow, or `gh workflow run build.yml`): TEST build —
+#   version "<package.json version>.dev.<run number>", packages only as run artifacts,
+#   no release and therefore no update notification to anyone.
 "on":
   push:
     tags:
@@ -51,8 +53,17 @@ jobs:
       - name: Build + test
         run: npm test
 
-      - name: Package (electron-builder) and publish to the tag Release
-        run: npx electron-builder ${{ matrix.flag }} --publish=always
+      - name: Package (electron-builder) — release on a tag, test build otherwise
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            npx electron-builder ${{ matrix.flag }} --publish=always
+          else
+            # A newer semver than the release it starts from (0.4.11-beta.dev.5 >
+            # 0.4.11-beta) and older than the next one: no spurious update prompt.
+            version="$(node -p "require('./package.json').version").dev.${{ github.run_number }}"
+            npx electron-builder ${{ matrix.flag }} --publish=never -c.extraMetadata.version="$version"
+          fi
         env:
           # Prevents electron-builder from looking for a signing identity on macOS (no
           # certificate available for this project): unsigned build.
@@ -65,7 +76,7 @@ jobs:
       - name: Upload package as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ia-hypermiler-${{ matrix.artifact }}
+          name: ia-hypermiler-${{ matrix.artifact }}${{ github.ref_type != 'tag' && '-test' || '' }}
           path: |
             release/*.dmg
             release/*.exe

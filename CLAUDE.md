@@ -232,7 +232,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 
 ### CI — cross-platform build (GitHub Actions)
 `.github/workflows/build.yml` builds on macos/windows/ubuntu in parallel:
-- **Trigger:** only a pushed tag starting with `v` (e.g. `v0.4.0-beta`) or `workflow_dispatch`. No build on every push/PR.
+- **Trigger:** a pushed tag starting with `v` (e.g. `v0.4.0-beta`) → **release**; a manual run (`gh workflow run build.yml`, or Actions → Run workflow) → **test build**: version `<package.json version>.dev.<run number>`, packages only as run artifacts (`-test` suffix, 14 days), `--publish=never`, so no release and no update notification. No build on every push/PR. Workflow: iterate on `main`, try test builds on the real machines, tag a release only once a test build is verified (no extra branches: two people, not a team).
 - **Each job:** `npm ci` → `npm run lint` → `npm test` → `npx electron-builder --<mac|win|linux> --publish=always`.
 - **Output:** packages attached to the GitHub Release of the tag (`contents: write` permission) and uploaded as run artifacts (14 days). Release notes are written by hand (EN + IT) after the run.
 - **No code signing** (`CSC_IDENTITY_AUTO_DISCOVERY: false`): Gatekeeper/SmartScreen warn at install time.
