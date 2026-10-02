@@ -267,6 +267,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-01 | v0.4.8-beta | Pacing overhaul: monthly windows (Claude spend, Copilot) finally paced, working day from the day's samples, today's budget + pace notification, recent-pace and uncapped projection, local day keys, renewal date read from the provider |
 | 2026-10-02 | v0.4.9-beta | Verdict from the remaining quota redistributed per working day; first-day baseline, phantom activity and running-day fixes; warning colours tied to the notification threshold (#13); "report usage response" issue draft; startup freeze fixed (local insights in a utility process, one store read/write per refresh), Settings loading state |
 | 2026-10-02 | v0.4.10-beta | Claude `extra_usage` read as the monthly budget (deduplicated against `spend` on equal amounts), sane values on almost unused quotas, one diagnostic report for every account in Settings → Diagnostics, synthetic-only test data |
+| 2026-10-02 | v0.4.11-beta | Diagnostic report file with explicit confirmation (ids redacted, log buffer), rolling-hours windows read in hours, verdict sees the current pace, working-hours gauge target with the schedule disabled, at-risk window shown first, Settings: info tooltips, locked fields visible, plan/Claude scope removed; local insights as their own section |
 
 ### Lessons learned (still relevant)
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
