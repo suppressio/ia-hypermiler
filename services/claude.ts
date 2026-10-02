@@ -129,6 +129,32 @@ function readSpend(value: unknown): SpendReading {
   return { kind: 'unrecognized' };
 }
 
+// Known `limits[].kind` values, mapped to the named window they mirror (same id: the
+// history continues). Any other kind gets its own id and no pacing (length unknown).
+const LIMIT_KINDS: Record<string, Pick<QuotaWindow, 'id' | 'periodType' | 'periodLength'>> = {
+  session: { id: 'five_hour', periodType: 'rolling-hours', periodLength: 5 },
+  weekly_all: { id: 'seven_day', periodType: 'rolling-days', periodLength: 7 },
+};
+
+/** One `limits[]` element as a window, or null when its shape is not the known one. */
+function readLimit(item: unknown): QuotaWindow | null {
+  if (!isRecord(item) || typeof item.kind !== 'string' || typeof item.percent !== 'number') return null;
+  const known = LIMIT_KINDS[item.kind];
+  const id = known?.id ?? `limit_${item.kind}`;
+  const resetsAt = typeof item.resets_at === 'string' ? new Date(item.resets_at) : null;
+  if (item.percent === 0 && !resetsAt) return null; // same rule as the named windows
+  return {
+    id,
+    label: KNOWN_LABELS[id] ?? `Claude usage — undocumented window (${id})`,
+    periodType: known?.periodType ?? 'billing-cycle',
+    periodLength: known?.periodLength ?? null,
+    unit: 'percentage',
+    used: item.percent,
+    total: null,
+    resetsAt,
+  };
+}
+
 /** Amounts of a monthly-credits window (`monthly_limit`/`used_credits` in minor units), or null. */
 function readMonthlyCredits(entry: ClaudeUsageWindowResponse): { used: number; total: number } | null {
   const { monthly_limit: limit, used_credits: used, decimal_places: places } = entry;
@@ -267,6 +293,18 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
       const duplicate = windows.findIndex((w) => w.unit === 'count' && w.periodLength === 1 && sameMoney(w, spend.window));
       if (duplicate >= 0) windows.splice(duplicate, 1);
       if (!windows.some((w) => w.unit === 'count' && w.periodLength === null)) windows.push(spend.window);
+    }
+  }
+
+  // Fallback: the `limits` array (RESEARCH.md §1 addendum 5) mirrors the named windows
+  // ({ kind: "session" } = five_hour, "weekly_all" = seven_day). Read only when no
+  // named window was recognized, so that their removal would not stop the app.
+  if (!recognizedAny && usage && Array.isArray(usage.limits)) {
+    for (const item of usage.limits) {
+      const window = readLimit(item);
+      if (!window) continue;
+      recognizedAny = true;
+      windows.push(window);
     }
   }
 

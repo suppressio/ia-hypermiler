@@ -79,7 +79,9 @@ ia-hypermiler/
 │   ├── claudeLocalSessions.worker.ts ← utility-process entry: the scan runs off the main process
 │   ├── updates.ts               ← new-version check via the GitHub Releases list (+ test)
 │   └── githubHost.ts            ← github.com or <tenant>.ghe.com: validation + API/OAuth base URLs (+ test)
-├── diagnostics/githubIssue.ts   ← pre-filled GitHub issue URL for format drift (+ test)
+├── diagnostics/githubIssue.ts   ← pre-filled GitHub issue URLs (format drift, report draft) + response redaction (+ test)
+├── diagnostics/report.ts        ← manual diagnostic report file: layout, neutral names (+ test)
+├── diagnostics/logBuffer.ts     ← last main-process errors/warnings, memory only
 ├── store/
 │   ├── index.ts                 ← electron-store wrapper: creates the store and normalizes it at startup
 │   ├── defaults.ts              ← AppSettings defaults (pure module, usable by tests)
@@ -136,7 +138,7 @@ When a service receives a response whose format no longer matches the expected o
 - **Deduplicated by structure signature** (`shapeSignature()`): the same shape does not reopen a draft on every refresh. Reported signatures live in `store.diagnostics.reportedSignatures`.
 - **Can be disabled** in Settings (`diagnostics.autoReportFormatDrift`, default `true`).
 
-**Manual response report** (Settings → Diagnostics, button "Report usage responses"): one GitHub issue draft with the raw usage response of every connected account (Claude usage endpoint, Copilot `copilot_internal/user`, via `providers.fetchRawResponse`), redacted by `redactResponse()` (`diagnostics/githubIssue.ts`) — numbers, booleans, null, ISO dates and short enum-like fields kept, every other string replaced by its length; accounts named "<Provider> #n", never by their label; a read error keeps only the message before " — " (no response body). Unlike the automatic drift report it **does** carry usage values, because deciding how to read a field needs them; it is user-initiated, says so in the body, and is never sent by the app (the user may just copy the link). Never credentials, ids or free text.
+**Manual diagnostic report** (Settings → Diagnostics, "Create diagnostic report"): after an explicit confirmation (native dialog listing what goes in and that nothing is sent), one text file in Downloads (`diagnostics/report.ts`) with, per connected account (enabled or not, named "<Provider> #n"): the raw usage response redacted by `redactResponse()` (`diagnostics/githubIssue.ts` — numbers, booleans, null, ISO dates and short enum-like fields kept, other strings replaced by their length, any value under an id key replaced whatever its type), the settings that affect pacing (no labels, host only as github.com/"a .ghe.com tenant"), the app's reading of the data (last snapshot), 7 days of history and today's samples; plus environment and the last 50 main-process errors/warnings (`diagnostics/logBuffer.ts`, memory only). Free texts go through `neutralize()` (labels/ids → neutral names, single pass) and `shortError()` (no response bodies). The folder is shown and a short GitHub issue draft opens: the user attaches the file by hand, or not. Unlike the automatic drift report it **does** carry usage values; never credentials, ids, names or free text.
 
 ### Store
 - The store on disk is normalized at startup and after every `settings:set` (`store/normalize.ts`: deep merge with `store/defaults.ts`, wrong types replaced, legacy schemas migrated). Therefore `AppSettings` types are true: read top-level keys with their types (`store.get('history').recentSamples`), **never** dotted paths with casts (`store.get('a.b') as T`) and never `?? []` fallbacks. A new field only needs to be added to `store/defaults.ts`.

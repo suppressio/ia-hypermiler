@@ -263,10 +263,9 @@ export const en = {
   'settings.diagnostics.title': 'Diagnostics',
   'settings.diagnostics.autoReport': 'Report automatically if the format of a Claude/Copilot response changes',
   'settings.diagnostics.hint': 'If an endpoint stops being recognized, a pre-filled GitHub issue draft opens in the browser (field structure only, never real values such as percentages or amounts): it must always be reviewed and submitted by hand, nothing is published automatically.',
-  'settings.diagnostics.reportResponses': 'Report usage responses (GitHub)',
-  'settings.diagnostics.reportResponsesHint': "Opens in the browser a GitHub issue draft with the usage responses of every connected account, as Claude and GitHub send them: it includes real values (percentages, amounts, dates), ids and names are redacted and accounts appear as \"Claude #1\", \"GitHub Copilot #1\". Nothing is sent: you can just copy the link.",
-  'settings.diagnostics.reportResponsesOpened': 'Report draft opened in the browser.',
-  'settings.diagnostics.reportResponsesReading': 'Reading the responses…',
+  'settings.diagnostics.reportResponses': 'Create diagnostic report (GitHub)',
+  'settings.diagnostics.reportResponsesHint': "Saves in your Downloads folder one text file with the usage responses of every connected account (real values; names, ids and credentials redacted), the settings that affect pacing, how the app read the data, recent history and the last errors. A confirmation lists everything before anything is read. Then a GitHub issue draft opens: attach the file if you want. Nothing is sent by the app.",
+  'settings.diagnostics.reportCreated': 'Report saved in Downloads: {file}. Attach it to the issue draft opened in the browser.',
 } as const;
 
 export type MessageKey = keyof typeof en;

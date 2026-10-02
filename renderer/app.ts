@@ -677,7 +677,9 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     : formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
   renderTodayBudget(winSnap);
   byId('metric-projected').textContent = formatPercent(winSnap?.projectedUsage ?? null);
-  applySeverity(byId('metric-projected'), severityLevel(winSnap?.projectedUsage, warningThreshold()));
+  // No warning colour on a preliminary projection: it extrapolates the first day(s) to
+  // the whole period and would outshout the verdict (the value stays visible).
+  applySeverity(byId('metric-projected'), winSnap?.preliminary ? 'none' : severityLevel(winSnap?.projectedUsage, warningThreshold()));
   // Projection and autonomy extrapolated from less than two working days.
   const preliminaryHint = winSnap?.preliminary ? t('widget.metric.preliminary') : '';
   byId('metric-projected-hint').textContent = preliminaryHint;

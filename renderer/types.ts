@@ -258,8 +258,9 @@ export interface HypermilerBridge {
   connectCopilot(id: AccountId, token: string, host: string): Promise<{ username: string }>;
   connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string, host: string): Promise<{ username: string }>;
   disconnectAccount(id: AccountId): Promise<void>;
-  // Opens a GitHub issue draft with the redacted usage responses of every connected account.
-  reportUsageResponses(): Promise<void>;
+  // Diagnostic report: after a confirmation, saves the report file in Downloads and opens
+  // a GitHub issue draft; `created` false when the user cancelled.
+  createDiagnosticReport(): Promise<{ created: boolean; fileName: string | null }>;
   getAppVersion(): Promise<string>;
   checkForUpdates(): Promise<UpdateSettings>;
   downloadUpdate(): Promise<void>;

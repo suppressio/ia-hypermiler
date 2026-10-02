@@ -542,15 +542,18 @@ function bindEvents(): void {
   document.addEventListener('mouseover', placeTooltip);
   document.addEventListener('focusin', placeTooltip);
 
-  // Diagnostics: one issue draft with the responses of every connected account.
+  // Diagnostics: report file of every connected account + issue draft, after the
+  // confirmation shown by the main process (it lists what goes in the file).
   byId('btn-report-responses').addEventListener('click', guarded(async () => {
     const button = byId('btn-report-responses', HTMLButtonElement);
     const status = byId('report-responses-status', HTMLElement);
     button.disabled = true;
-    status.textContent = t('settings.diagnostics.reportResponsesReading');
+    status.textContent = '';
     try {
-      await window.hypermiler.reportUsageResponses();
-      status.textContent = t('settings.diagnostics.reportResponsesOpened');
+      const result = await window.hypermiler.createDiagnosticReport();
+      status.textContent = result.created && result.fileName
+        ? t('settings.diagnostics.reportCreated', { file: result.fileName })
+        : '';
     } catch (err) {
       status.textContent = t('settings.operationFailed', { error: errorMessage(err) });
     } finally {

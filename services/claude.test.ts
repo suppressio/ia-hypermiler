@@ -257,6 +257,24 @@ test('buildQuotaWindows: extra_usage and spend that differ are both shown', () =
   assert.deepEqual(windows.map((w) => w.id).sort(), ['extra_usage', 'spend']);
 });
 
+test('buildQuotaWindows: `limits` is a fallback only when no named window is recognized', () => {
+  const limits = [
+    { group: 'xxxxxxx', is_active: true, kind: 'session', percent: 30, resets_at: '2026-07-13T12:00:00Z', scope: null, severity: 'normal' },
+    { group: 'yyyyyy', is_active: false, kind: 'weekly_all', percent: 20, resets_at: '2026-07-18T21:00:00Z', scope: null, severity: 'normal' },
+    { kind: 'future_kind', percent: 5, resets_at: null },
+  ];
+  // Named windows present: limits ignored (same data twice).
+  const named = claudeService.buildQuotaWindows({ five_hour: { utilization: 30, resets_at: '2026-07-13T12:00:00Z' }, limits });
+  assert.deepEqual(named.map((w) => w.id), ['five_hour']);
+  // Named windows gone: read from limits, with the same ids (history continues).
+  const fallback = claudeService.buildQuotaWindows({ five_hour: null, seven_day: null, limits });
+  assert.deepEqual(fallback.map((w) => [w.id, w.periodType, w.periodLength, w.used]), [
+    ['five_hour', 'rolling-hours', 5, 30],
+    ['seven_day', 'rolling-days', 7, 20],
+    ['limit_future_kind', 'billing-cycle', null, 5],
+  ]);
+});
+
 test('buildQuotaWindows: `spend` with an unexpected shape is still a format drift', () => {
   assert.throws(
     () => claudeService.buildQuotaWindows(companySpendPayload({ enabled: true, something_else: 1 })),

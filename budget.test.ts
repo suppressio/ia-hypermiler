@@ -647,6 +647,19 @@ test('deltaStats: peak/average on deltas (not on the cumulative value) and strea
   assert.deepEqual(stats, { peak: 8, avg: 4.67, streakUnderBudget: 2 });
 });
 
+test('deltaStats: no streak without any consumption', () => {
+  const stats = budget.deltaStats([
+    { date: '2026-07-13', delta: 0, idealShare: 5 },
+    { date: '2026-07-14', delta: 0, idealShare: 5 },
+  ], LATER);
+  assert.deepEqual(stats, { peak: 0, avg: 0, streakUnderBudget: null });
+});
+
+test('generateDailyTip: rebalance numbers with one decimal', () => {
+  const tip = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 4.26, idealPerUnit: 4.97, unitsLeft: 12 } }));
+  assert.deepEqual(tip.params, { perUnit: 4.3, idealPerUnit: 5, days: 12 });
+});
+
 test('deltaStats: no data → all null; without pacing the streak is null', () => {
   assert.deepEqual(budget.deltaStats([], LATER), { peak: null, avg: null, streakUnderBudget: null });
   assert.equal(budget.deltaStats([{ date: '2026-07-13', delta: 3, idealShare: null }], LATER).streakUnderBudget, null);

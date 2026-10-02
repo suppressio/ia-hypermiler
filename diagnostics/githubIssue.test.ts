@@ -5,7 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFormatDriftIssueUrl, buildResponseReportIssueUrl, redactResponse } from './githubIssue';
+import { buildFormatDriftIssueUrl, buildReportIssueUrl, redactResponse, shortError } from './githubIssue';
 import { extractShape } from '../services/_shape';
 
 test('buildFormatDriftIssueUrl points to the right repo with new issue', () => {
@@ -73,36 +73,43 @@ test('redactResponse keeps numbers, booleans, null, dates and enum-like fields; 
   assert.equal(redactResponse('x'.repeat(40), 'type'), '<string, 40 chars>');
 });
 
-test('buildResponseReportIssueUrl: one section per account, values kept, strings redacted, errors shortened', () => {
-  const url = buildResponseReportIssueUrl({
-    accounts: [
-      { name: 'Claude #1', endpointLabel: 'claude.ai/api/organizations/{id}/usage', response: { spend: { percent: 33.3 }, account_email: 'someone@example.com' } },
-      { name: 'Copilot #1', endpointLabel: '{api}/copilot_internal/user', error: 'copilot_internal/user answered 401 Unauthorized — <html>secret page</html>' },
-    ],
-    appVersion: '0.4.10-beta',
+test('redactResponse redacts ids whatever their type, keeps diagnostic enums', () => {
+  const response = {
+    id: 1234567,
+    enterprise_list: [{ id: 7 }],
+    analytics_tracking_id: 'abc',
+    organizationId: 'org-1',
+    access_type_sku: 'free_limited_copilot',
+    copilot_plan: 'business',
+    quota_snapshots: { premium_interactions: { quota_id: 'premium_interactions', entitlement: 300, credits_used: 12 } },
+    endpoints: { api: 'https://api.example.test' },
+    nothing: null,
+  };
+  assert.deepEqual(redactResponse(response), {
+    access_type_sku: 'free_limited_copilot',
+    analytics_tracking_id: '<id>',
+    copilot_plan: 'business',
+    endpoints: { api: '<string, 24 chars>' },
+    enterprise_list: [{ id: '<id>' }],
+    id: '<id>',
+    nothing: null,
+    organizationId: '<id>',
+    quota_snapshots: { premium_interactions: { credits_used: 12, entitlement: 300, quota_id: 'premium_interactions' } },
   });
+});
+
+test('shortError drops the response body appended after " — "', () => {
+  assert.equal(shortError('x answered 401 Unauthorized — <html>secret</html>'), 'x answered 401 Unauthorized');
+});
+
+test('buildReportIssueUrl: short draft naming the file to attach and the neutral accounts', () => {
+  const url = buildReportIssueUrl({ appVersion: '0.4.11-beta', fileName: 'ia-hypermiler-report-x.txt', accounts: ['Claude #1', 'GitHub Copilot #1'] });
   assert.match(url, /^https:\/\/github\.com\/suppressio\/ia-hypermiler\/issues\/new\?/);
   const params = new URL(url).searchParams;
   const body = params.get('body') ?? '';
-  assert.ok(body.includes('### Claude #1'));
-  assert.ok(body.includes('### Copilot #1'));
-  assert.ok(body.includes('33.3'));
-  assert.ok(!body.includes('someone@example.com'));
-  assert.ok(body.includes('Could not be read: copilot_internal/user answered 401 Unauthorized'));
-  assert.ok(!body.includes('secret page'));
+  assert.ok(body.includes('ia-hypermiler-report-x.txt'));
+  assert.ok(body.includes('Claude #1, GitHub Copilot #1'));
   assert.match(body, /real usage values/);
-  assert.equal(params.get('title'), 'Usage response report (Claude #1, Copilot #1)');
   assert.equal(params.get('labels'), 'response-report');
-});
-
-test('buildResponseReportIssueUrl truncates very long responses to fit a link', () => {
-  const response = Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`field_${String(i)}`, i]));
-  const url = buildResponseReportIssueUrl({
-    accounts: [{ name: 'Claude #1', endpointLabel: 'ep', response }, { name: 'Copilot #1', endpointLabel: 'ep2', response }],
-    appVersion: '0',
-  });
-  const body = new URL(url).searchParams.get('body') ?? '';
-  assert.match(body, /Truncated to fit/);
-  assert.ok(url.length <= 7500);
-  assert.ok(body.includes('### Copilot #1'));
+  assert.ok(url.length < 2000);
 });

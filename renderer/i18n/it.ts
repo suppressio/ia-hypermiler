@@ -76,7 +76,7 @@ export const it: Record<MessageKey, string> = {
   'tips.projected': 'Di questo passo {window} arriverebbe al {projectedUsage}% entro il rinnovo: supererebbe il limite se il ritmo resta questo.',
   'tips.cause': "Nei giorni in cui consumi più quota di {window}, il {highPercent}% dei token è prodotto a contesto oltre 150k (contro il {lowPercent}% negli altri giorni, su {days}gg): ridurre il contesto (/clear tra un task e l'altro, /compact) abbassa il costo di ogni turno.",
   'tips.rebalanceDown': "Su {window}, per arrivare al rinnovo restano circa {perUnit}% per giorno lavorativo nei prossimi {days} giorni lavorativi, invece dell'ideale {idealPerUnit}%.",
-  'tips.rebalanceUp': 'Su {window} hai consumato meno del previsto: hai {perUnit}% per giorno lavorativo nei prossimi {days} giorni lavorativi (ideale {idealPerUnit}%).',
+  'tips.rebalanceUp': 'Su {window} hai consumato meno del previsto: ti restano {perUnit}% per giorno lavorativo nei prossimi {days} giorni lavorativi (ideale {idealPerUnit}%).',
   'tips.nextReset': 'fine periodo',
 
   'verdict.exhausted': 'esaurita',
@@ -243,8 +243,7 @@ export const it: Record<MessageKey, string> = {
   'settings.diagnostics.title': 'Diagnostica',
   'settings.diagnostics.autoReport': 'Segnala automaticamente se il formato di una risposta Claude/Copilot cambia',
   'settings.diagnostics.hint': 'Se un endpoint smette di essere riconosciuto, si apre nel browser una bozza di issue GitHub precompilata (solo struttura dei campi, mai valori reali come percentuali o importi): va sempre rivista e confermata manualmente, non viene pubblicata nulla in automatico.',
-  'settings.diagnostics.reportResponses': 'Segnala risposte di utilizzo (GitHub)',
-  'settings.diagnostics.reportResponsesHint': "Apre nel browser una bozza di issue GitHub con le risposte di utilizzo di tutti gli account collegati, così come le inviano Claude e GitHub: contiene valori reali (percentuali, importi, date), id e nomi sono oscurati e gli account compaiono come \"Claude #1\", \"GitHub Copilot #1\". Non viene inviato nulla: puoi anche solo copiare il link.",
-  'settings.diagnostics.reportResponsesOpened': 'Bozza di segnalazione aperta nel browser.',
-  'settings.diagnostics.reportResponsesReading': 'Lettura delle risposte…',
+  'settings.diagnostics.reportResponses': 'Crea report di diagnosi (GitHub)',
+  'settings.diagnostics.reportResponsesHint': "Salva nella cartella Download un file di testo con le risposte di utilizzo di tutti gli account collegati (valori reali; nomi, id e credenziali oscurati), le impostazioni che influiscono sul pacing, come l'app ha letto i dati, lo storico recente e gli ultimi errori. Prima di leggere qualunque cosa una conferma elenca tutto. Poi si apre una bozza di issue GitHub: allega il file se vuoi. L'app non invia nulla.",
+  'settings.diagnostics.reportCreated': 'Report salvato in Download: {file}. Allegalo alla bozza di issue aperta nel browser.',
 };

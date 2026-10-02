@@ -21,7 +21,12 @@ import { fetchLatestUpdate, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
 import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost';
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
-import { buildFormatDriftIssueUrl, buildResponseReportIssueUrl } from './diagnostics/githubIssue';
+import { buildFormatDriftIssueUrl, buildReportIssueUrl } from './diagnostics/githubIssue';
+import { buildDiagnosticReport, neutralize } from './diagnostics/report';
+import type { ReportAccount } from './diagnostics/report';
+import { LogBuffer, captureConsole } from './diagnostics/logBuffer';
+import os from 'os';
+import { writeFile } from 'fs/promises';
 import { formatNumber, resolveLocale, setLocale, t } from './main/i18n/index';
 import { randomUUID } from 'crypto';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -67,6 +72,13 @@ function runDetached(label: string, task: Promise<unknown>): void {
 
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+// Last snapshot sent to the widget: the diagnostic report shows how the app read the data.
+let lastSnapshot: UsageSnapshot | null = null;
+
+// Last main-process errors/warnings, in memory only, for the diagnostic report: an
+// installed app has no visible console (diagnostics/logBuffer.ts).
+const logBuffer = new LogBuffer(50);
+captureConsole(logBuffer);
 let refreshTimer: NodeJS.Timeout | null = null;
 let hoverPollTimer: NodeJS.Timeout | null = null;
 let updateTimer: NodeJS.Timeout | null = null;
@@ -624,6 +636,80 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
   return snapshot;
 }
 
+// ---------------------------------------------------------------------------
+// Diagnostic report sections (see diagnostics:createReport). Built WITHOUT account
+// labels, ids, credentials or tenant names: only what affects pacing and parsing.
+// ---------------------------------------------------------------------------
+function reportConfig(cfg: AccountConfig): Record<string, unknown> {
+  const common = {
+    accountScope: cfg.accountScope,
+    planTier: cfg.planTier,
+    renewalRule: cfg.subscription.renewalRule,
+    workSchedule: cfg.workSchedule,
+  };
+  switch (cfg.provider) {
+    case 'claude':
+      return { ...common, authMethod: cfg.authMethod, localInsights: cfg.localInsights };
+    case 'copilot':
+      return {
+        ...common,
+        authMethod: cfg.authMethod,
+        host: cfg.host === DEFAULT_GITHUB_HOST ? DEFAULT_GITHUB_HOST : 'a .ghe.com tenant',
+        manualQuota: cfg.manualQuota,
+      };
+  }
+}
+
+// Last 7 days of daily points and today's samples, per window.
+function reportHistory(accountId: AccountId, now: Date): unknown {
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoffKey = budget.localDateKey(cutoff);
+  const todayKey = budget.localDateKey(now);
+  const history = store.get('history');
+  return {
+    daily: history.dailyUsage
+      .filter((h) => h.accountId === accountId && h.date >= cutoffKey)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(({ date, windowId, used, dayStartUsed }) => ({ date, windowId, used, dayStartUsed })),
+    samplesToday: history.recentSamples
+      .filter((s) => s.accountId === accountId && budget.localDateKey(new Date(s.timestamp)) === todayKey)
+      .map(({ timestamp, windowId, used }) => ({ timestamp, windowId, used })),
+  };
+}
+
+// How the app read the account in the last refresh: windows and their metrics.
+function reportInterpretation(accountId: AccountId, accounts: Pick<ReportAccount, 'name' | 'label' | 'id'>[]): unknown {
+  const account = lastSnapshot?.accounts.find((a) => a.accountId === accountId);
+  if (!account) return null;
+  return {
+    lastUpdatedAt: account.lastUpdatedAt ?? null,
+    stale: account.stale ?? false,
+    lastError: account.lastError ? neutralize(account.lastError, accounts) : null,
+    criticalWindow: account.criticalWindow?.id ?? null,
+    windows: account.windows.map((w) => ({
+      id: w.window.id,
+      periodType: w.window.periodType,
+      periodLength: w.window.periodLength,
+      unit: w.window.unit,
+      used: w.window.used,
+      total: w.window.total,
+      resetsAt: w.window.resetsAt,
+      verdict: w.verdict,
+      redistribution: w.redistribution,
+      todayBudget: w.todayBudget,
+      preliminary: w.preliminary,
+      efficiencyIndex: w.efficiencyIndex,
+      projectedUsage: w.projectedUsage,
+      estimatedAutonomyWorkingDays: w.estimatedAutonomyWorkingDays,
+      workingDaysUntilReset: w.workingDaysUntilReset,
+      deltaStats: w.deltaStats,
+      efficiencyRating: w.efficiencyRating,
+      dailyTip: w.dailyTip,
+    })),
+  };
+}
+
 // Per-day notification flags ("<account>:<day>", "<account>:pace:<day>"): only
 // today's are kept, older ones are dropped instead of piling up in the store.
 function flagsOfToday(todayKey: string): Record<string, boolean> {
@@ -722,6 +808,7 @@ async function refreshOnce(): Promise<void> {
     console.error('[main] usage refresh failed:', err);
     return;
   }
+  lastSnapshot = snapshot;
   maybeNotifyThreshold(snapshot);
   maybeNotifyPace(snapshot);
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1031,25 +1118,75 @@ function registerIpcHandlers(): void {
   ipcMain.handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
   ipcMain.handle('updates:openReleaseNotes', () => openTrustedUpdateUrl((a) => a.releaseUrl));
 
-  // Manual diagnostic (Settings, Diagnostics): the raw usage response of every
-  // connected account, redacted, in one GitHub issue draft opened in the browser —
-  // never sent by the app. Accounts are named "<Provider> #n", not by their label (it
-  // may name the company). The URL is built here with the fixed repository prefix.
-  ipcMain.handle('diagnostics:reportResponses', async () => {
+  // Manual diagnostic report (Settings → Diagnostics, diagnostics/report.ts): after an
+  // explicit confirmation listing what goes in, one text file in Downloads with the
+  // redacted responses, pacing settings, the app's reading of the data, recent
+  // history and log of every connected account; the folder is shown and a short
+  // GitHub issue draft opens, to which the user may attach it. Nothing is sent by the
+  // app. The URL is built here with the fixed repository prefix.
+  ipcMain.handle('diagnostics:createReport', async (): Promise<{ created: boolean; fileName: string | null }> => {
     const connected = getAccounts().filter((cfg) => providers.isConnected(cfg));
     if (connected.length === 0) throw new Error(t('error.reportNoAccounts'));
+    const confirmOptions = {
+      type: 'question' as const,
+      buttons: [t('report.confirm'), t('report.cancel')],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: 'IA Hypermiler',
+      message: t('report.confirmTitle'),
+      detail: t('report.confirmDetail', { accounts: connected.length }),
+    };
+    const parent = settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow : null;
+    const { response } = parent ? await dialog.showMessageBox(parent, confirmOptions) : await dialog.showMessageBox(confirmOptions);
+    if (response !== 0) return { created: false, fileName: null };
+
+    const now = new Date();
     const counters = new Map<ProviderId, number>();
-    const reports = await Promise.all(connected.map(async (cfg) => {
+    const accounts = await Promise.all(connected.map(async (cfg): Promise<ReportAccount> => {
       const n = (counters.get(cfg.provider) ?? 0) + 1;
       counters.set(cfg.provider, n);
       const name = `${providers.providerDisplayName(cfg.provider)} #${String(n)}`;
+      const base = {
+        name, provider: cfg.provider, enabled: cfg.enabled, label: cfg.label, id: cfg.id,
+        config: reportConfig(cfg), interpretation: null as unknown, history: reportHistory(cfg.id, now),
+      };
       try {
-        return { name, ...(await providers.fetchRawResponse(cfg)) };
+        const raw = await providers.fetchRawResponse(cfg);
+        return { ...base, endpointLabel: raw.endpointLabel, response: raw.response };
       } catch (err) {
-        return { name, endpointLabel: '—', error: err instanceof Error ? err.message : String(err) };
+        return { ...base, endpointLabel: null, readError: err instanceof Error ? err.message : String(err) };
       }
     }));
-    await shell.openExternal(buildResponseReportIssueUrl({ accounts: reports, appVersion: app.getVersion() }));
+    // The app's reading of the data, once every name is known (errors are neutralized).
+    for (const account of accounts) account.interpretation = reportInterpretation(account.id, accounts);
+
+    const text = buildDiagnosticReport({
+      generatedAt: now,
+      environment: {
+        app: app.getVersion(),
+        platform: process.platform,
+        arch: process.arch,
+        osRelease: os.release(),
+        electron: process.versions.electron,
+        node: process.versions.node,
+      },
+      settings: {
+        language: store.get('ui').language,
+        locale: resolveLocale(store.get('ui').language, app.getLocale()),
+        chartRange: store.get('ui').chartRange,
+        notificationThresholdPercent: store.get('ui').notificationThresholdPercent,
+        windowStyle: store.get('ui').windowStyle,
+      },
+      accounts,
+      log: logBuffer.list(),
+    });
+    const fileName = `ia-hypermiler-report-${budget.localDateKey(now)}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.txt`;
+    const filePath = path.join(app.getPath('downloads'), fileName);
+    await writeFile(filePath, text, 'utf8');
+    shell.showItemInFolder(filePath);
+    await shell.openExternal(buildReportIssueUrl({ appVersion: app.getVersion(), fileName, accounts: accounts.map((a) => a.name) }));
+    return { created: true, fileName };
   });
 
   ipcMain.handle('accounts:disconnect', async (_event: IpcMainInvokeEvent, rawId: unknown) => {

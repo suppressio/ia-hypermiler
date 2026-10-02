@@ -609,8 +609,10 @@ export function deltaStats(deltas: DailyDelta[], now: Date): DeltaStats {
   const peak = round2(Math.max(...values));
   const avg = round2(values.reduce((sum, v) => sum + v, 0) / values.length);
 
+  // No streak without any consumption (as efficiencyRating): "1 day under budget" on an
+  // unused quota said nothing.
   let streakUnderBudget: number | null = null;
-  if (valid.some((d) => d.idealShare !== null)) {
+  if (valid.some((d) => d.idealShare !== null) && valid.some((d) => d.delta > 0)) {
     streakUnderBudget = 0;
     for (const { delta, idealShare } of [...valid].reverse()) {
       if (idealShare !== null && delta <= idealShare) streakUnderBudget += 1;
@@ -899,7 +901,8 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
     if (ratio < REDISTRIBUTION_ON_TRACK_LOW || ratio > REDISTRIBUTION_ON_TRACK_HIGH) {
       candidates.push({
         key: ratio < 1 ? 'rebalanceDown' : 'rebalanceUp',
-        params: { perUnit: redistribution.perUnit, idealPerUnit: redistribution.idealPerUnit, days: redistribution.unitsLeft },
+        // One decimal, as the redistribution shown next to today's budget.
+        params: { perUnit: round1(redistribution.perUnit), idealPerUnit: round1(redistribution.idealPerUnit), days: redistribution.unitsLeft },
       });
     }
   }
