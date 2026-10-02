@@ -52,10 +52,10 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
 
 /**
  * The raw usage response of the account, for the manual "report response" diagnostic
- * (main.ts, diagnostics/githubIssue.ts). Null for a provider that does not support it
- * yet: Copilot reads several endpoints with fallbacks, there is no single response.
+ * (main.ts, diagnostics/githubIssue.ts). Copilot reads several endpoints with
+ * fallbacks: its main source, copilot_internal/user, is reported.
  */
-export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLabel: string; response: unknown } | null> {
+export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLabel: string; response: unknown }> {
   switch (cfg.provider) {
     case 'claude':
       return {
@@ -68,7 +68,15 @@ export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLa
         }),
       };
     case 'copilot':
-      return null;
+      return {
+        endpointLabel: copilotService.INTERNAL_USER_ENDPOINT_LABEL,
+        response: await copilotService.fetchUsageResponse({
+          token: cfg.credentials.token as string,
+          accountScope: cfg.accountScope,
+          manualQuota: cfg.manualQuota,
+          host: cfg.host,
+        }),
+      };
   }
 }
 

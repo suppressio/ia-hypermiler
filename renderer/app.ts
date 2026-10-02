@@ -124,6 +124,9 @@ function formatPercent(value: number | null | undefined): string {
   return `${formatNumber(value, 1)}%`;
 }
 
+// Same as budget.NEGLIGIBLE_UTILIZATION (the renderer tsconfig is isolated).
+const NEGLIGIBLE_UTILIZATION = 0.1;
+
 function formatEfficiency(value: number | null | undefined): string {
   if (value === null || value === undefined) return '--';
   return formatNumber(value, 2);
@@ -667,7 +670,11 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   renderTokenYield(winSnap);
 
   byId('metric-efficiency').textContent = formatEfficiency(winSnap?.efficiencyIndex ?? null);
-  byId('metric-efficiency-hint').textContent = formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
+  // budget.efficiencyIndex is null below NEGLIGIBLE_UTILIZATION on a paced window: say why.
+  const negligible = winSnap?.redistribution != null && utilization !== null && utilization < NEGLIGIBLE_UTILIZATION;
+  byId('metric-efficiency-hint').textContent = negligible
+    ? t('widget.metric.efficiencyNegligible')
+    : formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
   renderTodayBudget(winSnap);
   byId('metric-projected').textContent = formatPercent(winSnap?.projectedUsage ?? null);
   applySeverity(byId('metric-projected'), severityLevel(winSnap?.projectedUsage, warningThreshold()));
@@ -679,7 +686,13 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     days: winSnap?.daysUntilReset ?? '--',
     working: formatDays(winSnap?.workingDaysUntilReset ?? null),
   });
-  byId('metric-autonomy').textContent = formatDays(winSnap?.estimatedAutonomyWorkingDays ?? null);
+  // Autonomy past the renewal says nothing more than "it lasts" (an absurd number of
+  // days on an almost unused quota).
+  const autonomy = winSnap?.estimatedAutonomyWorkingDays ?? null;
+  const daysLeft = winSnap?.workingDaysUntilReset ?? null;
+  byId('metric-autonomy').textContent = autonomy !== null && daysLeft !== null && autonomy > daysLeft
+    ? t('widget.metric.autonomyBeyondReset')
+    : formatDays(autonomy);
 
   const stats = winSnap?.deltaStats;
   byId('metric-peak-avg').textContent =

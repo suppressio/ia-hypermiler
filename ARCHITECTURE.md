@@ -168,7 +168,7 @@ Below it, a chart, selectable week/month, with the ideal budget line (linear pac
 
 Metrics panel:
 
-- **Tokens (or % of quota) per current working day** — requested. *(Implemented as "Today: used / budget", `budget.todayBudget`:)* today's budget = what was left at the start of the day spread over the working units from today on, fixed for the day; today's consumption is measured from the day's own baseline (`DailyUsagePoint.dayStartUsed`, exact also on a reset day). Above `PACE_ALERT_RATIO` (1.5×) a system notification fires, at most once a day per account — the 80% threshold alone came too late (real case: 10.3% on day one of the month, no warning).
+- **Tokens (or % of quota) per current working day** — requested. *(Implemented as "Today: used / budget", `budget.todayBudget`:)* today's budget = what was left at the start of the day spread over the working units from today on, fixed for the day; today's consumption is measured from the day's own baseline (`DailyUsagePoint.dayStartUsed`, exact also on a reset day). Above `PACE_ALERT_RATIO` (1.5×) a system notification fires, at most once a day per account — the 80% threshold alone came too late (heavy use on day one of the month went unnoticed).
 - **Weekly trend** — requested (the chart above)
 - **Efficiency index** — requested. Formula: ratio between the ideal and actual consumption pace, computed on elapsed **working units** (not calendar days):
   `efficiencyIndex = idealPace / actualPace` where `idealPace = 100% / totalWorkingUnitsInPeriod` and `actualPace = currentUtilization / elapsedWorkingUnits`. Around 1 = on track; >1 = using less than planned (room to use more); <1 = consuming faster than sustainable.

@@ -33,6 +33,12 @@ interface ClaudeUsageWindowResponse {
   limit_dollars?: number | null;
   used_dollars?: number | null;
   remaining_dollars?: number | null;
+  // `extra_usage` in its newer shape (RESEARCH.md §1 addendum 4):
+  // the monthly extra-usage budget in minor units (`decimal_places` 2 = cents), next to
+  // `daily`/`weekly` (null so far: their shape is unknown, not read).
+  monthly_limit?: number | null;
+  used_credits?: number | null;
+  decimal_places?: number | null;
 }
 
 // The internal endpoint is undocumented and field names are not stable: besides the
@@ -63,6 +69,7 @@ interface ClaudeSpendResponse {
 
 export const USAGE_ENDPOINT_LABEL = 'claude.ai/api/organizations/{id}/usage';
 const SPEND_KEY = 'spend';
+const EXTRA_USAGE_KEY = 'extra_usage';
 
 // Readable labels only for the known historical names (should they come back):
 // every other unrecognized key gets a generic label at runtime in buildQuotaWindows,
@@ -73,6 +80,7 @@ const KNOWN_LABELS: Record<string, string> = {
   seven_day: 'Weekly limit (all models)',
   seven_day_opus: 'Weekly Opus limit',
   [SPEND_KEY]: 'Spend limit',
+  [EXTRA_USAGE_KEY]: 'Extra usage (monthly)',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,6 +127,22 @@ function readSpend(value: unknown): SpendReading {
     return { kind: 'window', window: { ...base, unit: 'percentage', used: spend.percent, total: null } };
   }
   return { kind: 'unrecognized' };
+}
+
+/** Amounts of a monthly-credits window (`monthly_limit`/`used_credits` in minor units), or null. */
+function readMonthlyCredits(entry: ClaudeUsageWindowResponse): { used: number; total: number } | null {
+  const { monthly_limit: limit, used_credits: used, decimal_places: places } = entry;
+  if (typeof limit !== 'number' || typeof used !== 'number' || typeof places !== 'number' || limit <= 0) return null;
+  return { used: used / 10 ** places, total: limit / 10 ** places };
+}
+
+// Two readings of the same budget: equal limit when both carry amounts, and the same
+// utilization within the rounding of `spend.percent` (seen as an integer).
+function sameMoney(a: QuotaWindow, b: QuotaWindow): boolean {
+  const ua = a.unit === 'percentage' ? a.used : a.total ? (a.used / a.total) * 100 : null;
+  const ub = b.unit === 'percentage' ? b.used : b.total ? (b.used / b.total) * 100 : null;
+  if (ua === null || ub === null || Math.abs(ua - ub) > 0.5) return false;
+  return a.unit !== 'count' || b.unit !== 'count' || Math.abs((a.total ?? 0) - (b.total ?? 0)) < 0.01;
 }
 
 // When a full cookieHeader is available (read fresh from the Electron session,
@@ -182,16 +206,24 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
 
     const resetsAt = entry.resets_at ? new Date(entry.resets_at) : null;
     const hasDollarAmounts = typeof entry.limit_dollars === 'number' && typeof entry.used_dollars === 'number';
+    const monthlyCredits = readMonthlyCredits(entry);
 
     // A 0% window without a reset date and without amounts cannot be told apart from a
     // "not applicable to this plan" field (seen for real: a promotional window entirely
     // null except utilization:0) — it is dropped so the widget does not show an empty,
     // meaningless row.
-    if (entry.utilization === 0 && !resetsAt && !hasDollarAmounts) continue;
+    if (entry.utilization === 0 && !resetsAt && !hasDollarAmounts && !monthlyCredits) continue;
 
     const knownLabel = KNOWN_LABELS[key];
     const label = knownLabel
-      ?? (hasDollarAmounts ? `Claude extra credit (${key})` : `Claude usage — undocumented window (${key})`);
+      ?? (hasDollarAmounts || monthlyCredits ? `Claude extra credit (${key})` : `Claude usage — undocumented window (${key})`);
+
+    // A monthly budget in minor units (`monthly_limit`/`used_credits`): real amounts and
+    // a monthly period, so it gets pacing like `spend`.
+    if (monthlyCredits) {
+      windows.push({ id: key, label, periodType: 'billing-cycle', periodLength: 1, unit: 'count', ...monthlyCredits, resetsAt });
+      continue;
+    }
 
     // Known historical names: we keep the explicit period verified in the past. For any
     // other key (undocumented/obfuscated name) the real window length cannot be derived
@@ -220,14 +252,21 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
     });
   }
 
-  // `spend` reports the same extra-usage money a dollar window already shows (personal
-  // accounts): it becomes a window only when no such window exists, as on company
-  // seats where it is the only data left (issue #6).
+  // `spend` reports the same extra-usage money as other windows:
+  // - a monthly-credits window with the same amounts (`extra_usage`, RESEARCH.md §1
+  //   addendum 4) is the same budget twice: `spend` is kept, because it is present
+  //   even when `extra_usage` is not populated (its utilization was seen null), so the
+  //   window keeps the same id — the history key — from one refresh to the next. Only
+  //   on equal data: should they ever differ, both are shown;
+  // - a legacy dollar window (personal accounts, no period) already shows the extra
+  //   credit: then `spend` is not added (issue #6).
   if (usage && SPEND_KEY in usage) {
     const spend = readSpend(usage[SPEND_KEY]);
     if (spend.kind !== 'unrecognized') recognizedAny = true;
-    if (spend.kind === 'window' && !windows.some((w) => w.unit === 'count')) {
-      windows.push(spend.window);
+    if (spend.kind === 'window') {
+      const duplicate = windows.findIndex((w) => w.unit === 'count' && w.periodLength === 1 && sameMoney(w, spend.window));
+      if (duplicate >= 0) windows.splice(duplicate, 1);
+      if (!windows.some((w) => w.unit === 'count' && w.periodLength === null)) windows.push(spend.window);
     }
   }
 

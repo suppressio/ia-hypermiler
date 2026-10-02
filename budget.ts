@@ -108,9 +108,9 @@ export function hasPacing(window: QuotaWindow): boolean {
 
 /**
  * Picks the most critical quota window (highest normalized utilization). On equal
- * utilization a window with pacing wins: two windows reporting the same money (Claude
- * `extra_usage` and `spend`, both 11.9%) made the unpaced one the default view, with
- * every pacing metric empty.
+ * utilization a window with pacing wins: two windows reporting the same value (e.g. the same
+ * budget read from two objects of the response) must not make the unpaced one the
+ * default view, with every pacing metric empty.
  */
 export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | null {
   const [first] = quotaWindows;
@@ -143,7 +143,7 @@ const ACTIVITY_EPSILON = 0.05;
  * - `end`: the last increase — once work stops the span stops growing.
  * Null when nothing rose today. Samples of other days are ignored. A rise of at most
  * ACTIVITY_EPSILON is rounding, not work: baselines stored rounded to 0.1 against
- * samples rounded to 0.01 turned an idle 11.93 vs 11.9 into two hours "worked".
+ * samples rounded to 0.01 turned an idle morning into the minimum two hours "worked".
  */
 export function todayActivitySpan(
   samples: { timestamp: Date | string; used: number }[],
@@ -222,6 +222,9 @@ export function remainingWorkingUnits(periodEnd: Date | string, now: Date, workS
   return todayLeft + workingUnitsBetween(addDays(today, 1), periodEnd, workSchedule);
 }
 
+/** Quota percentage below which usage counts as none for ratios (efficiency index). */
+export const NEGLIGIBLE_UTILIZATION = 0.1;
+
 export interface PeriodContext {
   window: QuotaWindow;
   workSchedule: WorkSchedule;
@@ -241,10 +244,12 @@ export interface PeriodContext {
  * working units (not calendar days). ~1 = on budget; >1 = consuming less than planned;
  * <1 = consuming more than sustainable. Returns null when it cannot be computed.
  * Cumulative since the period start by definition: no blending with the recent pace.
+ * Null below NEGLIGIBLE_UTILIZATION: a ratio on almost nothing used is noise
+ * (an index in the hundreds or thousands).
  */
 export function efficiencyIndex({ window, workSchedule, periodStart, periodEnd, now = new Date(), todayElapsedUnits: todayElapsed }: PeriodContext): number | null {
   const utilization = normalizedUtilization(window);
-  if (utilization === null) return null;
+  if (utilization === null || utilization < NEGLIGIBLE_UTILIZATION) return null;
 
   const totalUnits = workingUnitsBetween(periodStart, periodEnd, workSchedule);
   const elapsedUnits = elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule, todayElapsed);
@@ -365,7 +370,7 @@ export function todayBudget(ctx: Omit<PeriodContext, 'todayElapsedUnits' | 'rece
 }
 
 /**
- * The remaining quota redistributed (user feedback, 2026-10-02: "a redefinition of
+ * The remaining quota redistributed (user feedback: "a redefinition of
  * the remaining quota based on what was consumed, whether too much or too little"):
  * what is left NOW spread over the working units from today on (today counted whole,
  * as in todayBudget) — down after heavy days, up after light ones — next to the even
@@ -484,14 +489,18 @@ export function efficiencyRating(
 
   const sorted = [...completed].sort((a, b) => a.date.localeCompare(b.date)).slice(-(days + 1));
   const ratios: number[] = [];
+  let consumed = false;
 
   for (const { delta, idealShare } of dailyDeltas(sorted, workSchedule, totalPeriodWorkingUnits)) {
     if (idealShare === null || idealShare <= 0 || delta === null) continue;
+    if (delta > 0) consumed = true;
     const ratio = delta === 0 ? EFFICIENCY_RATING_MAX_RATIO : Math.min(EFFICIENCY_RATING_MAX_RATIO, idealShare / delta);
     ratios.push(ratio);
   }
 
-  if (ratios.length === 0) return null;
+  // No consumption at all on the rated days: five stars for an unused quota (and the
+  // tip "room for a longer session") said nothing.
+  if (ratios.length === 0 || !consumed) return null;
   const avgRatio = ratios.reduce((s, r) => s + r, 0) / ratios.length;
   const stars = avgRatio >= 1.5 ? 5 : avgRatio >= 1.1 ? 4 : avgRatio >= 0.9 ? 3 : avgRatio >= 0.6 ? 2 : 1;
   return { stars, avgRatio: Math.round(avgRatio * 100) / 100 };
@@ -572,8 +581,8 @@ function periodStartedToday(periodStart: Date | string, now: Date): boolean {
 /**
  * Repairs the baseline of a window's FIRST history point when it is dated on the
  * period start day (`points` = one window's points): before updateDailyPoint knew
- * that rule, it stored the first value read — on a window first seen in the
- * afternoon of its reset day (the Claude `spend` window, v0.4.2 on 2026-10-01) the
+ * that rule, it stored the first value read — on a window first seen after usage
+ * had started on its period start day (e.g. a window added by an app update) the
  * whole day's consumption became 0 (empty chart, 5 stars, "room for a longer
  * session"). Returns the point to store again, or null when nothing changes.
  */
@@ -622,9 +631,12 @@ export interface WindowVerdictContext {
 }
 
 // Redistributed quota over the ideal one (see windowVerdict): below AT_RISK the days
-// left get less than half of their even share; within the ON_TRACK band the
-// difference is noise. Narrow on purpose: one heavy day (2.3× the even share, then
-// spread over 18 days) lowers the quota by only ~7%, and the user wants to see that.
+// left get less than half of their even share; within the ON_TRACK band (±5%) the
+// difference is treated as noise. Narrow on purpose: a deviation of a single day is
+// spread over every working day left, so even a day at twice or three times the even
+// share moves the quota per day by only a few percent early in a monthly period — a
+// wider band would hide it until late in the period. Heuristics, like the other
+// pacing constants: to be verified with real use (CLAUDE.md, open items).
 export const REDISTRIBUTION_AT_RISK_RATIO = 0.5;
 export const REDISTRIBUTION_ON_TRACK_LOW = 0.95;
 export const REDISTRIBUTION_ON_TRACK_HIGH = 1.05;

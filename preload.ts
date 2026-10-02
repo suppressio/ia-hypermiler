@@ -45,7 +45,7 @@ const bridge: HypermilerBridge = {
   connectCopilot: (id, token, host) => ipcRenderer.invoke('accounts:connectCopilot', id, token, host),
   connectCopilotOAuth: (id, clientId, clientSecret, host) => ipcRenderer.invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret, host }),
   disconnectAccount: (id) => ipcRenderer.invoke('accounts:disconnect', id),
-  reportUsageResponse: (id) => ipcRenderer.invoke('diagnostics:reportResponse', id),
+  reportUsageResponses: () => ipcRenderer.invoke('diagnostics:reportResponses'),
 
   // Updates (issue #5): the URL to open is decided by the main process, never by the renderer.
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),

@@ -107,8 +107,8 @@ function startWindowHoverPolling(): void {
 // ---------------------------------------------------------------------------
 // The store is encrypted and electron-store re-reads and decrypts the whole file on
 // every get (and re-encrypts and writes it on every set), synchronously on the main
-// thread: one get/set pair per window per refresh blocked the app for seconds on a
-// work PC (Settings stayed blank ~10 s at startup). A refresh therefore works on an
+// thread: one get/set pair per window per refresh could block the app for seconds on a
+// slower machine (the Settings window stayed blank). A refresh therefore works on an
 // in-memory draft of the history, read once and written once (commitHistoryDraft).
 interface HistoryDraft {
   dailyUsage: DailyUsagePoint[];
@@ -206,8 +206,8 @@ function getRecentSamples(draft: HistoryDraft, accountId: AccountId, windowId: s
 // every LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
 // ---------------------------------------------------------------------------
 // The scan runs in an Electron utility process (services/claudeLocalSessions.worker.ts):
-// parsing the session files on the main process froze the app for ~10 s at startup on a
-// machine with long sessions. A stale cache is shown meanwhile and the widget refreshed
+// parsing the session files on the main process could freeze the app for seconds at
+// startup with many or long sessions. A stale cache is shown meanwhile and the widget refreshed
 // once the new result arrives; with no usable cache the refresh waits for it.
 // Analysis window = the view chosen for the chart (7/30 days, +1 day as for the
 // daily deltas): insights, yield and chart look at the same period.
@@ -1031,17 +1031,25 @@ function registerIpcHandlers(): void {
   ipcMain.handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
   ipcMain.handle('updates:openReleaseNotes', () => openTrustedUpdateUrl((a) => a.releaseUrl));
 
-  // Manual diagnostic (Settings, Claude account detail): the account's raw usage
-  // response, redacted, as a GitHub issue draft opened in the browser — never sent by
-  // the app. The URL is built here with the fixed repository prefix.
-  ipcMain.handle('diagnostics:reportResponse', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
-    const id = requireString(rawId, 'Account');
-    const cfg = findAccount(id);
-    if (!cfg || !providers.isConnected(cfg)) throw new Error(t('error.reportNotConnected'));
-    const raw = await providers.fetchRawResponse(cfg);
-    if (!raw) throw new Error(t('error.reportNotSupported', { provider: providers.providerDisplayName(cfg.provider) }));
-    const url = buildResponseReportIssueUrl({ provider: cfg.provider, ...raw, appVersion: app.getVersion() });
-    await shell.openExternal(url);
+  // Manual diagnostic (Settings, Diagnostics): the raw usage response of every
+  // connected account, redacted, in one GitHub issue draft opened in the browser —
+  // never sent by the app. Accounts are named "<Provider> #n", not by their label (it
+  // may name the company). The URL is built here with the fixed repository prefix.
+  ipcMain.handle('diagnostics:reportResponses', async () => {
+    const connected = getAccounts().filter((cfg) => providers.isConnected(cfg));
+    if (connected.length === 0) throw new Error(t('error.reportNoAccounts'));
+    const counters = new Map<ProviderId, number>();
+    const reports = await Promise.all(connected.map(async (cfg) => {
+      const n = (counters.get(cfg.provider) ?? 0) + 1;
+      counters.set(cfg.provider, n);
+      const name = `${providers.providerDisplayName(cfg.provider)} #${String(n)}`;
+      try {
+        return { name, ...(await providers.fetchRawResponse(cfg)) };
+      } catch (err) {
+        return { name, endpointLabel: '—', error: err instanceof Error ? err.message : String(err) };
+      }
+    }));
+    await shell.openExternal(buildResponseReportIssueUrl({ accounts: reports, appVersion: app.getVersion() }));
   });
 
   ipcMain.handle('accounts:disconnect', async (_event: IpcMainInvokeEvent, rawId: unknown) => {

@@ -384,9 +384,6 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
       const result = await window.hypermiler.connectCopilotOAuth(id, clientId, clientSecret, githubHostInput(id));
       await reloadAfterAccountAction(id);
       showSaveStatus(t('settings.accounts.connectedOauthAs', { name, user: result.username }));
-    } else if (action === 'report-response') {
-      await window.hypermiler.reportUsageResponse(id);
-      setDetailStatus(id, t('settings.claude.reportResponseOpened'));
     } else if (action === 'disconnect') {
       await window.hypermiler.disconnectAccount(id);
       await reloadAfterAccountAction(id);
@@ -530,6 +527,22 @@ function bindEvents(): void {
     await reloadAfterAccountAction(id);
   }));
 
+  // Diagnostics: one issue draft with the responses of every connected account.
+  byId('btn-report-responses').addEventListener('click', guarded(async () => {
+    const button = byId('btn-report-responses', HTMLButtonElement);
+    const status = byId('report-responses-status', HTMLElement);
+    button.disabled = true;
+    status.textContent = t('settings.diagnostics.reportResponsesReading');
+    try {
+      await window.hypermiler.reportUsageResponses();
+      status.textContent = t('settings.diagnostics.reportResponsesOpened');
+    } catch (err) {
+      status.textContent = t('settings.operationFailed', { error: errorMessage(err) });
+    } finally {
+      button.disabled = false;
+    }
+  }));
+
   byId('btn-save').addEventListener('click', guarded(async () => {
     // Explicitly re-reads every field (even those without a 'change' event yet,
     // e.g. a focused number input) and saves everything at once.
@@ -611,7 +624,7 @@ async function init(): Promise<void> {
   byId('app-version', HTMLElement).textContent = await window.hypermiler.getAppVersion();
   renderUpdatesCard(settings.updates);
   // Disabled in the markup until the settings are loaded and the handlers bound.
-  for (const id of ['btn-add-account', 'btn-cancel', 'btn-save']) byId(id, HTMLButtonElement).disabled = false;
+  for (const id of ['btn-add-account', 'btn-cancel', 'btn-save', 'btn-report-responses']) byId(id, HTMLButtonElement).disabled = false;
   // Only the updates state (owned by the main process): the rest of the form stays
   // a draft, a full repopulation would discard unsaved changes.
   window.hypermiler.onSettingsUpdate((updated) => {

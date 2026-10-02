@@ -75,12 +75,12 @@ test('pickCriticalWindow picks the window with the highest utilization', () => {
 });
 
 test('pickCriticalWindow: on equal utilization the window with pacing wins', () => {
-  const unpaced = pctWindow(11.9, { id: 'extra_usage', periodType: 'billing-cycle', periodLength: null });
-  const paced = pctWindow(11.9, { id: 'spend', periodType: 'billing-cycle', periodLength: 1 });
-  assert.equal(budget.pickCriticalWindow([unpaced, paced])?.id, 'spend');
-  assert.equal(budget.pickCriticalWindow([paced, unpaced])?.id, 'spend');
+  const unpaced = pctWindow(30, { id: 'unpaced', periodType: 'billing-cycle', periodLength: null });
+  const paced = pctWindow(30, { id: 'paced', periodType: 'billing-cycle', periodLength: 1 });
+  assert.equal(budget.pickCriticalWindow([unpaced, paced])?.id, 'paced');
+  assert.equal(budget.pickCriticalWindow([paced, unpaced])?.id, 'paced');
   // A higher utilization still wins, paced or not.
-  assert.equal(budget.pickCriticalWindow([{ ...unpaced, used: 12 }, paced])?.id, 'extra_usage');
+  assert.equal(budget.pickCriticalWindow([{ ...unpaced, used: 31 }, paced])?.id, 'unpaced');
 });
 
 test('hasPacing: only a billing cycle of unknown length has none', () => {
@@ -142,8 +142,8 @@ test('estimatedAutonomyWorkingDays returns 0 when already at 100%', () => {
   assert.equal(budget.estimatedAutonomyWorkingDays(periodCtx(100, new Date(2026, 6, 20))), 0);
 });
 
-// Real case, 2026-10-01: 10.3% on day one of a monthly period showed no pacing at all,
-// because the current day only counted once it was over.
+// Heavy use on day one of a period showed no pacing at all, because the current day
+// only counted once it was over.
 test('first day of the period, fully worked: the day counts as elapsed', () => {
   const now = new Date(2026, 6, 13, 18, 0);
   const ctx = periodCtx(20, now);
@@ -220,8 +220,8 @@ test("todayActivitySpan: an earlier local session moves the start back; yesterda
 });
 
 test('todayActivitySpan: a rise within rounding (0.1-rounded baseline vs 0.01 samples) is not activity', () => {
-  const samples = [sample(8, 0, 11.93), sample(8, 30, 11.93), sample(9, 0, 11.94)];
-  assert.equal(budget.todayActivitySpan(samples, 11.9, new Date(2026, 6, 13, 10), null), null);
+  const samples = [sample(8, 0, 42.03), sample(8, 30, 42.03), sample(9, 0, 42.04)];
+  assert.equal(budget.todayActivitySpan(samples, 42, new Date(2026, 6, 13, 10), null), null);
 });
 
 test('todayElapsedUnits: no activity yet today → 0 (today still entirely ahead)', () => {
@@ -276,7 +276,7 @@ test('a heavy recent pace raises projection and lowers autonomy', () => {
 
 test('todayBudget: what was left at the start of the day over the working units from today', () => {
   const now = new Date(2026, 6, 13, 15, 0); // first day: 100% over 10 days
-  assert.deepEqual(budget.todayBudget(periodCtx(10.3, now), 0), { budget: 10, usedToday: 10.3 });
+  assert.deepEqual(budget.todayBudget(periodCtx(12, now), 0), { budget: 10, usedToday: 12 });
   // Day 6 (Monday 20): 40% used before today, 5 days left → 12/day.
   assert.deepEqual(budget.todayBudget(periodCtx(45, new Date(2026, 6, 20, 15)), 40), { budget: 12, usedToday: 5 });
 });
@@ -345,9 +345,9 @@ test('updateDailyPoint: reset since the previous point → baseline 0; no histor
 });
 
 test('updateDailyPoint: no history on the period start day → baseline 0 (everything was used today)', () => {
-  // The Claude spend window, first read on the afternoon of its reset day.
+  // A window first read in the afternoon of the day its period started.
   const created = budget.updateDailyPoint({
-    today: undefined, previous: undefined, accountId: 'acc', windowId: 'w', used: 11.9, periodStart: P_START, now: new Date(2026, 6, 13, 15),
+    today: undefined, previous: undefined, accountId: 'acc', windowId: 'w', used: 30, periodStart: P_START, now: new Date(2026, 6, 13, 15),
   });
   assert.equal(created.dayStartUsed, 0);
   // A period starting later today (rolling window reset this evening) is not "started today" yet.
@@ -358,11 +358,11 @@ test('updateDailyPoint: no history on the period start day → baseline 0 (every
 });
 
 test('repairFirstDayBaseline: first point on the period start day with a non-zero baseline → 0', () => {
-  const stored = [point('2026-07-14', 11.9, { dayStartUsed: 11.9 }), point('2026-07-13', 11.9, { dayStartUsed: 11.9 })];
-  assert.deepEqual(budget.repairFirstDayBaseline(stored, P_START), point('2026-07-13', 11.9, { dayStartUsed: 0 }));
+  const stored = [point('2026-07-14', 30, { dayStartUsed: 30 }), point('2026-07-13', 30, { dayStartUsed: 30 })];
+  assert.deepEqual(budget.repairFirstDayBaseline(stored, P_START), point('2026-07-13', 30, { dayStartUsed: 0 }));
   // Nothing to do: already 0, no baseline, or the first point is not on the period start day.
-  assert.equal(budget.repairFirstDayBaseline([point('2026-07-13', 11.9, { dayStartUsed: 0 })], P_START), null);
-  assert.equal(budget.repairFirstDayBaseline([point('2026-07-13', 11.9)], P_START), null);
+  assert.equal(budget.repairFirstDayBaseline([point('2026-07-13', 30, { dayStartUsed: 0 })], P_START), null);
+  assert.equal(budget.repairFirstDayBaseline([point('2026-07-13', 30)], P_START), null);
   assert.equal(budget.repairFirstDayBaseline([point('2026-07-10', 5, { dayStartUsed: 5 })], P_START), null);
   assert.equal(budget.repairFirstDayBaseline([], P_START), null);
 });
@@ -512,6 +512,17 @@ test('efficiencyRating and deltaStats ignore today (still running)', () => {
   assert.deepEqual(budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20, wednesdayMorning), { stars: 1, avgRatio: 0.5 });
   const deltas = budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 20);
   assert.deepEqual(budget.deltaStats(deltas, wednesdayMorning), { peak: 10, avg: 10, streakUnderBudget: 0 });
+});
+
+test('efficiencyRating: no consumption on any rated day → null (no 5 stars for an unused quota)', () => {
+  const history = [dayPoint('2026-07-13', 0), dayPoint('2026-07-14', 0), dayPoint('2026-07-15', 0)];
+  assert.equal(budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20, LATER), null);
+});
+
+test('efficiencyIndex: null on a negligible utilization (a ratio on almost nothing is noise)', () => {
+  const now = new Date(2026, 6, 15, 18);
+  assert.equal(budget.efficiencyIndex(periodCtx(0.02, now)), null);
+  assert.notEqual(budget.efficiencyIndex(periodCtx(0.1, now)), null);
 });
 
 test('efficiencyRating excludes non-working days', () => {
@@ -673,8 +684,8 @@ test('windowVerdict with a redistribution: at risk / behind / on track / ahead b
 });
 
 test('generateDailyTip: rebalance tips outside the on-track band; projection tips skipped while preliminary', () => {
-  const down = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 4.4, idealPerUnit: 5.13, unitsLeft: 18.5 } }));
-  assert.deepEqual(down, { key: 'rebalanceDown', params: { perUnit: 4.4, idealPerUnit: 5.13, days: 18.5 } });
+  const down = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 4.4, idealPerUnit: 5, unitsLeft: 12 } }));
+  assert.deepEqual(down, { key: 'rebalanceDown', params: { perUnit: 4.4, idealPerUnit: 5, days: 12 } });
   const up = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 6, idealPerUnit: 5, unitsLeft: 9 } }));
   assert.equal(up.key, 'rebalanceUp');
   const even = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 5.1, idealPerUnit: 5, unitsLeft: 9 } }));
@@ -685,33 +696,29 @@ test('generateDailyTip: rebalance tips outside the on-track band; projection tip
   assert.deepEqual(preliminary, budget.NO_TIP);
 });
 
-test('scenario 2026-10-02: heavy first day of a monthly spend window, the day after (Friday half day)', () => {
-  const schedule: WorkSchedule = { ...FULL_WEEK_SCHEDULE, days: { ...FULL_WEEK_SCHEDULE.days, fri: 'half' } };
-  const periodStart = new Date(2026, 9, 1);
-  const periodEnd = new Date(2026, 10, 1);
-  const window = pctWindow(11.9, { id: 'spend', periodType: 'billing-cycle', periodLength: 1 });
-  const morning = new Date(2026, 9, 2, 9, 4);
-  // Oct 1: first read in the afternoon, stored with its own value as baseline (old rule), repaired.
-  const stored = [point('2026-10-01', 11.9, { dayStartUsed: 11.9 })];
-  const repaired = budget.repairFirstDayBaseline(stored, periodStart);
+test('scenario: heavy first day of a monthly window first read in the afternoon, then an idle morning', () => {
+  const window = pctWindow(25.03, { id: 'monthly', periodType: 'billing-cycle', periodLength: 1 });
+  const morning = new Date(2026, 6, 14, 9, 0); // Tuesday, day 2 of the 10-unit test period
+  // Day 1: first read in the afternoon, stored with its own value as baseline (old rule), repaired.
+  const repaired = budget.repairFirstDayBaseline([point('2026-07-13', 25, { dayStartUsed: 25 })], P_START);
   assert.ok(repaired);
   const today = budget.updateDailyPoint({
-    today: undefined, previous: repaired, accountId: 'acc', windowId: 'w', used: 11.93, periodStart, now: morning,
+    today: undefined, previous: repaired, accountId: 'acc', windowId: 'w', used: 25.03, periodStart: P_START, now: morning,
   });
-  assert.equal(today.dayStartUsed, 11.9);
-  // No phantom work this morning: 11.93 against 11.9 is rounding.
-  assert.equal(budget.todayActivitySpan([{ timestamp: morning, used: 11.93 }], today.dayStartUsed ?? null, morning, null), null);
+  assert.equal(today.dayStartUsed, 25);
+  // A rise within rounding is not work.
+  assert.equal(budget.todayActivitySpan([{ timestamp: morning, used: 25.03 }], today.dayStartUsed ?? null, morning, null), null);
 
-  const ctx = { window, workSchedule: schedule, periodStart, periodEnd, now: morning };
-  // Oct 2026: 17 full days + 5 half Fridays = 19.5 units; from today on 18.5.
+  const ctx = { window, workSchedule: FULL_WEEK_SCHEDULE, periodStart: P_START, periodEnd: P_END, now: morning };
+  // 74.97% left over the 9 units from today on, against an even share of 10.
   const redistribution = budget.redistributedQuota(ctx);
-  assert.deepEqual(redistribution, { perUnit: 4.76, idealPerUnit: 5.13, unitsLeft: 18.5 });
-  assert.deepEqual(budget.todayBudget(ctx, today.dayStartUsed ?? null), { budget: 2.38, usedToday: 0 });
+  assert.deepEqual(redistribution, { perUnit: 8.33, idealPerUnit: 10, unitsLeft: 9 });
+  assert.deepEqual(budget.todayBudget(ctx, today.dayStartUsed ?? null), { budget: 8.33, usedToday: 0.03 });
   assert.equal(budget.windowVerdict({ window, projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution }).kind, 'behind');
 
-  const deltas = budget.dailyDeltas([repaired, today], schedule, 19.5);
-  assert.deepEqual(budget.deltaStats(deltas, morning), { peak: 11.9, avg: 11.9, streakUnderBudget: 0 });
-  assert.equal(budget.efficiencyRating([repaired, today], schedule, 19.5, morning)?.stars, 1);
+  const deltas = budget.dailyDeltas([repaired, today], FULL_WEEK_SCHEDULE, 10);
+  assert.deepEqual(budget.deltaStats(deltas, morning), { peak: 25, avg: 25, streakUnderBudget: 0 });
+  assert.equal(budget.efficiencyRating([repaired, today], FULL_WEEK_SCHEDULE, 10, morning)?.stars, 1);
 });
 
 // ---------------------------------------------------------------------------

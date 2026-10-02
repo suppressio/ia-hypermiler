@@ -51,7 +51,7 @@ export function buildFormatDriftIssueUrl({ provider, endpointLabel, shape }: For
 // ---------------------------------------------------------------------------
 // Manual "report response" (Settings, Claude account detail): unlike the automatic
 // format-drift draft above it carries the response VALUES, because deciding how to
-// read a field (e.g. `extra_usage` next to `spend`, 2026-10-02) needs them. Still only
+// read a field (e.g. two objects that may report the same budget) needs them. Still only
 // a draft the user opens on purpose, reviews and may never submit; strings are
 // redacted (ids, names, free text) except dates and a few enum-like fields.
 // ---------------------------------------------------------------------------
@@ -86,49 +86,71 @@ export function redactResponse(value: unknown, key = '', depth = 0): unknown {
   return `<${typeof value}>`;
 }
 
-export interface ResponseReportIssueParams {
-  provider: ProviderId;
+/** One account in the report: its raw response, or why it could not be read. */
+export interface AccountResponseReport {
+  // Neutral name ("Claude #1"): the label the user gave the account may name the company.
+  name: string;
   endpointLabel: string;
-  response: unknown;
+  response?: unknown;
+  error?: string;
+}
+
+export interface ResponseReportIssueParams {
+  accounts: AccountResponseReport[];
   appVersion: string;
 }
 
-export function buildResponseReportIssueUrl({ provider, endpointLabel, response, appVersion }: ResponseReportIssueParams): string {
-  const serviceName = provider === 'claude' ? 'Claude' : 'Copilot';
-  const redacted = redactResponse(response);
-  const build = (json: string, truncated: boolean): string => {
+// Only the first part of an error message: _http.ts appends the response body after
+// " — ", which may be anything (e.g. a Cloudflare page).
+function shortError(message: string): string {
+  return (message.split(' — ')[0] ?? message).slice(0, 160);
+}
+
+export function buildResponseReportIssueUrl({ accounts, appVersion }: ResponseReportIssueParams): string {
+  const redacted = accounts.map((a) => ({ ...a, response: a.error === undefined ? redactResponse(a.response) : undefined }));
+  // `limit`: maximum characters of each JSON block (Infinity = whole), `pretty`: indented.
+  const build = (pretty: boolean, limit: number): string => {
+    let truncated = false;
+    const sections: string[] = [];
+    for (const a of redacted) {
+      sections.push(`### ${a.name}`, `Endpoint: \`${a.endpointLabel}\``, '');
+      if (a.error !== undefined) {
+        sections.push(`Could not be read: ${shortError(a.error)}`, '');
+        continue;
+      }
+      let json = pretty ? JSON.stringify(a.response, null, 2) : JSON.stringify(a.response);
+      if (json.length > limit) {
+        json = json.slice(0, limit);
+        truncated = true;
+      }
+      sections.push('```json', json, '```', '');
+    }
     const body = [
-      `Usage response reported by hand from IA Hypermiler ${appVersion} on ${new Date().toISOString()}.`,
-      '',
-      `Service: **${serviceName}**`,
-      `Endpoint: \`${endpointLabel}\``,
+      `Usage responses reported by hand from IA Hypermiler ${appVersion} on ${new Date().toISOString()}.`,
       '',
       '**This draft contains real usage values** (percentages, amounts, reset dates). ' +
         'Strings such as ids and names are redacted. Review it before submitting, or do not submit it at all.',
       '',
-      '```json',
-      json,
-      '```',
-      ...(truncated ? ['', '_Truncated to fit the maximum length of a new-issue link._'] : []),
+      ...sections,
+      ...(truncated ? ['_Truncated to fit the maximum length of a new-issue link._'] : []),
     ].join('\n');
     const url = new URL(`https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new`);
-    url.searchParams.set('title', `Usage response report: ${serviceName} (${endpointLabel})`);
+    url.searchParams.set('title', `Usage response report (${accounts.map((a) => a.name).join(', ')})`);
     url.searchParams.set('body', body);
     url.searchParams.set('labels', 'response-report');
     return url.toString();
   };
 
-  const pretty = build(JSON.stringify(redacted, null, 2), false);
+  const pretty = build(true, Infinity);
   if (pretty.length <= MAX_ISSUE_URL_LENGTH) return pretty;
-  const compactJson = JSON.stringify(redacted);
-  const compact = build(compactJson, false);
+  const compact = build(false, Infinity);
   if (compact.length <= MAX_ISSUE_URL_LENGTH) return compact;
-  // Cut the compact JSON proportionally to the overflow until the link fits.
-  let length = compactJson.length;
+  // Cut every JSON block to the same length, shrinking until the link fits.
+  let limit = Math.max(...redacted.map((a) => (a.error === undefined ? JSON.stringify(a.response).length : 0)));
   let url = compact;
-  while (url.length > MAX_ISSUE_URL_LENGTH && length > 0) {
-    length = Math.floor(length * (MAX_ISSUE_URL_LENGTH / url.length) * 0.95);
-    url = build(compactJson.slice(0, length), true);
+  while (url.length > MAX_ISSUE_URL_LENGTH && limit > 0) {
+    limit = Math.floor(limit * (MAX_ISSUE_URL_LENGTH / url.length) * 0.95);
+    url = build(false, limit);
   }
   return url;
 }

@@ -111,10 +111,6 @@
         </label>
         <p class="hint" data-i18n="settings.claude.localInsightsHint"></p>
         <p class="hint" data-i18n="settings.claude.loginHint"></p>
-        <div class="field-row">
-          <button type="button" data-action="report-response" data-i18n="settings.claude.reportResponse">Report usage response (GitHub)</button>
-        </div>
-        <p class="hint" data-i18n="settings.claude.reportResponseHint"></p>
         <div data-role="schedule-slot"></div>
       </div>
     </template>
@@ -279,6 +275,11 @@
         <span data-i18n="settings.diagnostics.autoReport">Report automatically if the format of a Claude/Copilot response changes</span>
       </label>
       <p class="hint" data-i18n="settings.diagnostics.hint"></p>
+      <div class="field-row">
+        <button type="button" class="btn-secondary" id="btn-report-responses" data-i18n="settings.diagnostics.reportResponses" disabled>Report usage responses (GitHub)</button>
+      </div>
+      <p class="hint" data-i18n="settings.diagnostics.reportResponsesHint"></p>
+      <p class="hint" id="report-responses-status" role="status"></p>
     </section>
 
     <div class="save-bar">

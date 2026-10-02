@@ -39,6 +39,8 @@ export const en = {
   'widget.metric.efficiency': 'Efficiency index',
   'widget.metric.efficiencyBelow': 'below the ideal pace',
   'widget.metric.efficiencyAbove': 'above the ideal pace',
+  'widget.metric.efficiencyNegligible': 'usage negligible so far',
+  'widget.metric.autonomyBeyondReset': 'beyond renewal',
   'widget.metric.today': 'Today: used / budget',
   'widget.metric.todayHelp': "Today's consumption against today's budget: what was left this morning spread over the working days until renewal. Below: what is left now per working day, next to the even share of the period.",
   'widget.metric.todayLeft': '{value} left today',
@@ -104,6 +106,7 @@ export const en = {
   'windows.seven_day_opus': 'Weekly Opus limit',
   'windows.ai_credits': 'AI credits',
   'windows.spend': 'Spend limit',
+  'windows.extra_usage': 'Extra usage (monthly)',
   'windows.claudeExtraCredit': 'Claude extra credit ({name})',
   'windows.claudeUndocumented': 'Claude usage — undocumented window ({name})',
   'windows.premium_interactions': 'Copilot AI credits',
@@ -174,9 +177,6 @@ export const en = {
   'settings.claude.localInsights': 'Attribute this machine’s Claude Code sessions to this account (local insights, experimental)',
   'settings.claude.localInsightsHint': 'Reads local Claude Code sessions (CLI and VS Code extension — same source) to show how much of your usage happens with a very large context or in very long sessions, which tools/MCP servers you use most and how many tokens you produce per point of quota. It only reads token counts and tool names — never message content. Local sessions do not say which account they belong to: enable it on one Claude account only, the one you use with Claude Code. Sessions older than about 30 days are no longer available.',
   'settings.claude.loginHint': 'Login opens in a claude.ai window dedicated to this account (works with company SSO too): no cookie to paste by hand.',
-  'settings.claude.reportResponse': 'Report usage response (GitHub)',
-  'settings.claude.reportResponseHint': 'Opens in the browser a GitHub issue draft with the usage response of this account as claude.ai sends it: it includes real values (percentages, amounts, dates), ids and names are redacted. Nothing is sent: you can just copy the link.',
-  'settings.claude.reportResponseOpened': 'Report draft opened in the browser.',
 
   // --- Settings: Copilot detail -------------------------------------------------
   'settings.copilot.orgWarning': 'Company seat: usage is read from the unofficial endpoint VS Code uses, and it may change without notice. If your company has its own GitHub domain (<name>.ghe.com), set it below and connect with an account of that domain: a github.com account linked to an enterprise has no usage data.',
@@ -262,6 +262,10 @@ export const en = {
   'settings.diagnostics.title': 'Diagnostics',
   'settings.diagnostics.autoReport': 'Report automatically if the format of a Claude/Copilot response changes',
   'settings.diagnostics.hint': 'If an endpoint stops being recognized, a pre-filled GitHub issue draft opens in the browser (field structure only, never real values such as percentages or amounts): it must always be reviewed and submitted by hand, nothing is published automatically.',
+  'settings.diagnostics.reportResponses': 'Report usage responses (GitHub)',
+  'settings.diagnostics.reportResponsesHint': "Opens in the browser a GitHub issue draft with the usage responses of every connected account, as Claude and GitHub send them: it includes real values (percentages, amounts, dates), ids and names are redacted and accounts appear as \"Claude #1\", \"GitHub Copilot #1\". Nothing is sent: you can just copy the link.",
+  'settings.diagnostics.reportResponsesOpened': 'Report draft opened in the browser.',
+  'settings.diagnostics.reportResponsesReading': 'Reading the responses…',
 } as const;
 
 export type MessageKey = keyof typeof en;

@@ -324,6 +324,23 @@ async function fetchOrgManagedUsage({ apiBase, token }: { apiBase: string; token
   return fetchCopilotInternalUsage(apiBase, token, 'company seat');
 }
 
+export const INTERNAL_USER_ENDPOINT_LABEL = '{api}/copilot_internal/user';
+
+/**
+ * The raw copilot_internal/user response (the main source for both scopes), for the
+ * manual "report response" diagnostic (main.ts, diagnostics/githubIssue.ts
+ * redactResponse). Same host validation as fetchUsage: the token goes only to GitHub.
+ */
+export async function fetchUsageResponse(credentials: CopilotCredentials): Promise<unknown> {
+  if (!credentials.token) {
+    throw new Error('Copilot: missing token — connect the account from Settings');
+  }
+  return fetchJson(`${githubApiBase(credentials.host)}/copilot_internal/user`, {
+    headers: authHeaders(credentials.token),
+    label: 'copilot_internal/user (unofficial internal endpoint)',
+  });
+}
+
 export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAccountUsage> {
   const { token, accountScope, manualQuota, host } = credentials;
   if (!token) {

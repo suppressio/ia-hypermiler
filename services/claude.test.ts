@@ -216,6 +216,47 @@ test('buildQuotaWindows: `spend` is not added when a dollar window already repor
   assert.equal(at(windows, 0).id, 'cinder_cove');
 });
 
+// Shape seen on 2026-10-02 on a company account (RESEARCH.md §1 addendum 4):
+// extra_usage now carries utilization and the monthly budget in minor units, the same
+// money as `spend`. Values here are invented.
+function companyExtraUsagePayload(spendUsedMinor: number): Record<string, unknown> {
+  return {
+    five_hour: null,
+    seven_day: null,
+    limits: [],
+    extra_usage: {
+      credits_ever_enabled: true, currency: 'USD', daily: null, decimal_places: 2, disabled_reason: null,
+      is_enabled: true, monthly_limit: 20000, spend_limit_reached: false, used_credits: 2345,
+      user_disabled: false, utilization: 11.725, weekly: null,
+    },
+    spend: {
+      enabled: true, percent: 12, severity: 'normal',
+      used: { amount_minor: spendUsedMinor, currency: 'USD', exponent: 2 },
+      limit: { amount_minor: 20000, currency: 'USD', exponent: 2 },
+    },
+  };
+}
+
+test('buildQuotaWindows: extra_usage with a monthly budget in minor units is a paced dollar window', () => {
+  const { spend: _spend, ...withoutSpend } = companyExtraUsagePayload(2345);
+  const windows = claudeService.buildQuotaWindows(withoutSpend);
+  assert.equal(windows.length, 1);
+  assert.deepEqual(at(windows, 0), {
+    id: 'extra_usage', label: 'Extra usage (monthly)', periodType: 'billing-cycle', periodLength: 1,
+    unit: 'count', used: 23.45, total: 200, resetsAt: null,
+  });
+});
+
+test('buildQuotaWindows: extra_usage and spend with the same amounts → only spend (keeps its history)', () => {
+  const windows = claudeService.buildQuotaWindows(companyExtraUsagePayload(2345));
+  assert.deepEqual(windows.map((w) => w.id), ['spend']);
+});
+
+test('buildQuotaWindows: extra_usage and spend that differ are both shown', () => {
+  const windows = claudeService.buildQuotaWindows(companyExtraUsagePayload(9000));
+  assert.deepEqual(windows.map((w) => w.id).sort(), ['extra_usage', 'spend']);
+});
+
 test('buildQuotaWindows: `spend` with an unexpected shape is still a format drift', () => {
   assert.throws(
     () => claudeService.buildQuotaWindows(companySpendPayload({ enabled: true, something_else: 1 })),
@@ -255,7 +296,7 @@ test('fetchUsage resolves organizationId when missing, then calls /usage', async
 });
 
 test('fetchUsageResponse returns the raw response as received, uninterpreted', async () => {
-  const raw = { extra_usage: { utilization: 11.9 }, spend: { percent: 11.9, enabled: true }, limits: [] };
+  const raw = { extra_usage: { utilization: 33.3 }, spend: { percent: 33.3, enabled: true }, limits: [] };
   installFetchMock(async () => jsonResponse(raw));
   assert.deepEqual(await claudeService.fetchUsageResponse({ sessionKey: 'sess-abc', organizationId: 'org-xyz' }), raw);
   await assert.rejects(() => claudeService.fetchUsageResponse({ sessionKey: '' }), /missing sessionKey/);
