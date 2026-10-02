@@ -31,12 +31,10 @@ export function defaultClaudeAccount(id: AccountId, label = PROVIDER_DISPLAY_NAM
     provider: 'claude',
     label,
     enabled: false,
-    accountScope: 'personal',
     subscription: { renewalRule: { type: 'dayOfMonth', day: 1 } },
     workSchedule: structuredClone(DEFAULT_WORK_SCHEDULE),
     authMethod: 'password',
     session: { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null },
-    planTier: 'pro',
     partition: claudePartitionFor(id),
     localInsights: false,
   };
@@ -58,7 +56,6 @@ export function defaultCopilotAccount(id: AccountId, label = PROVIDER_DISPLAY_NA
     // Copilot's billing API does not expose the plan's total quota: value configured
     // by hand (see ARCHITECTURE.md §0 and RESEARCH.md v3 §3).
     manualQuota: 300,
-    planTier: 'individual',
     experimentalWarningAcknowledged: false,
   };
 }
@@ -100,6 +97,19 @@ export function nextAccountLabel(provider: ProviderId, existing: AccountConfig[]
   return `${base} ${n}`;
 }
 
+// Fields of older versions that no longer exist: the merge with the defaults keeps
+// unknown keys, so they are dropped here. `planTier` (both providers) and the Claude
+// `accountScope` were entered by hand and used by no computation (2026-10).
+const CLAUDE_OBSOLETE_FIELDS = ['planTier', 'accountScope'];
+const COPILOT_OBSOLETE_FIELDS = ['planTier'];
+
+function withoutObsoleteFields(value: unknown, fields: readonly string[]): unknown {
+  if (!isPlainRecord(value)) return value;
+  const copy = { ...value };
+  for (const field of fields) Reflect.deleteProperty(copy, field);
+  return copy;
+}
+
 /**
  * Converts `accounts` into `AccountConfig[]`. Idempotent: an already migrated array
  * comes back normalized. Legacy accounts keep the ids `'claude'`/`'copilot'` — the same
@@ -118,7 +128,7 @@ export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled
   if (isPlainRecord(claude)) {
     const session = isPlainRecord(claude.session) ? claude.session : {};
     if (claude.enabled === true || typeof session.sessionKey === 'string') {
-      const migrated = mergeWithDefaults(defaultClaudeAccount('claude'), claude) as ClaudeAccountSettings;
+      const migrated = withoutObsoleteFields(mergeWithDefaults(defaultClaudeAccount('claude'), claude), CLAUDE_OBSOLETE_FIELDS) as ClaudeAccountSettings;
       migrated.id = 'claude';
       migrated.provider = 'claude';
       migrated.partition = claudePartitionFor('claude');
@@ -132,7 +142,7 @@ export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled
   if (isPlainRecord(copilot)) {
     const credentials = isPlainRecord(copilot.credentials) ? copilot.credentials : {};
     if (copilot.enabled === true || typeof credentials.token === 'string') {
-      const migrated = mergeWithDefaults(defaultCopilotAccount('copilot'), copilot) as CopilotAccountSettings;
+      const migrated = withoutObsoleteFields(mergeWithDefaults(defaultCopilotAccount('copilot'), copilot), COPILOT_OBSOLETE_FIELDS) as CopilotAccountSettings;
       migrated.id = 'copilot';
       migrated.provider = 'copilot';
       migrated.workSchedule = scheduleFor(copilot, inheritedSchedule);
@@ -171,10 +181,10 @@ export function normalizeAccounts(rawAccounts: unknown[], inheritedSchedule?: un
     if (!isPlainRecord(raw) || typeof raw.id !== 'string' || raw.id === '') continue;
     const id = raw.id;
     if (raw.provider === 'claude') {
-      const cfg = mergeWithDefaults(defaultClaudeAccount(id), raw) as ClaudeAccountSettings;
+      const cfg = withoutObsoleteFields(mergeWithDefaults(defaultClaudeAccount(id), raw), CLAUDE_OBSOLETE_FIELDS) as ClaudeAccountSettings;
       result.push({ ...cfg, id, provider: 'claude', partition: claudePartitionFor(id), workSchedule: scheduleFor(raw, inheritedSchedule) });
     } else if (raw.provider === 'copilot') {
-      const cfg = mergeWithDefaults(defaultCopilotAccount(id), raw) as CopilotAccountSettings;
+      const cfg = withoutObsoleteFields(mergeWithDefaults(defaultCopilotAccount(id), raw), COPILOT_OBSOLETE_FIELDS) as CopilotAccountSettings;
       // An unsupported host falls back to github.com: the token is never sent elsewhere.
       const host = normalizeGithubHost(cfg.host) ?? DEFAULT_GITHUB_HOST;
       result.push({ ...cfg, id, provider: 'copilot', host, workSchedule: scheduleFor(raw, inheritedSchedule) });

@@ -168,7 +168,6 @@ interface AccountConfigBase {
   provider: ProviderId;
   label: string;
   enabled: boolean;
-  accountScope: 'personal' | 'organization';
   subscription: { renewalRule: { type: 'dayOfMonth' | 'rrule'; day?: number } };
   workSchedule: {
     enabled: boolean;
@@ -180,7 +179,6 @@ interface AccountConfigBase {
 export interface ClaudeAccountConfig extends AccountConfigBase {
   provider: 'claude';
   authMethod: 'password' | 'google' | 'sso';
-  planTier: string;
   // sessionKey always arrives redacted (placeholder) from the main process: it only tells "connected yes/no".
   session: { sessionKey: string | null; organizationId: string | null };
   localInsights: boolean;
@@ -189,8 +187,8 @@ export interface ClaudeAccountConfig extends AccountConfigBase {
 export interface CopilotAccountConfig extends AccountConfigBase {
   provider: 'copilot';
   authMethod: 'pat' | 'oauth';
+  accountScope: 'personal' | 'organization';
   host: string;
-  planTier: string;
   credentials: { username: string | null };
   oauthApp: { clientId: string | null };
   manualQuota: number;

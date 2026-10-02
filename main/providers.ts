@@ -33,20 +33,16 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
       return claudeService.fetchUsage({
         sessionKey: cfg.session.sessionKey as string,
         organizationId: cfg.session.organizationId,
-        planTier: cfg.planTier,
         // Read fresh on every refresh (not persisted), from the account partition.
         cookieHeader: await buildClaudeCookieHeader(cfg.partition),
       });
-    case 'copilot': {
-      const raw = await copilotService.fetchUsage({
+    case 'copilot':
+      return copilotService.fetchUsage({
         token: cfg.credentials.token as string,
         accountScope: cfg.accountScope,
         manualQuota: cfg.manualQuota,
         host: cfg.host,
       });
-      if (!raw.planTier) raw.planTier = cfg.planTier;
-      return raw;
-    }
   }
 }
 
@@ -63,7 +59,6 @@ export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLa
         response: await claudeService.fetchUsageResponse({
           sessionKey: cfg.session.sessionKey as string,
           organizationId: cfg.session.organizationId,
-          planTier: cfg.planTier,
           cookieHeader: await buildClaudeCookieHeader(cfg.partition),
         }),
       };

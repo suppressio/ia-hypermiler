@@ -276,7 +276,6 @@ export interface AccountConfigBase {
   provider: ProviderId;
   label: string;
   enabled: boolean;
-  accountScope: AccountScope;
   subscription: { renewalRule: RenewalRule };
   // Per account (it used to be one global setting): e.g. a personal account without
   // constraints next to a company one paced on working days.
@@ -292,7 +291,6 @@ export interface ClaudeAccountSettings extends AccountConfigBase {
     capturedAt: string | null;
     expiresAt: string | null;
   };
-  planTier: 'free' | 'pro' | 'max_5x' | 'max_20x' | 'team' | 'enterprise';
   // Dedicated Electron partition (`persist:account-<id>`): claude.ai cookies isolated
   // per account. They all used to live in session.defaultSession — "Disconnect" did not
   // clear them and the next login resumed the same session (issue #4).
@@ -308,6 +306,9 @@ export interface CopilotAccountSettings extends AccountConfigBase {
   // automatically from the method used for the last successful connection — see
   // renderer/settings.ts (applyAccountDetailState) and main.ts (accounts:connectCopilot*).
   authMethod: 'pat' | 'oauth';
+  // Personal plan or company (organization) seat: chooses which endpoints are read
+  // (services/copilot.ts fetchUsage).
+  accountScope: AccountScope;
   // "github.com" or a GitHub Enterprise Cloud tenant with data residency
   // ("<tenant>.ghe.com"), where company seats live — see services/githubHost.ts.
   host: string;
@@ -316,7 +317,6 @@ export interface CopilotAccountSettings extends AccountConfigBase {
   // renderer/settings.ts): alternative to the PAT, registered on the account's host.
   oauthApp: { clientId: string | null };
   manualQuota: number;
-  planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise';
   experimentalWarningAcknowledged: boolean;
 }
 
@@ -397,7 +397,6 @@ export interface AppSettings {
 export interface ClaudeCredentials {
   sessionKey: string;
   organizationId?: string | null;
-  planTier?: string | null;
   // Full Cookie header (sessionKey + cf_clearance + any other Cloudflare/claude.ai
   // cookie), read fresh from the account's Electron session at request time — see
   // main/claude-auth.ts:buildClaudeCookieHeader(). When missing, only the sessionKey is

@@ -168,7 +168,6 @@ export const en = {
   'settings.account.scope': 'Account scope',
   'settings.account.scopePersonal': 'Personal',
   'settings.account.scopeOrg': 'Company (organization seat)',
-  'settings.account.plan': 'Plan',
   'settings.account.renewalDay': 'Renewal day (of the month)',
 
   // --- Settings: Claude detail ------------------------------------------------
@@ -183,7 +182,6 @@ export const en = {
   'settings.copilot.orgWarning': 'Company seat: usage is read from the unofficial endpoint VS Code uses, and it may change without notice. If your company has its own GitHub domain (<name>.ghe.com), set it below and connect with an account of that domain: a github.com account linked to an enterprise has no usage data.',
   'settings.copilot.host': 'GitHub domain',
   'settings.copilot.hostHint': 'github.com, or your company domain (e.g. acme.ghe.com) if you sign in to GitHub on a different address.',
-  'settings.copilot.planIndividual': 'Individual (Pro)',
   'settings.copilot.manualQuota': 'Monthly premium request quota (not exposed by the API, enter it from your contract/plan)',
   'settings.copilot.authMethod': 'Authentication method',
   'settings.copilot.authOauth': 'GitHub OAuth',

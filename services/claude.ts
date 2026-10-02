@@ -359,7 +359,8 @@ async function requestUsage(credentials: ClaudeCredentials): Promise<ClaudeUsage
 export async function fetchUsage(credentials: ClaudeCredentials): Promise<RawAccountUsage> {
   const usage = await requestUsage(credentials);
   return {
-    planTier: credentials.planTier || 'pro',
+    // The usage endpoint does not say which plan the account has.
+    planTier: null,
     // Claude does not expose the subscription billing date through this endpoint: it
     // stays a value configured by hand in Settings (account subscription).
     subscriptionRenewsAt: null,

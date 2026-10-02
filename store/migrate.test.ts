@@ -47,7 +47,8 @@ test('migrateAccounts: keeps credentials and configuration, adds the partition',
   const copilot = at(migrated, 1);
   assert.equal(claude.provider, 'claude');
   assert.equal(claude.session.sessionKey, 'sk-real');
-  assert.equal(claude.planTier, 'enterprise');
+  assert.equal('planTier' in claude, false); // obsolete field dropped
+  assert.equal('accountScope' in claude, false);
   assert.equal(claude.subscription.renewalRule.day, 15);
   assert.equal(claude.partition, claudePartitionFor('claude'));
   assert.equal(claude.label, 'Claude');
@@ -73,8 +74,18 @@ test('migrateAccounts: an incomplete legacy slot (electron-store shallow merge) 
   const claude = at(migrateAccounts(partial, false), 0);
   assert.equal(claude.provider, 'claude');
   assert.equal(claude.session.organizationId, null);
-  assert.equal(claude.planTier, 'pro');
   assert.deepEqual(claude.subscription.renewalRule, { type: 'dayOfMonth', day: 1 });
+});
+
+test('normalizeAccounts drops obsolete fields stored by older versions', () => {
+  const [claude, copilot] = normalizeAccounts([
+    { id: 'c1', provider: 'claude', planTier: 'max_5x', accountScope: 'organization' },
+    { id: 'g1', provider: 'copilot', planTier: 'business', accountScope: 'organization' },
+  ]);
+  assert.equal(claude !== undefined && 'planTier' in claude, false);
+  assert.equal(claude !== undefined && 'accountScope' in claude, false);
+  assert.equal(copilot !== undefined && 'planTier' in copilot, false);
+  assert.equal(copilot?.provider === 'copilot' && copilot.accountScope, 'organization'); // still used by Copilot
 });
 
 test('migrateAccounts: idempotent on an already migrated array', () => {

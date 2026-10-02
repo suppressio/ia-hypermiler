@@ -592,7 +592,7 @@ function emptyAccountSnapshot(cfg: AccountConfig, lastError: string): AccountSna
     accountId: cfg.id,
     provider: cfg.provider,
     label: cfg.label,
-    planTier: cfg.planTier,
+    planTier: null,
     subscriptionRenewsAt: null,
     quotaWindows: [],
     windows: [],
@@ -642,8 +642,6 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
 // ---------------------------------------------------------------------------
 function reportConfig(cfg: AccountConfig): Record<string, unknown> {
   const common = {
-    accountScope: cfg.accountScope,
-    planTier: cfg.planTier,
     renewalRule: cfg.subscription.renewalRule,
     workSchedule: cfg.workSchedule,
   };
@@ -654,6 +652,7 @@ function reportConfig(cfg: AccountConfig): Record<string, unknown> {
       return {
         ...common,
         authMethod: cfg.authMethod,
+        accountScope: cfg.accountScope,
         host: cfg.host === DEFAULT_GITHUB_HOST ? DEFAULT_GITHUB_HOST : 'a .ghe.com tenant',
         manualQuota: cfg.manualQuota,
       };

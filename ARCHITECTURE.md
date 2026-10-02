@@ -58,7 +58,6 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
     provider: 'claude' | 'copilot',
     label: string,             // name shown in the table and the widget tabs ("Claude", "Claude 2"…)
     enabled: boolean,
-    accountScope: 'personal' | 'organization',
     subscription: {
       renewalRule: { type: 'dayOfMonth', day: number } | { type: 'rrule', rrule: string },
     },
@@ -88,16 +87,15 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
         capturedAt: string,        // ISO date
         expiresAt: string | null,  // estimated ~30 days, to re-validate
       },
-      planTier: 'free' | 'pro' | 'max_5x' | 'max_20x' | 'team' | 'enterprise',
       partition: string,         // 'persist:account-<id>': claude.ai cookies isolated per account,
                                  // cleared by Disconnect/Remove and before every login (issue #4)
       localInsights: boolean,    // local Claude Code sessions attributed to this account (max 1)
     } | { // --- provider: 'copilot' ---
       authMethod: 'pat' | 'oauth',  // chooses which connection panel to show; updated from the last successful connection
+      accountScope: 'personal' | 'organization', // chooses the endpoints read (personal plan vs company seat)
       credentials: { token: string, username: string | null },  // encrypted token (PAT or OAuth App access token — see main/copilot-oauth.ts)
       oauthApp: { clientId: string | null },  // not a secret; the client secret is never persisted
       manualQuota: number, // the billing API does not expose the plan total: value entered by the user
-      planTier: 'free' | 'individual' | 'pro_plus' | 'business' | 'enterprise',
       experimentalWarningAcknowledged: boolean,
     }
   )>,
@@ -131,7 +129,7 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
 Sections of the Settings panel (separate window `renderer/settings.html`, opened from the tray or a gear icon in the widget):
 
 1. **Accounts and sessions** — *(updated, issue #4)* a **table** of accounts (Name | Provider | Status | Active | actions Configure/Connect/Disconnect/Remove) with "Add account"; "Configure" opens the provider panel below the row (common + specific fields). Original description: for Claude and Copilot, connection status, method (password/SSO/PAT/OAuth device), a "Connect/Reconnect" button opening a login `BrowserWindow` for Claude or the device flow for Copilot, estimated session expiry, a "company seat" toggle with an automatic warning when active on Copilot ("experimental feature, may stop working without notice").
-2. **Plan and renewal** — plan type, subscription renewal day (a simple "day of month" picker; stored as a minimal rule so different recurrences can be added later without changing the schema). *(Since 2026-10:)* the manual day is only a fallback — a window's period end is its own `resetsAt`, then the provider's `subscriptionRenewsAt` (Copilot `quota_reset_date`; the billing report restarts on the 1st of the next UTC month by definition), then the manual day. Settings locks the field and shows the provider's date when every paced window has one (`renderer/renewal.ts`); today only the Claude company `spend` limit needs it.
+2. **Renewal** — subscription renewal day *(the plan type and the Claude account scope were removed in 2026-10: entered by hand and used by no computation; the account name tells accounts apart)* (a simple "day of month" picker; stored as a minimal rule so different recurrences can be added later without changing the schema). *(Since 2026-10:)* the manual day is only a fallback — a window's period end is its own `resetsAt`, then the provider's `subscriptionRenewsAt` (Copilot `quota_reset_date`; the billing report restarts on the 1st of the next UTC month by definition), then the manual day. Settings locks the field and shows the provider's date when every paced window has one (`renderer/renewal.ts`); today only the Claude company `spend` limit needs it.
 3. **Work schedule** — *(per account since 0.4.6: last section of each account detail, collapsed with a one-line summary)* 7 day selectors with 3 states (full/half/off), an "enabled" switch (off = every day counts as a full day, e.g. a personal account) and hours/day (reserved). Used to compute budget and projections on "remaining working days", not calendar days.
 4. **Appearance** — language (Automatic / English / Italiano), window style (the three skins below), always-on-top, accent color, default chart range (week/month).
 5. **Notifications** — alert percentage threshold (default 80%, as in `CLAUDE.md`, now configurable), possibly per window (e.g. a separate alert for Claude's 5h limit).

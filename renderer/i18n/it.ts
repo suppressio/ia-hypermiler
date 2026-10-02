@@ -155,7 +155,6 @@ export const it: Record<MessageKey, string> = {
   'settings.account.scope': 'Ambito account',
   'settings.account.scopePersonal': 'Personale',
   'settings.account.scopeOrg': 'Aziendale (seat organizzazione)',
-  'settings.account.plan': 'Piano',
   'settings.account.renewalDay': 'Giorno di rinnovo (del mese)',
 
   'settings.claude.loginMethod': 'Metodo di login',
@@ -168,7 +167,6 @@ export const it: Record<MessageKey, string> = {
   'settings.copilot.orgWarning': "Seat aziendale: il consumo è letto dall'endpoint non ufficiale usato da VS Code, che può cambiare senza preavviso. Se la tua azienda ha un proprio dominio GitHub (<nome>.ghe.com), impostalo qui sotto e collegati con un account di quel dominio: un account github.com collegato a un'enterprise non ha dati di consumo.",
   'settings.copilot.host': 'Dominio GitHub',
   'settings.copilot.hostHint': "github.com, oppure il dominio aziendale (es. acme.ghe.com) se accedi a GitHub da un indirizzo diverso.",
-  'settings.copilot.planIndividual': 'Individual (Pro)',
   'settings.copilot.manualQuota': "Quota mensile richieste premium (non esposta dall'API, inseriscila da contratto/piano)",
   'settings.copilot.authMethod': 'Metodo di autenticazione',
   'settings.copilot.authOauth': 'GitHub OAuth',

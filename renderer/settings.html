@@ -74,29 +74,11 @@
           <label><span data-i18n="settings.account.name">Account name</span>
             <input type="text" data-account-field="label" />
           </label>
-          <label><span data-i18n="settings.account.scope">Account scope</span>
-            <select data-account-field="accountScope">
-              <option value="personal" data-i18n="settings.account.scopePersonal">Personal</option>
-              <option value="organization" data-i18n="settings.account.scopeOrg">Company (organization seat)</option>
-            </select>
-          </label>
-        </div>
-        <div class="field-row">
           <label><span class="label-row"><span data-i18n="settings.claude.loginMethod">Login method</span> <button type="button" class="info-icon" aria-label="More information" data-i18n-aria-label="settings.infoAria">ⓘ<span class="tooltip" role="tooltip" data-i18n="settings.claude.loginHint"></span></button></span>
             <select data-account-field="authMethod">
               <option value="password" data-i18n="settings.claude.loginPassword">Email and password</option>
               <option value="google">Google</option>
               <option value="sso" data-i18n="settings.claude.loginSso">Company SSO</option>
-            </select>
-          </label>
-          <label><span data-i18n="settings.account.plan">Plan</span>
-            <select data-account-field="planTier">
-              <option value="free">Free</option>
-              <option value="pro">Pro</option>
-              <option value="max_5x">Max 5x</option>
-              <option value="max_20x">Max 20x</option>
-              <option value="team">Team</option>
-              <option value="enterprise">Enterprise</option>
             </select>
           </label>
         </div>
@@ -130,15 +112,6 @@
           <input type="text" data-account-field="host" data-role="github-host" placeholder="github.com" spellcheck="false" />
         </label>
         <div class="field-row">
-          <label><span data-i18n="settings.account.plan">Plan</span>
-            <select data-account-field="planTier">
-              <option value="free">Free</option>
-              <option value="individual" data-i18n="settings.copilot.planIndividual">Individual (Pro)</option>
-              <option value="pro_plus">Pro+</option>
-              <option value="business">Business</option>
-              <option value="enterprise">Enterprise</option>
-            </select>
-          </label>
           <label><span class="label-row"><span data-i18n="settings.account.renewalDay">Renewal day (of the month)</span> <button type="button" class="info-icon" data-role="renewal-hint" aria-label="More information" data-i18n-aria-label="settings.infoAria" hidden>ⓘ<span class="tooltip" role="tooltip" data-role="renewal-hint-text"></span></button></span>
             <input type="number" min="1" max="31" data-account-field="subscription.renewalRule.day" />
           </label>
