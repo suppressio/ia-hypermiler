@@ -48,6 +48,18 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
   border-radius: 5px;
 }
 
+/* A locked field (e.g. a value read from the provider) must read as locked at a
+   glance: grey background, muted text, dashed border, "not-allowed" cursor, and its
+   label muted too. Plain styling only, no effects. */
+select:disabled, input:disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+  border-style: dashed;
+  cursor: not-allowed;
+}
+label:has(> select:disabled, > input:disabled:not([type="checkbox"])) > span:first-child { color: #9ca3af; }
+label:has(> input[type="checkbox"]:disabled) { color: #9ca3af; cursor: not-allowed; }
+
 .field-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
 .field-row > label { flex: 1; min-width: 140px; }
 
