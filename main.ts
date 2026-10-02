@@ -373,20 +373,28 @@ function computeWindowSnapshot(
   // time scale.
   const ratingAvailable = pacingAvailable && window.periodType !== 'rolling-hours';
 
-  const efficiencyIndex = pacingAvailable ? budget.efficiencyIndex(ctx) : null;
-  const projectedUsage = pacingAvailable ? budget.projectedUsage(ctx) : null;
-  const daysUntilReset = budget.daysUntilReset(periodEnd, now);
-  const workingDaysUntilReset = budget.workingDaysUntilReset(periodEnd, workSchedule, now, todayElapsedUnits);
-  const estimatedAutonomyWorkingDays = pacingAvailable ? budget.estimatedAutonomyWorkingDays(ctx) : null;
+  // A window of a few hours is read in hours (budget.hourlyOutlook): the working-day
+  // metrics (days to reset, autonomy in days, "preliminary") mean nothing there.
+  const instantRate = budget.instantaneousRate(recentSamples, now);
+  const hourly = isRollingHours ? budget.hourlyOutlook(window, now, instantRate) : null;
+  const efficiencyIndex = pacingAvailable && !isRollingHours ? budget.efficiencyIndex(ctx) : null;
+  const projectedUsage = isRollingHours
+    ? hourly?.projectedAtReset ?? null
+    : pacingAvailable ? budget.projectedUsage(ctx) : null;
+  const daysUntilReset = isRollingHours ? null : budget.daysUntilReset(periodEnd, now);
+  const workingDaysUntilReset = isRollingHours ? null : budget.workingDaysUntilReset(periodEnd, workSchedule, now, todayElapsedUnits);
+  const estimatedAutonomyWorkingDays = pacingAvailable && !isRollingHours ? budget.estimatedAutonomyWorkingDays(ctx) : null;
   // Not gated by pacingAvailable when the window has its own resetsAt: knowing the
   // reset is enough, even with an unknown period start (e.g. one-off credits) — see
   // budget.sustainableHourlyRate. Without one, the renewal-rule period end is used
   // only for windows known to follow the billing cycle (pacingAvailable). Spread over
-  // the remaining WORKING hours when a schedule applies (not on the 5-hour window).
-  const instantRate = budget.instantaneousRate(recentSamples, now);
-  const workingHoursLeft = workSchedule.enabled && !isRollingHours
-    ? budget.remainingWorkingUnits(periodEnd, now, workSchedule, todayElapsedUnits) * workSchedule.hoursPerDay
-    : null;
+  // the remaining WORKING hours (not on the 5-hour window): working units × hours per
+  // day also with the schedule disabled, where every day is a working day — over 24
+  // calendar hours a day the target was several times below any pace measured while
+  // working, so the gauge was always red.
+  const workingHoursLeft = isRollingHours
+    ? null
+    : budget.remainingWorkingUnits(periodEnd, now, workSchedule, todayElapsedUnits) * workSchedule.hoursPerDay;
   const sustainableRate = budget.sustainableHourlyRate(window, window.resetsAt ?? (pacingAvailable ? periodEnd : null), now, workingHoursLeft);
   const efficiencyRating = ratingAvailable
     ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, now, chartDays)
@@ -400,15 +408,18 @@ function computeWindowSnapshot(
   // The remaining quota redistributed per working day: the verdict and the "rebalance"
   // tip rest on it (same scope as todayBudget: no daily budget on rolling hours).
   const redistribution = pacingAvailable && !isRollingHours ? budget.redistributedQuota(ctx) : null;
-  const preliminary = pacingAvailable
+  const preliminary = pacingAvailable && !isRollingHours
     && budget.elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule, todayElapsedUnits) < PRELIMINARY_WORKING_UNITS;
+  const pacePerUnit = pacingAvailable && !isRollingHours ? budget.currentPacePerUnit(ctx) : null;
 
   return {
     window,
     dailyHistory,
     dailyDeltas: dailyDeltasForWindow,
     deltaStats: budget.deltaStats(dailyDeltasForWindow, now),
-    verdict: budget.windowVerdict({ window, projectedUsage, workingDaysUntilReset, estimatedAutonomyWorkingDays, redistribution }),
+    verdict: budget.windowVerdict({
+      window, projectedUsage, workingDaysUntilReset, estimatedAutonomyWorkingDays, redistribution, pacePerUnit, preliminary, hourly,
+    }),
     efficiencyIndex,
     projectedUsage,
     daysUntilReset,
@@ -416,6 +427,7 @@ function computeWindowSnapshot(
     estimatedAutonomyWorkingDays,
     todayBudget,
     redistribution,
+    hourly,
     preliminary,
     instantRate,
     sustainableRate,
@@ -448,8 +460,9 @@ function computeAccountSnapshot(
   const { subscription, workSchedule } = cfg;
   const identity = { accountId: cfg.id, provider: cfg.provider, label: cfg.label };
   const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(draft, cfg.id, w, subscription, raw.subscriptionRenewsAt, workSchedule, now, localInsights));
-  const criticalWindow = budget.pickCriticalWindow(raw.quotaWindows);
-  const criticalSnapshot = criticalWindow ? windows.find((w) => w.window.id === criticalWindow.id) : undefined;
+  // The window needing attention first (at risk/exhausted), then the most used.
+  const criticalSnapshot = budget.pickCriticalSnapshot(windows) ?? undefined;
+  const criticalWindow = criticalSnapshot?.window ?? null;
 
   if (!criticalWindow || !criticalSnapshot) {
     return {
@@ -724,8 +737,11 @@ function maybeNotifyThreshold(snapshot: UsageSnapshot): void {
   const notifiedToday = flagsOfToday(todayKey);
 
   for (const account of snapshot.accounts) {
-    if (!account.criticalWindow) continue;
-    const utilization = budget.normalizedUtilization(account.criticalWindow);
+    // The most used window, not the one shown first (that one may be chosen for being
+    // at risk while another is past the threshold).
+    const mostUsed = budget.pickCriticalWindow(account.windows.map((w) => w.window));
+    if (!mostUsed) continue;
+    const utilization = budget.normalizedUtilization(mostUsed);
     if (utilization === null || utilization < threshold) continue;
 
     const flagKey = `${account.accountId}:${todayKey}`;

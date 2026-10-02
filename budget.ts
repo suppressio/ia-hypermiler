@@ -23,6 +23,7 @@ import type {
   ConsumptionCause,
   TodayBudget,
   Redistribution,
+  HourlyOutlook,
 } from './types/index';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -297,6 +298,32 @@ function blendedPacePerUnit(ctx: PeriodContext, utilization: number, now: Date):
 }
 
 /**
+ * The pace (% per working unit) projection and autonomy use (blendedPacePerUnit), for
+ * the verdict: null when utilization is unknown or no pace is measurable yet.
+ */
+export function currentPacePerUnit(ctx: PeriodContext): number | null {
+  const utilization = normalizedUtilization(ctx.window);
+  if (utilization === null) return null;
+  return blendedPacePerUnit(ctx, utilization, ctx.now ?? new Date());
+}
+
+/**
+ * A window of a few hours (rolling-hours) read in hours: working days and "preliminary"
+ * mean nothing on a 5-hour window (the day-based metrics read "0 days to reset" and
+ * were always preliminary). Hours left to the reset, usage projected at the reset at
+ * the instant pace (instantaneousRate, %/h — none measured counts as no consumption)
+ * and hours of autonomy at that pace. Null without a reset moment or utilization.
+ */
+export function hourlyOutlook(window: QuotaWindow, now: Date, instantRate: number | null): HourlyOutlook | null {
+  const utilization = normalizedUtilization(window);
+  if (utilization === null || !window.resetsAt) return null;
+  const hoursLeft = Math.max(0, (new Date(window.resetsAt).getTime() - now.getTime()) / (3600 * 1000));
+  const rate = instantRate ?? 0;
+  const autonomyHours = utilization >= 100 ? 0 : rate > 0 ? round1((100 - utilization) / rate) : null;
+  return { hoursLeft: round2(hoursLeft), projectedAtReset: round1(utilization + rate * hoursLeft), autonomyHours };
+}
+
+/**
  * Projected usage (%) at the end of the period, extrapolating the pace
  * (blendedPacePerUnit) over the remaining working units. NOT capped at 100: "227%"
  * says how far over the limit the current pace leads, and windowVerdict needs the
@@ -440,8 +467,9 @@ export function instantaneousRate(
  * `workingHoursLeft` (remaining working units × hoursPerDay, from the caller) spreads
  * the remainder over the hours actually worked: the instant rate is measured while
  * working, so a target spread over nights and weekends too was several times too
- * strict. Null = calendar hours (5-hour window, schedule disabled); 0 or less also
- * falls back to calendar hours (no working time left before the reset).
+ * strict — also with the schedule disabled, where every day counts as a working day
+ * of hoursPerDay hours. Null = calendar hours (5-hour window); 0 or less also falls
+ * back to calendar hours (no working time left before the reset).
  * Returns null when `resetsAt` is missing or utilization cannot be computed.
  */
 export function sustainableHourlyRate(
@@ -630,6 +658,12 @@ export interface WindowVerdictContext {
   // The remaining quota redistributed (redistributedQuota); null on windows without a
   // daily budget (rolling hours) or without pacing.
   redistribution: Redistribution | null;
+  // Current pace (currentPacePerUnit) and whether it rests on too little data: a pace
+  // well above the redistributed quota makes the window at risk.
+  pacePerUnit: number | null;
+  preliminary: boolean;
+  // Rolling-hours windows: the reading in hours (hourlyOutlook), null otherwise.
+  hourly: HourlyOutlook | null;
 }
 
 // Redistributed quota over the ideal one (see windowVerdict): below AT_RISK the days
@@ -648,20 +682,31 @@ export const REDISTRIBUTION_ON_TRACK_HIGH = 1.05;
  * replacing tabs that only lined up the provider's metrics). The text is composed by
  * the renderer (reset date formatting is a UI concern).
  * - exhausted first;
- * - with a redistribution (every paced window except rolling hours): how the quota
- *   left per working day compares with the even share — at risk / behind (less per
- *   day than planned) / on track / ahead (more). Not projection/autonomy: on the day
- *   after a heavy day they extrapolate that day to the whole period ("runs out in 9
- *   days" while the user is compensating), the redistribution says what is left to
- *   spend instead;
- * - otherwise (rolling-hours windows) autonomy/projection as before → no pacing.
+ * - rolling-hours windows (hourly): at risk when the instant pace reaches 100% before
+ *   the reset, otherwise on track;
+ * - with a redistribution (every other paced window): how the quota left per working
+ *   day compares with the even share — at risk / behind / on track / ahead. The
+ *   redistribution alone says what is left to spend, not where the current pace
+ *   leads: when the pace (not preliminary) is above PACE_ALERT_RATIO times the quota
+ *   left per day, the window is at risk whatever the band (a "quota reduced" next to a
+ *   projection of 150% understated it);
+ * - otherwise autonomy/projection → no pacing.
  */
 export function windowVerdict(ctx: WindowVerdictContext): WindowVerdict {
   const utilization = normalizedUtilization(ctx.window);
   if (utilization !== null && utilization >= 100) return { kind: 'exhausted' };
+  if (ctx.hourly) {
+    if (ctx.hourly.projectedAtReset > 100) {
+      return ctx.hourly.autonomyHours !== null ? { kind: 'at-risk', autonomyHours: ctx.hourly.autonomyHours } : { kind: 'at-risk' };
+    }
+    return { kind: 'on-track' };
+  }
   const r = ctx.redistribution;
   if (r && r.idealPerUnit > 0) {
     const params = { perUnit: r.perUnit, idealPerUnit: r.idealPerUnit };
+    if (!ctx.preliminary && ctx.pacePerUnit !== null && ctx.pacePerUnit > r.perUnit * PACE_ALERT_RATIO) {
+      return { kind: 'at-risk', ...params, pacePerUnit: round1(ctx.pacePerUnit) };
+    }
     const ratio = r.perUnit / r.idealPerUnit;
     if (ratio < REDISTRIBUTION_AT_RISK_RATIO) return { kind: 'at-risk', ...params };
     if (ratio < REDISTRIBUTION_ON_TRACK_LOW) return { kind: 'behind', ...params };
@@ -680,6 +725,19 @@ export function windowVerdict(ctx: WindowVerdictContext): WindowVerdict {
   }
   if (ctx.projectedUsage !== null) return { kind: 'on-track' };
   return { kind: 'no-pacing' };
+}
+
+const VERDICT_RANK: Partial<Record<WindowVerdict['kind'], number>> = { exhausted: 2, 'at-risk': 1 };
+
+/**
+ * The window the widget opens on: an exhausted or at-risk window before the others,
+ * then the highest utilization, then one with pacing (pickCriticalWindow's tie-break).
+ * By utilization alone a 5-hour window at 67% hid a weekly one heading over its limit.
+ */
+export function pickCriticalSnapshot<T extends { window: QuotaWindow; verdict: WindowVerdict }>(snapshots: T[]): T | null {
+  const ranked = snapshots.map((s) => ({ s, rank: VERDICT_RANK[s.verdict.kind] ?? 0, utilization: normalizedUtilization(s.window) ?? -1 }));
+  ranked.sort((a, b) => b.rank - a.rank || b.utilization - a.utilization || Number(hasPacing(b.s.window)) - Number(hasPacing(a.s.window)));
+  return ranked[0]?.s ?? null;
 }
 
 // ---------------------------------------------------------------------------

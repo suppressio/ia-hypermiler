@@ -174,12 +174,13 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - `localDateKey` / `parseDateKey` — LOCAL `YYYY-MM-DD` keys of the history (never `toISOString().slice(0, 10)`, which is the UTC day)
 - `updateDailyPoint` — today's history point with its baseline (`dayStartUsed`) and first activity
 - `normalizedUtilization(window)` — 0-100 percentage, or `null`
-- `pickCriticalWindow(quotaWindows)` — the window with the highest utilization
+- `pickCriticalWindow(quotaWindows)` — the window with the highest utilization (threshold notification)
 - `efficiencyIndex`, `projectedUsage`, `estimatedAutonomyWorkingDays` — pacing on working units, not calendar days; projection and autonomy blend the period average 50/50 with `recentPacePerUnit` (last 3 completed working days); projection NOT capped at 100
 - `todayBudget` — today's budget (what was left at the start of the day over the working units from today on) vs today's consumption; `PACE_ALERT_RATIO`
 - `redistributedQuota` — what is left NOW over the working units from today on (`perUnit`) next to the even share (`idealPerUnit`): the primary pacing signal, needs no history
 - `daysUntilReset` / `workingDaysUntilReset`
-- `instantaneousRate`, `sustainableHourlyRate`, `efficiencyRating` — instant gauge (sustainable %/h spread over remaining WORKING hours when a schedule applies) and star rating
+- `instantaneousRate`, `sustainableHourlyRate`, `efficiencyRating` — instant gauge (sustainable %/h spread over remaining working hours = working units × `hoursPerDay`, also with the schedule disabled) and star rating
+- `hourlyOutlook`, `currentPacePerUnit`, `pickCriticalSnapshot` — rolling-hours windows read in hours (time to reset, projection at reset and autonomy at the instant pace; day metrics hidden); the verdict turns at risk when the pace (not preliminary) exceeds `PACE_ALERT_RATIO` × the redistributed quota; the widget opens on an at-risk/exhausted window first, then the most used
 - `dailyDeltas`, `deltaStats`, `windowVerdict` — daily consumption chart, peak/average/streak (completed days only), per-window verdict from the redistribution (at risk < 0.5× / behind < 0.95× / on track / ahead > 1.05× the even share; rolling-hours windows: projection/autonomy)
 - `hasPacing`, `repairFirstDayBaseline` — a billing cycle of unknown length has no pacing (also the tie-break of `pickCriticalWindow`); first history point on the period start day gets baseline 0
 - `tokenYield`, `consumptionCause` — value per token (Claude local insights; a cause is stated only with a clear signal)

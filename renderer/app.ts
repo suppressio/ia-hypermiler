@@ -29,6 +29,7 @@ import {
   setLocale,
   t,
 } from './i18n/index.js';
+import type { MessageKey } from './i18n/en.js';
 
 declare global {
   interface Window {
@@ -140,6 +141,12 @@ function formatEfficiencyHint(value: number | null | undefined): string {
   return value >= 1 ? t('widget.metric.efficiencyBelow') : t('widget.metric.efficiencyAbove');
 }
 
+// Hours and minutes ("1 h 36 min"), for windows of a few hours (budget.hourlyOutlook).
+function formatHours(hours: number): string {
+  const totalMinutes = Math.max(0, Math.round(hours * 60));
+  return t('unit.hoursMinutes', { h: Math.floor(totalMinutes / 60), m: totalMinutes % 60 });
+}
+
 function formatDays(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   return t('unit.days', { n: formatNumber(value, 1) });
@@ -204,7 +211,9 @@ function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
   switch (verdict.kind) {
     case 'exhausted': return moment ? t('verdict.exhaustedReset', { moment }) : t('verdict.exhausted');
     case 'at-risk':
+      if (quota && verdict.pacePerUnit !== undefined) return t('verdict.atRiskPace', { ...quota, pace: formatPercent(verdict.pacePerUnit) });
       if (quota) return t('verdict.atRiskQuota', quota);
+      if (verdict.autonomyHours !== undefined) return t('verdict.atRiskHours', { time: formatHours(verdict.autonomyHours) });
       if (verdict.autonomyWorkingDays !== undefined) return t('verdict.atRiskAutonomy', { days: formatDays(verdict.autonomyWorkingDays) });
       return t('verdict.atRiskProjection', { value: formatPercent(verdict.projectedUsage) });
     case 'behind': return quota ? t('verdict.behind', quota) : t('verdict.onTrack');
@@ -620,6 +629,59 @@ function selectWindowSnapshot(account: AccountSnapshot): QuotaWindowSnapshot | u
   return critical ?? account.windows[0];
 }
 
+// Projection, time to reset and autonomy. A window of a few hours (winSnap.hourly,
+// budget.hourlyOutlook) is read in hours, and the metrics that only make sense per
+// working day (today's budget, efficiency, peak/average, streak) are hidden there
+// instead of showing "--" or "0 days".
+function renderPeriodMetrics(winSnap: QuotaWindowSnapshot | undefined): void {
+  const hourly = winSnap?.hourly ?? null;
+  for (const id of ['metric-today', 'metric-efficiency', 'metric-peak-avg', 'metric-streak']) {
+    const block = byId(id).closest<HTMLElement>('.metric');
+    if (block) block.hidden = hourly !== null;
+  }
+  const setLabel = (id: string, key: MessageKey): void => {
+    const el = byId(id);
+    el.dataset.i18n = key;
+    el.textContent = t(key);
+  };
+  const projected = byId('metric-projected');
+  const autonomyEl = byId('metric-autonomy');
+  if (hourly) {
+    setLabel('metric-projected-label', 'widget.metric.projectedAtReset');
+    setLabel('metric-days-left-label', 'widget.metric.resetIn');
+    projected.textContent = formatPercent(hourly.projectedAtReset);
+    applySeverity(projected, severityLevel(hourly.projectedAtReset, warningThreshold()));
+    byId('metric-days-left').textContent = formatHours(hourly.hoursLeft);
+    autonomyEl.textContent = hourly.autonomyHours === null || hourly.autonomyHours > hourly.hoursLeft
+      ? t('widget.metric.autonomyBeyondReset')
+      : formatHours(hourly.autonomyHours);
+    byId('metric-projected-hint').textContent = '';
+    byId('metric-autonomy-hint').textContent = '';
+    return;
+  }
+  setLabel('metric-projected-label', 'widget.metric.projected');
+  setLabel('metric-days-left-label', 'widget.metric.daysLeft');
+  projected.textContent = formatPercent(winSnap?.projectedUsage ?? null);
+  // No warning colour on a preliminary projection: it extrapolates the first day(s) to
+  // the whole period and would outshout the verdict (the value stays visible).
+  applySeverity(projected, winSnap?.preliminary ? 'none' : severityLevel(winSnap?.projectedUsage, warningThreshold()));
+  // Projection and autonomy extrapolated from less than two working days.
+  const preliminaryHint = winSnap?.preliminary ? t('widget.metric.preliminary') : '';
+  byId('metric-projected-hint').textContent = preliminaryHint;
+  byId('metric-autonomy-hint').textContent = preliminaryHint;
+  byId('metric-days-left').textContent = t('widget.metric.daysLeftValue', {
+    days: winSnap?.daysUntilReset ?? '--',
+    working: formatDays(winSnap?.workingDaysUntilReset ?? null),
+  });
+  // Autonomy past the renewal says nothing more than "it lasts" (an absurd number of
+  // days on an almost unused quota).
+  const autonomy = winSnap?.estimatedAutonomyWorkingDays ?? null;
+  const daysLeft = winSnap?.workingDaysUntilReset ?? null;
+  autonomyEl.textContent = autonomy !== null && daysLeft !== null && autonomy > daysLeft
+    ? t('widget.metric.autonomyBeyondReset')
+    : formatDays(autonomy);
+}
+
 // --- Main render ------------------------------------------------------------------
 
 function renderSnapshot(snapshot: UsageSnapshot): void {
@@ -676,26 +738,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     ? t('widget.metric.efficiencyNegligible')
     : formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
   renderTodayBudget(winSnap);
-  byId('metric-projected').textContent = formatPercent(winSnap?.projectedUsage ?? null);
-  // No warning colour on a preliminary projection: it extrapolates the first day(s) to
-  // the whole period and would outshout the verdict (the value stays visible).
-  applySeverity(byId('metric-projected'), winSnap?.preliminary ? 'none' : severityLevel(winSnap?.projectedUsage, warningThreshold()));
-  // Projection and autonomy extrapolated from less than two working days.
-  const preliminaryHint = winSnap?.preliminary ? t('widget.metric.preliminary') : '';
-  byId('metric-projected-hint').textContent = preliminaryHint;
-  byId('metric-autonomy-hint').textContent = preliminaryHint;
-  byId('metric-days-left').textContent = t('widget.metric.daysLeftValue', {
-    days: winSnap?.daysUntilReset ?? '--',
-    working: formatDays(winSnap?.workingDaysUntilReset ?? null),
-  });
-  // Autonomy past the renewal says nothing more than "it lasts" (an absurd number of
-  // days on an almost unused quota).
-  const autonomy = winSnap?.estimatedAutonomyWorkingDays ?? null;
-  const daysLeft = winSnap?.workingDaysUntilReset ?? null;
-  byId('metric-autonomy').textContent = autonomy !== null && daysLeft !== null && autonomy > daysLeft
-    ? t('widget.metric.autonomyBeyondReset')
-    : formatDays(autonomy);
-
+  renderPeriodMetrics(winSnap);
   const stats = winSnap?.deltaStats;
   byId('metric-peak-avg').textContent =
     stats?.peak == null ? '--' : `${formatPercent(stats.peak)} / ${formatPercent(stats.avg)}`;

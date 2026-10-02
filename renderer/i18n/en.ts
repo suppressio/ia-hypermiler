@@ -48,7 +48,9 @@ export const en = {
   'widget.metric.todayQuota': '{perUnit}/working day redistributed (ideal {ideal})',
   'widget.metric.preliminary': 'preliminary estimate',
   'widget.metric.projected': 'Projection',
+  'widget.metric.projectedAtReset': 'Projection at reset',
   'widget.metric.daysLeft': 'Days to reset',
+  'widget.metric.resetIn': 'Reset in',
   'widget.metric.daysLeftValue': '{days} ({working} working)',
   'widget.metric.autonomy': 'Estimated autonomy',
   'widget.metric.peakAvg': 'Daily peak / average',
@@ -93,6 +95,8 @@ export const en = {
   'verdict.atRiskProjection': 'at risk · projection {value}',
   'verdict.onTrack': 'on track',
   'verdict.atRiskQuota': 'at risk · {perUnit}/working day left (ideal {ideal})',
+  'verdict.atRiskPace': 'at risk · pace {pace}/working day, {perUnit} left (ideal {ideal})',
+  'verdict.atRiskHours': 'at risk · runs out in {time}',
   'verdict.behind': 'quota reduced · {perUnit}/working day (ideal {ideal})',
   'verdict.onTrackQuota': 'on track · {perUnit}/working day',
   'verdict.ahead': 'room to spare · {perUnit}/working day (ideal {ideal})',
@@ -116,6 +120,7 @@ export const en = {
 
   // --- Units -----------------------------------------------------------------
   'unit.days': '{n} d',
+  'unit.hoursMinutes': '{h} h {m} min',
   'unit.ratePerHour': '{n}%/h',
 
   // --- Settings: general -----------------------------------------------------

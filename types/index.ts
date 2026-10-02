@@ -133,6 +133,21 @@ export interface WindowVerdict {
   // From the redistribution (budget.windowVerdict), when the verdict rests on it.
   perUnit?: number;
   idealPerUnit?: number;
+  // At risk because the current pace (% per working day) is well above `perUnit`.
+  pacePerUnit?: number;
+  // Rolling-hours windows: hours of autonomy at the instant pace (budget.hourlyOutlook).
+  autonomyHours?: number;
+}
+
+/**
+ * A window of a few hours (rolling-hours) read in hours, not working days — see
+ * budget.hourlyOutlook.
+ */
+export interface HourlyOutlook {
+  hoursLeft: number;
+  projectedAtReset: number;
+  // Hours to 100% at the instant pace; null when nothing is being consumed.
+  autonomyHours: number | null;
 }
 
 /**
@@ -167,6 +182,9 @@ export interface QuotaWindowSnapshot {
   // The remaining quota per working day vs the even share (budget.redistributedQuota),
   // null without pacing or on rolling-hours windows. Drives the verdict.
   redistribution: Redistribution | null;
+  // Rolling-hours windows only (null otherwise): the reading in hours that replaces the
+  // working-day metrics there (budget.hourlyOutlook).
+  hourly: HourlyOutlook | null;
   // Fewer than 2 working units elapsed in the period: projection and autonomy rest on
   // too little data and are shown as a preliminary estimate.
   preliminary: boolean;

@@ -43,7 +43,9 @@ export const it: Record<MessageKey, string> = {
   'widget.metric.todayQuota': '{perUnit}/g lav. ripartito (ideale {ideal})',
   'widget.metric.preliminary': 'stima preliminare',
   'widget.metric.projected': 'Previsionale',
+  'widget.metric.projectedAtReset': 'Previsionale al reset',
   'widget.metric.daysLeft': 'Giorni a scadenza',
+  'widget.metric.resetIn': 'Reset tra',
   'widget.metric.daysLeftValue': '{days} ({working} lav.)',
   'widget.metric.autonomy': 'Autonomia stimata',
   'widget.metric.peakAvg': 'Picco / media giornaliera',
@@ -85,6 +87,8 @@ export const it: Record<MessageKey, string> = {
   'verdict.atRiskProjection': 'a rischio · proiezione {value}',
   'verdict.onTrack': 'in linea',
   'verdict.atRiskQuota': 'a rischio · restano {perUnit}/g lav. (ideale {ideal})',
+  'verdict.atRiskPace': 'a rischio · ritmo {pace}/g lav., restano {perUnit} (ideale {ideal})',
+  'verdict.atRiskHours': 'a rischio · finisce tra {time}',
   'verdict.behind': 'quota ridotta · {perUnit}/g lav. (ideale {ideal})',
   'verdict.onTrackQuota': 'in linea · {perUnit}/g lav.',
   'verdict.ahead': 'margine · {perUnit}/g lav. (ideale {ideal})',
@@ -106,6 +110,7 @@ export const it: Record<MessageKey, string> = {
   'windows.copilotSnapshot': 'Copilot — {name}',
 
   'unit.days': '{n} gg',
+  'unit.hoursMinutes': '{h} h {m} min',
   'unit.ratePerHour': '{n}%/h',
 
   'settings.windowTitle': 'IA Hypermiler — Impostazioni',

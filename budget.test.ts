@@ -666,25 +666,25 @@ test('deltaStats: no data → all null; without pacing the streak is null', () =
 });
 
 test('windowVerdict without a redistribution (rolling hours): exhausted, at risk (autonomy or projection), on track, no pacing', () => {
-  const base = { projectedUsage: 80, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 12, redistribution: null };
+  const base = { projectedUsage: 80, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 12, redistribution: null, pacePerUnit: null, preliminary: false, hourly: null };
   assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(100) }), { kind: 'exhausted' });
   assert.deepEqual(
     budget.windowVerdict({ ...base, window: pctWindow(60), estimatedAutonomyWorkingDays: 3.04 }),
     { kind: 'at-risk', autonomyWorkingDays: 3 },
   );
   assert.deepEqual(
-    budget.windowVerdict({ window: pctWindow(60), projectedUsage: 130.44, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution: null }),
+    budget.windowVerdict({ window: pctWindow(60), projectedUsage: 130.44, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution: null, pacePerUnit: null, preliminary: false, hourly: null }),
     { kind: 'at-risk', projectedUsage: 130.4 },
   );
   assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(60) }), { kind: 'on-track' });
   assert.deepEqual(
-    budget.windowVerdict({ window: pctWindow(60), projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution: null }),
+    budget.windowVerdict({ window: pctWindow(60), projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution: null, pacePerUnit: null, preliminary: false, hourly: null }),
     { kind: 'no-pacing' },
   );
 });
 
 test('windowVerdict with a redistribution: at risk / behind / on track / ahead by quota left per day', () => {
-  const base = { projectedUsage: 300, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 1, window: pctWindow(40) };
+  const base = { projectedUsage: 300, workingDaysUntilReset: 10, estimatedAutonomyWorkingDays: 1, window: pctWindow(40), pacePerUnit: null, preliminary: false, hourly: null };
   const verdict = (perUnit: number) => budget.windowVerdict({ ...base, redistribution: { perUnit, idealPerUnit: 5, unitsLeft: 10 } });
   assert.deepEqual(verdict(2.4), { kind: 'at-risk', perUnit: 2.4, idealPerUnit: 5 });
   assert.deepEqual(verdict(4.4), { kind: 'behind', perUnit: 4.4, idealPerUnit: 5 });
@@ -694,6 +694,36 @@ test('windowVerdict with a redistribution: at risk / behind / on track / ahead b
   assert.deepEqual(verdict(6), { kind: 'ahead', perUnit: 6, idealPerUnit: 5 });
   // Projection/autonomy no longer decide (300% / 1 day above), exhausted still comes first.
   assert.deepEqual(budget.windowVerdict({ ...base, window: pctWindow(100), redistribution: { perUnit: 0, idealPerUnit: 5, unitsLeft: 10 } }), { kind: 'exhausted' });
+});
+
+test('windowVerdict: a pace well above the redistributed quota is at risk, unless preliminary', () => {
+  const redistribution = { perUnit: 10, idealPerUnit: 12, unitsLeft: 5 };
+  const ctx = { window: pctWindow(50), projectedUsage: 140, workingDaysUntilReset: 5, estimatedAutonomyWorkingDays: 2.5, redistribution, hourly: null };
+  assert.deepEqual(budget.windowVerdict({ ...ctx, pacePerUnit: 20, preliminary: false }), { kind: 'at-risk', perUnit: 10, idealPerUnit: 12, pacePerUnit: 20 });
+  assert.equal(budget.windowVerdict({ ...ctx, pacePerUnit: 20, preliminary: true }).kind, 'behind');
+  assert.equal(budget.windowVerdict({ ...ctx, pacePerUnit: 14, preliminary: false }).kind, 'behind'); // 1.4× < 1.5×
+});
+
+test('hourlyOutlook and the hourly verdict of a rolling-hours window', () => {
+  const now = new Date(2026, 6, 13, 12, 0);
+  const win = pctWindow(60, { periodType: 'rolling-hours', periodLength: 5, resetsAt: new Date(2026, 6, 13, 14, 0) });
+  const calm = budget.hourlyOutlook(win, now, 10);
+  assert.deepEqual(calm, { hoursLeft: 2, projectedAtReset: 80, autonomyHours: 4 });
+  const fast = budget.hourlyOutlook(win, now, 25);
+  assert.deepEqual(fast, { hoursLeft: 2, projectedAtReset: 110, autonomyHours: 1.6 });
+  assert.deepEqual(budget.hourlyOutlook(win, now, null), { hoursLeft: 2, projectedAtReset: 60, autonomyHours: null });
+  assert.equal(budget.hourlyOutlook({ ...win, resetsAt: null }, now, 10), null);
+  const ctx = { window: win, projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution: null, pacePerUnit: null, preliminary: false };
+  assert.deepEqual(budget.windowVerdict({ ...ctx, hourly: calm }), { kind: 'on-track' });
+  assert.deepEqual(budget.windowVerdict({ ...ctx, hourly: fast }), { kind: 'at-risk', autonomyHours: 1.6 });
+});
+
+test('pickCriticalSnapshot: at risk or exhausted first, then utilization, then pacing', () => {
+  const snap = (id: string, used: number, kind: 'at-risk' | 'on-track' | 'exhausted' | 'behind') => ({ window: pctWindow(used, { id }), verdict: { kind } });
+  assert.equal(budget.pickCriticalSnapshot([snap('five_hour', 67, 'on-track'), snap('seven_day', 45, 'at-risk')])?.window.id, 'seven_day');
+  assert.equal(budget.pickCriticalSnapshot([snap('a', 70, 'at-risk'), snap('b', 100, 'exhausted')])?.window.id, 'b');
+  assert.equal(budget.pickCriticalSnapshot([snap('a', 40, 'behind'), snap('b', 60, 'on-track')])?.window.id, 'b');
+  assert.equal(budget.pickCriticalSnapshot([]), null);
 });
 
 test('generateDailyTip: rebalance tips outside the on-track band; projection tips skipped while preliminary', () => {
@@ -727,7 +757,7 @@ test('scenario: heavy first day of a monthly window first read in the afternoon,
   const redistribution = budget.redistributedQuota(ctx);
   assert.deepEqual(redistribution, { perUnit: 8.33, idealPerUnit: 10, unitsLeft: 9 });
   assert.deepEqual(budget.todayBudget(ctx, today.dayStartUsed ?? null), { budget: 8.33, usedToday: 0.03 });
-  assert.equal(budget.windowVerdict({ window, projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution }).kind, 'behind');
+  assert.equal(budget.windowVerdict({ window, projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution, pacePerUnit: null, preliminary: true, hourly: null }).kind, 'behind');
 
   const deltas = budget.dailyDeltas([repaired, today], FULL_WEEK_SCHEDULE, 10);
   assert.deepEqual(budget.deltaStats(deltas, morning), { peak: 25, avg: 25, streakUnderBudget: 0 });
