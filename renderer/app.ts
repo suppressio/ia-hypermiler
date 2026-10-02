@@ -486,7 +486,7 @@ function renderTokenYield(winSnap: QuotaWindowSnapshot | undefined): void {
 // enabled and available. Present only on the Claude account the user attributed
 // local sessions to (per-account flag in Settings).
 function renderLocalInsights(account: AccountSnapshot | undefined): void {
-  const details = byId('local-insights', HTMLDivElement);
+  const details = byId('local-insights', HTMLDetailsElement);
   const insights = account?.localInsights ?? null;
   if (!insights) {
     details.hidden = true;

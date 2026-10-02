@@ -94,27 +94,27 @@
     <details class="tips-section" open>
       <summary data-i18n="widget.tips.title">Tip of the day</summary>
       <div class="tips-text" id="tips-text">—</div>
+    </details>
 
-      <div id="local-insights" class="local-insights" hidden>
-        <div class="local-insights-header" data-i18n="widget.insights.header">Local insights · Claude Code</div>
-        <div class="local-insights-body">
-          <div class="metric local-insights-yield" data-i18n-title="widget.insights.yieldHelp">
-            <span class="metric-label" data-i18n="widget.insights.yield">Yield (tokens per 1% of quota)</span>
-            <span class="metric-value" id="local-insights-yield">--</span>
-            <span class="metric-hint" id="local-insights-yield-hint"></span>
-          </div>
-          <div class="metric">
-            <span class="metric-label" data-i18n="widget.insights.context">Context over 150k</span>
-            <span class="metric-value" id="local-insights-context">--</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label" data-i18n="widget.insights.longSessions">From 8h+ sessions</span>
-            <span class="metric-value" id="local-insights-duration">--</span>
-          </div>
-          <div class="local-insights-tools">
-            <span class="metric-label" data-i18n="widget.insights.topTools">Most used tools</span>
-            <ul id="local-insights-tools"></ul>
-          </div>
+    <details id="local-insights" class="tips-section local-insights" open hidden>
+      <summary data-i18n="widget.insights.header">Local insights · Claude Code</summary>
+      <div class="local-insights-body">
+        <div class="metric local-insights-yield" data-i18n-title="widget.insights.yieldHelp">
+          <span class="metric-label" data-i18n="widget.insights.yield">Yield (tokens per 1% of quota)</span>
+          <span class="metric-value" id="local-insights-yield">--</span>
+          <span class="metric-hint" id="local-insights-yield-hint"></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label" data-i18n="widget.insights.context">Context over 150k</span>
+          <span class="metric-value" id="local-insights-context">--</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label" data-i18n="widget.insights.longSessions">From 8h+ sessions</span>
+          <span class="metric-value" id="local-insights-duration">--</span>
+        </div>
+        <div class="local-insights-tools">
+          <span class="metric-label" data-i18n="widget.insights.topTools">Most used tools</span>
+          <ul id="local-insights-tools"></ul>
         </div>
       </div>
     </details>
