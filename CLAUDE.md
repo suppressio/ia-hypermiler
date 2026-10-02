@@ -76,6 +76,7 @@ ia-hypermiler/
 │   ├── claude.ts                ← Claude usage fetch (+ test)
 │   ├── copilot.ts               ← Copilot usage fetch (+ test)
 │   ├── claudeLocalSessions.ts   ← insights from LOCAL Claude Code sessions, opt-in (+ test)
+│   ├── claudeLocalSessions.worker.ts ← utility-process entry: the scan runs off the main process
 │   ├── updates.ts               ← new-version check via the GitHub Releases list (+ test)
 │   └── githubHost.ts            ← github.com or <tenant>.ghe.com: validation + API/OAuth base URLs (+ test)
 ├── diagnostics/githubIssue.ts   ← pre-filled GitHub issue URL for format drift (+ test)
@@ -273,6 +274,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **Optional parameters with a "safe" default hide wiring bugs**: the Copilot host was optional (default github.com) and `main/providers.ts` never passed it, so v0.4.4/0.4.5 sent tenant tokens to api.github.com (401). `CopilotCredentials.host` and `resolveUsername(token, host)` are now required, so the compiler catches a missing host.
 - **Release tags** must start with `v` for CI to run.
 - **`periodLength: null` silently disabled pacing**: the Claude company `spend` window and every Copilot window had it, so efficiency/projection/autonomy/verdict/tips were always empty there (noticed only on 2026-10-01, 10.3% on day one with no warning). Billing-cycle windows known to be monthly declare `periodLength: 1` (months). Also: the current day only counted once over, so day one of a period had 0 elapsed units.
+- **Synchronous work on the main process froze the app** (Settings blank ~10 s at the first open on a work PC): the encrypted store re-reads and decrypts the whole file on every `get` and rewrites it on every `set`, and the local Claude Code scan parsed up to 300 session files in-process. A refresh now reads the history once and writes it once (`HistoryDraft` in `main.ts`), refreshes do not overlap (one queued at most), and the scan runs in an Electron utility process (`services/claudeLocalSessions.worker.ts`), the stale cache shown meanwhile.
 - **UTC day keys**: `toISOString().slice(0, 10)` is the UTC day, `new Date('YYYY-MM-DD')` is UTC midnight — both wrong for local working days → `localDateKey`/`parseDateKey`.
 
 ### Open items

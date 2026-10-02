@@ -118,6 +118,7 @@ export const en = {
   // --- Settings: general -----------------------------------------------------
   'settings.windowTitle': 'IA Hypermiler — Settings',
   'settings.title': 'Settings',
+  'settings.loading': 'Loading settings…',
   'settings.cancel': 'Cancel',
   'settings.save': 'Save settings',
   'settings.saved': 'Settings saved ✓',

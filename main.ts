@@ -3,7 +3,7 @@
 // of the Day 1 mock. When a fetch fails, the last known data is shown with its
 // timestamp (never a blank screen, see CLAUDE.md).
 
-import { app, dialog, ipcMain, BrowserWindow, Notification, shell, Menu, screen } from 'electron';
+import { app, dialog, ipcMain, BrowserWindow, Notification, shell, Menu, screen, utilityProcess } from 'electron';
 import store, { DEFAULTS } from './store/index';
 import { normalizeSettings } from './store/normalize';
 import { isPlainRecord } from './store/merge';
@@ -16,7 +16,7 @@ import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normal
 import * as budget from './budget';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
-import { computeClaudeLocalInsights } from './services/claudeLocalSessions';
+import path from 'path';
 import { fetchLatestUpdate, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
 import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost';
 import type { TrayHandle } from './main/tray';
@@ -105,14 +105,55 @@ function startWindowHoverPolling(): void {
 // RESEARCH.md), so we build it ourselves, one point per day, on every successful
 // refresh.
 // ---------------------------------------------------------------------------
+// The store is encrypted and electron-store re-reads and decrypts the whole file on
+// every get (and re-encrypts and writes it on every set), synchronously on the main
+// thread: one get/set pair per window per refresh blocked the app for seconds on a
+// work PC (Settings stayed blank ~10 s at startup). A refresh therefore works on an
+// in-memory draft of the history, read once and written once (commitHistoryDraft).
+interface HistoryDraft {
+  dailyUsage: DailyUsagePoint[];
+  recentSamples: RecentUsageSample[];
+  chartDays: number;
+}
+
+function openHistoryDraft(): HistoryDraft {
+  const history = store.get('history');
+  return {
+    dailyUsage: history.dailyUsage,
+    recentSamples: history.recentSamples,
+    chartDays: store.get('ui').chartRange === 'month' ? 30 : 7,
+  };
+}
+
+// Samples are kept for the whole current day (the working span comes from the day's
+// samples, budget.todayActivitySpan) and at least this long (margin above the 3h
+// lookback of budget.instantaneousRate, also right after midnight). Still tiny: one
+// append every 30 min, at most ~48 samples per window.
+const RECENT_SAMPLES_MIN_AGE_MS = 4 * 60 * 60 * 1000;
+
+// Prunes and writes the draft in a single store write. The rest of `history` is read
+// again here, so what was written meanwhile (lastGood, during the fetches) is kept.
+function commitHistoryDraft(draft: HistoryDraft, now: Date): void {
+  const history = store.get('history');
+  const dailyCutoff = new Date(now);
+  dailyCutoff.setDate(dailyCutoff.getDate() - history.retentionDays);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const sampleCutoff = Math.min(startOfToday, now.getTime() - RECENT_SAMPLES_MIN_AGE_MS);
+  store.set('history', {
+    ...history,
+    dailyUsage: draft.dailyUsage.filter((h) => new Date(h.date) >= dailyCutoff),
+    recentSamples: draft.recentSamples.filter((s) => new Date(s.timestamp).getTime() >= sampleCutoff),
+  });
+}
+
 // Returns today's point (with its baseline and first activity, see
 // budget.updateDailyPoint), or null when utilization cannot be computed.
-function recordDailyUsage(accountId: AccountId, window: QuotaWindow, periodStart: Date, now: Date): DailyUsagePoint | null {
+function recordDailyUsage(draft: HistoryDraft, accountId: AccountId, window: QuotaWindow, periodStart: Date, now: Date): DailyUsagePoint | null {
   const utilization = budget.normalizedUtilization(window);
   if (utilization === null) return null;
 
   const todayKey = budget.localDateKey(now);
-  const history = store.get('history').dailyUsage;
+  const history = draft.dailyUsage;
   const own = history
     .filter((h) => h.accountId === accountId && h.windowId === window.id)
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -135,43 +176,24 @@ function recordDailyUsage(accountId: AccountId, window: QuotaWindow, periodStart
   const idx = history.findIndex((h) => h.date === todayKey && h.accountId === accountId && h.windowId === window.id);
   if (idx >= 0) history[idx] = entry;
   else history.push(entry);
-
-  const retentionDays = store.get('history').retentionDays;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - retentionDays);
-  const pruned = history.filter((h) => new Date(h.date) >= cutoff);
-  store.set('history.dailyUsage', pruned);
   return entry;
 }
 
-function getDailyHistory(accountId: AccountId, windowId: string, days: number): DailyUsagePoint[] {
-  return store.get('history').dailyUsage
+function getDailyHistory(draft: HistoryDraft, accountId: AccountId, windowId: string, days: number): DailyUsagePoint[] {
+  return draft.dailyUsage
     .filter((h) => h.accountId === accountId && h.windowId === windowId)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-days);
 }
 
-// Samples are kept for the whole current day (the working span comes from the day's
-// samples, budget.todayActivitySpan) and at least this long (margin above the 3h
-// lookback of budget.instantaneousRate, also right after midnight). Still tiny: one
-// append every 30 min, at most ~48 samples per window.
-const RECENT_SAMPLES_MIN_AGE_MS = 4 * 60 * 60 * 1000;
-
-function recordRecentSample(accountId: AccountId, window: QuotaWindow, now: Date): void {
+function recordRecentSample(draft: HistoryDraft, accountId: AccountId, window: QuotaWindow, now: Date): void {
   const utilization = budget.normalizedUtilization(window);
   if (utilization === null) return;
-
-  const samples = store.get('history').recentSamples;
-  samples.push({ timestamp: now.toISOString(), accountId, windowId: window.id, used: Math.round(utilization * 100) / 100 });
-
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const cutoff = Math.min(startOfToday, now.getTime() - RECENT_SAMPLES_MIN_AGE_MS);
-  const pruned = samples.filter((s) => new Date(s.timestamp).getTime() >= cutoff);
-  store.set('history.recentSamples', pruned);
+  draft.recentSamples.push({ timestamp: now.toISOString(), accountId, windowId: window.id, used: Math.round(utilization * 100) / 100 });
 }
 
-function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSample[] {
-  return store.get('history').recentSamples
+function getRecentSamples(draft: HistoryDraft, accountId: AccountId, windowId: string): RecentUsageSample[] {
+  return draft.recentSamples
     .filter((s) => s.accountId === accountId && s.windowId === windowId)
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
@@ -183,27 +205,71 @@ function getRecentSamples(accountId: AccountId, windowId: string): RecentUsageSa
 // a regular refresh (scanning files on disk, not a network poll) — recomputed at most
 // every LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
 // ---------------------------------------------------------------------------
+// The scan runs in an Electron utility process (services/claudeLocalSessions.worker.ts):
+// parsing the session files on the main process froze the app for ~10 s at startup on a
+// machine with long sessions. A stale cache is shown meanwhile and the widget refreshed
+// once the new result arrives; with no usable cache the refresh waits for it.
 // Analysis window = the view chosen for the chart (7/30 days, +1 day as for the
 // daily deltas): insights, yield and chart look at the same period.
+const LOCAL_INSIGHTS_TIMEOUT_MS = 2 * 60 * 1000;
+let localInsightsRunning: Promise<ClaudeLocalInsights | null> | null = null;
+
 async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | null> {
   const windowDays = (store.get('ui').chartRange === 'month' ? 30 : 7) + 1;
   const cached = store.get('localInsightsCache').claudeCode;
   const cacheAgeMs = cached ? Date.now() - new Date(cached.computedAt).getTime() : Infinity;
   // Previous cache without `daily` (before point 4) or `firstSessionStartByDay`, or for
   // another window: recompute.
-  const complete = cached !== null && Array.isArray(cached.daily) && cached.firstSessionStartByDay !== undefined;
-  if (cached && complete && cached.windowDays === windowDays && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
+  const usable = cached !== null && Array.isArray(cached.daily) && cached.firstSessionStartByDay !== undefined
+    && cached.windowDays === windowDays;
+  if (usable && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
 
-  try {
-    const result = await computeClaudeLocalInsights(windowDays);
-    store.set('localInsightsCache.claudeCode', result);
-    return result;
-  } catch (err) {
-    // Never block the account refresh because of a problem with the optional local
-    // source: log it and fall back to the last valid cache (even if expired), if any.
-    console.error('[main] Claude Code local insights computation failed:', (err as Error).message);
-    return cached;
-  }
+  const running = localInsightsRunning ?? startLocalInsights(windowDays, usable);
+  return usable ? cached : running;
+}
+
+function startLocalInsights(windowDays: number, refreshWhenDone: boolean): Promise<ClaudeLocalInsights | null> {
+  const cached = store.get('localInsightsCache').claudeCode;
+  localInsightsRunning = computeLocalInsightsInProcess(windowDays)
+    .then((result) => {
+      store.set('localInsightsCache.claudeCode', result);
+      // The refresh that started this used the stale cache: show the new insights.
+      if (refreshWhenDone) runDetached('refresh usage', refreshAndBroadcast());
+      return result;
+    })
+    .catch((err: unknown) => {
+      // Never block the account refresh because of a problem with the optional local
+      // source: log it and fall back to the last valid cache (even if expired), if any.
+      console.error('[main] Claude Code local insights computation failed:', err instanceof Error ? err.message : String(err));
+      return cached;
+    })
+    .finally(() => { localInsightsRunning = null; });
+  return localInsightsRunning;
+}
+
+function computeLocalInsightsInProcess(windowDays: number): Promise<ClaudeLocalInsights | null> {
+  return new Promise((resolve, reject) => {
+    const child = utilityProcess.fork(path.join(__dirname, 'services', 'claudeLocalSessions.worker.js'), [], {
+      serviceName: 'IA Hypermiler local insights',
+    });
+    let settled = false;
+    const settle = (action: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      action();
+    };
+    const timer = setTimeout(() => { settle(() => { reject(new Error('local insights: timed out')); }); }, LOCAL_INSIGHTS_TIMEOUT_MS);
+    child.once('message', (message: unknown) => {
+      settle(() => {
+        if (isPlainRecord(message) && message.ok === true) resolve((message.result ?? null) as ClaudeLocalInsights | null);
+        else reject(new Error(`local insights: ${isPlainRecord(message) && typeof message.message === 'string' ? message.message : 'invalid reply'}`));
+      });
+    });
+    child.once('exit', (code) => { settle(() => { reject(new Error(`local insights: process exited (${String(code)})`)); }); });
+    child.postMessage({ windowDays });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +311,7 @@ function resolvePeriodBounds(
 const PRELIMINARY_WORKING_UNITS = 2;
 
 function computeWindowSnapshot(
+  draft: HistoryDraft,
   accountId: AccountId,
   window: QuotaWindow,
   subscription: { renewalRule: RenewalRule },
@@ -254,13 +321,13 @@ function computeWindowSnapshot(
   localInsights: ClaudeLocalInsights | null,
 ): QuotaWindowSnapshot {
   const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, providerRenewsAt, now);
-  const todayPoint = recordDailyUsage(accountId, window, periodStart, now);
-  recordRecentSample(accountId, window, now);
-  const chartDays = store.get('ui').chartRange === 'month' ? 30 : 7;
+  const todayPoint = recordDailyUsage(draft, accountId, window, periodStart, now);
+  recordRecentSample(draft, accountId, window, now);
+  const { chartDays } = draft;
   // chartDays + 1 points: N+1 cumulative values are needed for N daily deltas
   // (consumption-per-day chart and rating) — the rating used to see only N-1.
-  const dailyHistory = getDailyHistory(accountId, window.id, chartDays + 1);
-  const recentSamples = getRecentSamples(accountId, window.id);
+  const dailyHistory = getDailyHistory(draft, accountId, window.id, chartDays + 1);
+  const recentSamples = getRecentSamples(draft, accountId, window.id);
 
   const pacingAvailable = budget.hasPacing(window);
   const totalPeriodWorkingUnits = budget.workingUnitsBetween(periodStart, periodEnd, workSchedule);
@@ -360,6 +427,7 @@ function computeWindowSnapshot(
 }
 
 function computeAccountSnapshot(
+  draft: HistoryDraft,
   raw: RawAccountUsage & { accountId: AccountId; lastUpdatedAt?: string; stale?: boolean; lastError?: string },
   cfg: AccountConfig,
   now: Date,
@@ -367,7 +435,7 @@ function computeAccountSnapshot(
 ): AccountSnapshot {
   const { subscription, workSchedule } = cfg;
   const identity = { accountId: cfg.id, provider: cfg.provider, label: cfg.label };
-  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(cfg.id, w, subscription, raw.subscriptionRenewsAt, workSchedule, now, localInsights));
+  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(draft, cfg.id, w, subscription, raw.subscriptionRenewsAt, workSchedule, now, localInsights));
   const criticalWindow = budget.pickCriticalWindow(raw.quotaWindows);
   const criticalSnapshot = criticalWindow ? windows.find((w) => w.window.id === criticalWindow.id) : undefined;
 
@@ -532,6 +600,8 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
   const now = new Date();
   const snapshot: UsageSnapshot = { generatedAt: now.toISOString(), accounts: [] };
 
+  // Read once here, written once at the end (see HistoryDraft).
+  const draft = openHistoryDraft();
   for (const cfg of getAccounts()) {
     if (!cfg.enabled || !providers.isConnected(cfg)) continue;
     // Local source independent of the account fetch: computed first (the per-window
@@ -540,7 +610,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
     let account: AccountSnapshot;
     try {
       const raw = await fetchAccountOrFallback(cfg.id, cfg.provider, () => providers.fetchUsage(cfg), `history.lastGood.${cfg.id}`);
-      account = computeAccountSnapshot(raw, cfg, now, localInsights);
+      account = computeAccountSnapshot(draft, raw, cfg, now, localInsights);
     } catch (err) {
       const message = friendlyErrorMessage(err);
       console.error(`[main] ${cfg.label} unavailable and no previous data:`, message);
@@ -549,6 +619,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
     if (localInsights) account.localInsights = localInsights;
     snapshot.accounts.push(account);
   }
+  commitHistoryDraft(draft, now);
 
   return snapshot;
 }
@@ -615,7 +686,35 @@ function maybeNotifyPace(snapshot: UsageSnapshot): void {
   store.set('meta.notifiedToday', notifiedToday);
 }
 
-async function refreshAndBroadcast(): Promise<void> {
+// One refresh at a time: the startup refresh, the widget's own request and the timer
+// used to overlap, each repeating the same fetches and store writes. A request
+// arriving during a refresh queues exactly one more run (it may follow a settings
+// change the running one did not see).
+let refreshRunning: Promise<void> | null = null;
+let refreshQueued = false;
+
+function refreshAndBroadcast(): Promise<void> {
+  if (refreshRunning) {
+    refreshQueued = true;
+    return refreshRunning;
+  }
+  refreshQueued = false;
+  refreshRunning = (async () => {
+    do {
+      await refreshOnce();
+    } while (takeQueuedRefresh());
+  })().finally(() => { refreshRunning = null; });
+  return refreshRunning;
+}
+
+// Read-and-clear in a function: set by another IPC call while refreshOnce awaits.
+function takeQueuedRefresh(): boolean {
+  const queued = refreshQueued;
+  refreshQueued = false;
+  return queued;
+}
+
+async function refreshOnce(): Promise<void> {
   let snapshot: UsageSnapshot;
   try {
     snapshot = await buildUsageSnapshot();

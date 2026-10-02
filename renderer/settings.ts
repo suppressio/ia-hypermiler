@@ -600,6 +600,9 @@ function bindEvents(): void {
 }
 
 async function init(): Promise<void> {
+  // The loading placeholders (settings.html) in the system language right away: the
+  // saved language is known only once the main process answers.
+  applyLanguage('auto');
   settings = await window.hypermiler.getSettings();
   savedSettings = structuredClone(settings);
   applyLanguage(settings.ui.language);
@@ -607,6 +610,8 @@ async function init(): Promise<void> {
   bindEvents();
   byId('app-version', HTMLElement).textContent = await window.hypermiler.getAppVersion();
   renderUpdatesCard(settings.updates);
+  // Disabled in the markup until the settings are loaded and the handlers bound.
+  for (const id of ['btn-add-account', 'btn-cancel', 'btn-save']) byId(id, HTMLButtonElement).disabled = false;
   // Only the updates state (owned by the main process): the rest of the form stays
   // a draft, a full repopulation would discard unsaved changes.
   window.hypermiler.onSettingsUpdate((updated) => {

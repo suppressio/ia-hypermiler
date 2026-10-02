@@ -62,7 +62,8 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
   background: #f3f4f6;
   cursor: pointer;
 }
-.btn-secondary:disabled { cursor: not-allowed; opacity: 0.6; }
+.btn-secondary:disabled,
+.btn-primary:disabled { cursor: not-allowed; opacity: 0.6; }
 
 .connect-row { align-items: center; }
 .connection-status { font-size: 12px; color: #6b7280; }
@@ -228,3 +229,6 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
 .connection-status.update-error { color: #b91c1c; }
 #updates-card .btn-primary { font-size: 12px; padding: 6px 14px; }
 #updates-card .connect-row { margin-bottom: 8px; }
+
+/* Placeholder row while the settings are loading (renderer/settings.html). */
+.loading-cell { color: #6b7280; font-style: italic; padding: 10px 6px; }

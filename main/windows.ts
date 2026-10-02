@@ -83,6 +83,9 @@ export function createSettingsWindow(existing?: BrowserWindow | null): BrowserWi
     resizable: true,
     frame: true,
     transparent: false,
+    // Same as the page background (settings.css): the window is shown at once, before
+    // the page paints, and must not flash white while the main process is busy.
+    backgroundColor: '#fafafa',
     icon: ICON_PATH,
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
