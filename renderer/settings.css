@@ -85,9 +85,10 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
   cursor: help;
 }
 
+/* display:none, not visibility:hidden: a hidden tooltip near the right edge still took
+   layout space and made the page scroll sideways. Placed on show by settings.ts. */
 .info-icon .tooltip {
-  visibility: hidden;
-  opacity: 0;
+  display: none;
   position: absolute;
   left: 0;
   top: 100%;
@@ -102,15 +103,13 @@ select, input[type="number"], input[type="time"], input[type="color"], input[typ
   padding: 8px 10px;
   border-radius: 6px;
   z-index: 10;
-  transition: opacity 0.15s;
   pointer-events: none;
 }
 
 .info-icon:hover .tooltip,
 .info-icon:focus .tooltip,
 .info-icon:focus-visible .tooltip {
-  visibility: visible;
-  opacity: 1;
+  display: block;
 }
 
 /* Work schedule at the end of an account detail (it used to be a global card):

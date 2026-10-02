@@ -110,6 +110,7 @@ export const it: Record<MessageKey, string> = {
 
   'settings.windowTitle': 'IA Hypermiler — Impostazioni',
   'settings.title': 'Impostazioni',
+  'settings.infoAria': 'Maggiori informazioni',
   'settings.loading': 'Caricamento impostazioni…',
   'settings.cancel': 'Annulla',
   'settings.save': 'Salva impostazioni',

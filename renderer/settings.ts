@@ -259,14 +259,16 @@ function applyRenewalLock(account: AccountConfig, detail: HTMLElement): void {
   const source = renewalFromProvider(settings?.history?.lastGood?.[account.id]);
   const input = detail.querySelector<HTMLInputElement>('[data-account-field="subscription.renewalRule.day"]');
   if (input) input.disabled = !source.needsManual;
+  // The explanation is an info tooltip next to the label, shown only when there is one.
   const hint = detail.querySelector<HTMLElement>('[data-role="renewal-hint"]');
-  if (!hint) return;
+  const hintText = detail.querySelector<HTMLElement>('[data-role="renewal-hint-text"]');
+  if (!hint || !hintText) return;
   const hasData = settings?.history?.lastGood?.[account.id] !== undefined;
   if (!source.needsManual && source.next) {
-    hint.textContent = t('settings.account.renewalFromProvider', { date: `${formatDate(source.next)} ${formatTime(source.next)}` });
+    hintText.textContent = t('settings.account.renewalFromProvider', { date: `${formatDate(source.next)} ${formatTime(source.next)}` });
     hint.hidden = false;
   } else if (source.needsManual && hasData) {
-    hint.textContent = t('settings.account.renewalManual');
+    hintText.textContent = t('settings.account.renewalManual');
     hint.hidden = false;
   } else {
     hint.hidden = true;
@@ -526,6 +528,19 @@ function bindEvents(): void {
     newAccountId = id;
     await reloadAfterAccountAction(id);
   }));
+
+  // Info tooltips (ⓘ) open to the right of their icon: one near the right edge is
+  // shifted left so it stays inside the window.
+  const placeTooltip = (event: Event): void => {
+    const icon = event.target instanceof Element ? event.target.closest('.info-icon') : null;
+    const tooltip = icon?.querySelector<HTMLElement>('.tooltip');
+    if (!tooltip) return;
+    tooltip.style.left = '0px';
+    const overflow = tooltip.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
+    if (overflow > 0) tooltip.style.left = `${String(-Math.ceil(overflow))}px`;
+  };
+  document.addEventListener('mouseover', placeTooltip);
+  document.addEventListener('focusin', placeTooltip);
 
   // Diagnostics: one issue draft with the responses of every connected account.
   byId('btn-report-responses').addEventListener('click', guarded(async () => {
