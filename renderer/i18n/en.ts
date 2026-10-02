@@ -187,7 +187,8 @@ export const en = {
   'settings.copilot.orgWarning': 'Company seat: usage is read from the unofficial endpoint VS Code uses, and it may change without notice. If your company has its own GitHub domain (<name>.ghe.com), set it below and connect with an account of that domain: a github.com account linked to an enterprise has no usage data.',
   'settings.copilot.host': 'GitHub domain',
   'settings.copilot.hostHint': 'github.com, or your company domain (e.g. acme.ghe.com) if you sign in to GitHub on a different address.',
-  'settings.copilot.manualQuota': 'Monthly premium request quota (not exposed by the API, enter it from your contract/plan)',
+  'settings.copilot.manualQuota': 'Monthly premium request quota',
+  'settings.copilot.manualQuotaHint': "Used only when GitHub does not report the quota (personal plan read through the billing report): enter the monthly premium requests of your plan. A company seat always gets the quota from GitHub.",
   'settings.copilot.authMethod': 'Authentication method',
   'settings.copilot.authOauth': 'GitHub OAuth',
   'settings.copilot.patHelpAria': 'How to get a token',
@@ -267,7 +268,7 @@ export const en = {
   'settings.diagnostics.autoReport': 'Report automatically if the format of a Claude/Copilot response changes',
   'settings.diagnostics.hint': 'If an endpoint stops being recognized, a pre-filled GitHub issue draft opens in the browser (field structure only, never real values such as percentages or amounts): it must always be reviewed and submitted by hand, nothing is published automatically.',
   'settings.diagnostics.reportResponses': 'Create diagnostic report (GitHub)',
-  'settings.diagnostics.reportResponsesHint': "Saves in your Downloads folder one text file with the usage responses of every connected account (real values; names, ids and credentials redacted), the settings that affect pacing, how the app read the data, recent history and the last errors. A confirmation lists everything before anything is read. Then a GitHub issue draft opens: attach the file if you want. Nothing is sent by the app.",
+  'settings.diagnostics.reportResponsesHint': "Saves in your Downloads folder one text file with the usage responses of every connected account (real values; names, ids and credentials redacted), the settings that affect pacing, how the app read the data, recent history, the last errors and a few system facts (time zone, screens, memory used by the app). A confirmation lists everything before anything is read. Then a GitHub issue draft opens: attach the file if you want. Nothing is sent by the app.",
   'settings.diagnostics.reportCreated': 'Report saved in Downloads: {file}. Attach it to the issue draft opened in the browser.',
 } as const;
 

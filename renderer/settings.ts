@@ -299,6 +299,9 @@ function applyAccountDetailState(index: number): void {
   if (account.provider !== 'copilot') return;
   const isOrg = account.accountScope === 'organization';
   (detail.querySelector('[data-role="org-warning"]') as HTMLElement).hidden = !isOrg;
+  // The manual quota is read only by the personal-scope fallback (GitHub billing
+  // report, which has no total): a company seat always gets it from GitHub.
+  (detail.querySelector('[data-role="manual-quota"]') as HTMLElement).hidden = isOrg;
   (detail.querySelector('[data-role="pat-panel"]') as HTMLElement).hidden = account.authMethod === 'oauth';
   (detail.querySelector('[data-role="oauth-panel"]') as HTMLElement).hidden = account.authMethod !== 'oauth';
 }

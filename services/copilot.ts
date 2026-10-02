@@ -312,7 +312,9 @@ function readQuotaSnapshot(key: string, entry: CopilotInternalQuotaSnapshot | nu
     const used = typeof entry.quota_remaining === 'number'
       ? total - entry.quota_remaining
       : total * (100 - percentRemaining) / 100;
-    return { kind: 'window', window: { ...base, unit: 'count', used: Math.max(0, used), total } };
+    // Rounded: "entitlement − quota_remaining" on fractional credits leaves float noise
+    // (0.3999999999996362 for 0.4) in the history and the diagnostic report.
+    return { kind: 'window', window: { ...base, unit: 'count', used: Math.max(0, Math.round(used * 10000) / 10000), total } };
   }
   return {
     kind: 'window',

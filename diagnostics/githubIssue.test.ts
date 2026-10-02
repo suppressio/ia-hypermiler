@@ -98,6 +98,16 @@ test('redactResponse redacts ids whatever their type, keeps diagnostic enums', (
   });
 });
 
+test('redactResponse keeps reset/timing dates only', () => {
+  assert.deepEqual(redactResponse({
+    resets_at: '2026-07-20T00:00:00Z', quota_reset_date: '2026-08-01', timestamp_utc: '2026-07-13T10:00:00.000Z',
+    as_of: '2026-07-13T10:00:00Z', window_started_at: '2026-07-10T00:00:00Z', assigned_date: '2026-01-15T09:00:00+01:00',
+  }), {
+    as_of: '2026-07-13T10:00:00Z', assigned_date: '<date>', quota_reset_date: '2026-08-01', resets_at: '2026-07-20T00:00:00Z',
+    timestamp_utc: '2026-07-13T10:00:00.000Z', window_started_at: '2026-07-10T00:00:00Z',
+  });
+});
+
 test('shortError drops the response body appended after " — "', () => {
   assert.equal(shortError('x answered 401 Unauthorized — <html>secret</html>'), 'x answered 401 Unauthorized');
 });

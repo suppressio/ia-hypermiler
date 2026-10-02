@@ -27,6 +27,7 @@ test('buildDiagnosticReport: values kept, ids/strings redacted, errors shortened
     generatedAt: new Date('2026-07-13T09:00:00Z'),
     environment: { app: '0.0.0', platform: 'linux' },
     settings: { notificationThresholdPercent: 80 },
+    system: { timeZone: 'Europe/Paris', cpuCores: 8 },
     accounts: [
       {
         ...ACCOUNTS[0]!, provider: 'claude', enabled: true, config: { accountScope: 'organization' },
@@ -43,7 +44,8 @@ test('buildDiagnosticReport: values kept, ids/strings redacted, errors shortened
   });
   assert.match(text, /^# IA Hypermiler diagnostic report/);
   const json: unknown = JSON.parse(text.slice(text.indexOf('\n') + 1));
-  const doc = json as { accounts: { name: string; enabled: boolean; response?: unknown; readError?: string }[]; log: { message: string }[] };
+  const doc = json as { system: unknown; accounts: { name: string; enabled: boolean; response?: unknown; readError?: string }[]; log: { message: string }[] };
+  assert.deepEqual(doc.system, { timeZone: 'Europe/Paris', cpuCores: 8 });
   assert.deepEqual(doc.accounts.map((a) => [a.name, a.enabled]), [['Claude #1', true], ['Claude #2', false]]);
   assert.deepEqual(doc.accounts[0]?.response, { id: '<id>', org_name: '<string, 16 chars>', spend: { percent: 33.3 } });
   assert.equal(doc.accounts[1]?.readError, 'usage answered 403 Forbidden');

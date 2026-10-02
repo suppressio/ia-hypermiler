@@ -79,6 +79,13 @@ let lastSnapshot: UsageSnapshot | null = null;
 // installed app has no visible console (diagnostics/logBuffer.ts).
 const logBuffer = new LogBuffer(50);
 captureConsole(logBuffer);
+
+// Durations of the last refresh and of the last local insights scan, for the
+// diagnostic report (a slow startup had to be inferred before).
+const timings: { lastRefresh: { at: string; ms: number } | null; lastLocalInsights: { at: string; ms: number } | null } = {
+  lastRefresh: null,
+  lastLocalInsights: null,
+};
 let refreshTimer: NodeJS.Timeout | null = null;
 let hoverPollTimer: NodeJS.Timeout | null = null;
 let updateTimer: NodeJS.Timeout | null = null;
@@ -242,8 +249,10 @@ async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | nul
 
 function startLocalInsights(windowDays: number, refreshWhenDone: boolean): Promise<ClaudeLocalInsights | null> {
   const cached = store.get('localInsightsCache').claudeCode;
+  const startedAt = Date.now();
   localInsightsRunning = computeLocalInsightsInProcess(windowDays)
     .then((result) => {
+      timings.lastLocalInsights = { at: new Date().toISOString(), ms: Date.now() - startedAt };
       store.set('localInsightsCache.claudeCode', result);
       // The refresh that started this used the stale cache: show the new insights.
       if (refreshWhenDone) runDetached('refresh usage', refreshAndBroadcast());
@@ -672,6 +681,37 @@ function reportConfig(cfg: AccountConfig): Record<string, unknown> {
   }
 }
 
+// What helps diagnose this app on this machine, and nothing that identifies it: time
+// zone (day boundaries), screens (widget layout and scaling), memory/CPU of the app's
+// own processes, internal timings, core count and RAM rounded to GB. Never CPU/GPU
+// models, computer or user names, paths, display or process ids.
+function reportSystem(now: Date): Record<string, unknown> {
+  const primary = screen.getPrimaryDisplay();
+  return {
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    utcOffsetMinutes: -now.getTimezoneOffset(),
+    cpuCores: os.cpus().length,
+    totalMemoryGB: Math.round(os.totalmem() / 1024 ** 3),
+    displays: screen.getAllDisplays().map((d) => ({
+      primary: d.id === primary.id,
+      size: { width: d.size.width, height: d.size.height },
+      workArea: { width: d.workArea.width, height: d.workArea.height },
+      scaleFactor: d.scaleFactor,
+    })),
+    widgetSize: { width: store.get('ui').bounds.width, height: store.get('ui').bounds.height },
+    // workingSetSize is in KB.
+    appProcesses: app.getAppMetrics().map((m) => ({
+      type: m.type,
+      ...(m.serviceName ? { service: m.serviceName } : {}),
+      cpuPercent: Math.round(m.cpu.percentCPUUsage * 10) / 10,
+      memoryMB: Math.round(m.memory.workingSetSize / 1024),
+    })),
+    uptimeMinutes: Math.round(process.uptime() / 60),
+    lastRefresh: timings.lastRefresh,
+    lastLocalInsights: timings.lastLocalInsights,
+  };
+}
+
 // Last 7 days of daily points and today's samples, per window.
 function reportHistory(accountId: AccountId, now: Date): unknown {
   const cutoff = new Date(now);
@@ -817,12 +857,14 @@ function takeQueuedRefresh(): boolean {
 
 async function refreshOnce(): Promise<void> {
   let snapshot: UsageSnapshot;
+  const startedAt = Date.now();
   try {
     snapshot = await buildUsageSnapshot();
   } catch (err) {
     console.error('[main] usage refresh failed:', err);
     return;
   }
+  timings.lastRefresh = { at: new Date().toISOString(), ms: Date.now() - startedAt };
   lastSnapshot = snapshot;
   maybeNotifyThreshold(snapshot);
   maybeNotifyPace(snapshot);
@@ -1193,6 +1235,7 @@ function registerIpcHandlers(): void {
         notificationThresholdPercent: store.get('ui').notificationThresholdPercent,
         windowStyle: store.get('ui').windowStyle,
       },
+      system: reportSystem(now),
       accounts,
       log: logBuffer.list(),
     });

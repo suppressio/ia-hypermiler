@@ -172,7 +172,8 @@ export const it: Record<MessageKey, string> = {
   'settings.copilot.orgWarning': "Seat aziendale: il consumo è letto dall'endpoint non ufficiale usato da VS Code, che può cambiare senza preavviso. Se la tua azienda ha un proprio dominio GitHub (<nome>.ghe.com), impostalo qui sotto e collegati con un account di quel dominio: un account github.com collegato a un'enterprise non ha dati di consumo.",
   'settings.copilot.host': 'Dominio GitHub',
   'settings.copilot.hostHint': "github.com, oppure il dominio aziendale (es. acme.ghe.com) se accedi a GitHub da un indirizzo diverso.",
-  'settings.copilot.manualQuota': "Quota mensile richieste premium (non esposta dall'API, inseriscila da contratto/piano)",
+  'settings.copilot.manualQuota': 'Quota mensile richieste premium',
+  'settings.copilot.manualQuotaHint': "Usata solo quando GitHub non riporta la quota (piano personale letto dal report di fatturazione): inserisci le richieste premium mensili del tuo piano. Un seat aziendale riceve sempre la quota da GitHub.",
   'settings.copilot.authMethod': 'Metodo di autenticazione',
   'settings.copilot.authOauth': 'GitHub OAuth',
   'settings.copilot.patHelpAria': 'Come ottenere un token',
@@ -247,6 +248,6 @@ export const it: Record<MessageKey, string> = {
   'settings.diagnostics.autoReport': 'Segnala automaticamente se il formato di una risposta Claude/Copilot cambia',
   'settings.diagnostics.hint': 'Se un endpoint smette di essere riconosciuto, si apre nel browser una bozza di issue GitHub precompilata (solo struttura dei campi, mai valori reali come percentuali o importi): va sempre rivista e confermata manualmente, non viene pubblicata nulla in automatico.',
   'settings.diagnostics.reportResponses': 'Crea report di diagnosi (GitHub)',
-  'settings.diagnostics.reportResponsesHint': "Salva nella cartella Download un file di testo con le risposte di utilizzo di tutti gli account collegati (valori reali; nomi, id e credenziali oscurati), le impostazioni che influiscono sul pacing, come l'app ha letto i dati, lo storico recente e gli ultimi errori. Prima di leggere qualunque cosa una conferma elenca tutto. Poi si apre una bozza di issue GitHub: allega il file se vuoi. L'app non invia nulla.",
+  'settings.diagnostics.reportResponsesHint': "Salva nella cartella Download un file di testo con le risposte di utilizzo di tutti gli account collegati (valori reali; nomi, id e credenziali oscurati), le impostazioni che influiscono sul pacing, come l'app ha letto i dati, lo storico recente, gli ultimi errori e alcuni dati di sistema (fuso orario, schermi, memoria usata dall'app). Prima di leggere qualunque cosa una conferma elenca tutto. Poi si apre una bozza di issue GitHub: allega il file se vuoi. L'app non invia nulla.",
   'settings.diagnostics.reportCreated': 'Report salvato in Download: {file}. Allegalo alla bozza di issue aperta nel browser.',
 };

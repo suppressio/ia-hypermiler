@@ -64,13 +64,17 @@ const KEPT_STRING_KEYS = new Set([
 ]);
 const MAX_KEPT_STRING_LENGTH = 32;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$/;
+// Dates are kept only under keys about resets and timing (resets_at, quota_reset_date,
+// timestamp_utc, as_of, window_started_at…): they are what pacing reads. Any other
+// date (e.g. when a seat was assigned) says something about the user, not the usage.
+const TIME_KEY = /reset|time|^as_of$|_at$/i;
 // `id`, `user_id`, `enterpriseId`…: a numeric id identifies an account as well as a
 // string one (a GitHub user id leads to the login).
 const ID_KEY = /^id$|_id$|[a-z]Id$/;
 const MAX_REDACT_DEPTH = 8;
 
 /**
- * Copy of a response safe to share: numbers, booleans, null and ISO dates kept;
+ * Copy of a response safe to share: numbers, booleans, null and reset/timing ISO dates kept;
  * strings kept only under KEPT_STRING_KEYS and when short; any other string replaced
  * by its length; any value under an id key replaced. Field names are kept (they are
  * the format).
@@ -83,7 +87,7 @@ export function redactResponse(value: unknown, key = '', depth = 0): unknown {
   if (ID_KEY.test(key) && typeof value !== 'object') return '<id>';
   if (typeof value === 'number' || typeof value === 'boolean') return value;
   if (typeof value === 'string') {
-    if (ISO_DATE.test(value)) return value;
+    if (ISO_DATE.test(value)) return TIME_KEY.test(key) ? value : '<date>';
     return `<string, ${String(value.length)} chars>`;
   }
   if (Array.isArray(value)) return value.map((item) => redactResponse(item, key, depth + 1));

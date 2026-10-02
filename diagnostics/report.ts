@@ -27,6 +27,8 @@ export interface ReportInput {
   generatedAt: Date;
   environment: Record<string, string>;
   settings: Record<string, unknown>;
+  // Machine and app process facts useful for diagnosis (main.ts reportSystem).
+  system: Record<string, unknown>;
   accounts: ReportAccount[];
   log: LogEntry[];
 }
@@ -64,6 +66,7 @@ export function buildDiagnosticReport(input: ReportInput): string {
     generatedAt: input.generatedAt.toISOString(),
     environment: input.environment,
     settings: input.settings,
+    system: input.system,
     accounts: input.accounts.map((a) => ({
       name: a.name,
       provider: a.provider,
