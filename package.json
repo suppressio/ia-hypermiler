@@ -39,7 +39,8 @@
     "appId": "com.suppressio.ia-hypermiler",
     "icon": "build/icon.png",
     "files": [
-      "dist/**/*"
+      "dist/**/*",
+      "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     ],
     "directories": {
       "output": "release"
