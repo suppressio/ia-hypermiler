@@ -120,7 +120,7 @@ function startWindowHoverPolling(): void {
 }
 
 function scheduleRefreshLoop(): void {
-  const intervalMinutes = Number(store.get('ui').refreshIntervalMinutes) || DEFAULT_REFRESH_INTERVAL_MS / (60 * 1000);
+  const intervalMinutes = store.get('ui').refreshIntervalMinutes || DEFAULT_REFRESH_INTERVAL_MS / (60 * 1000);
   const intervalMs = Math.max(5, intervalMinutes) * 60 * 1000;
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(() => { runDetached('refresh usage', refreshAndBroadcast()); }, intervalMs);
