@@ -10,8 +10,7 @@ export const it: Record<MessageKey, string> = {
   'widget.minimize': 'Riduci a icona',
   'widget.hide': 'Nascondi',
   'widget.counts.creditRatio': '{used} / {total} crediti AI usati',
-  'widget.counts.creditsUsed': '{used} crediti AI usati',
-  'widget.counts.claudeLocalOutput': '{count} token di output Claude Code locali',
+  'widget.counts.extraCreditRatio': '{used} / {total} USD di credito extra usati',
 
   'widget.waiting': 'In attesa di dati…',
   'widget.noAccount': 'Nessun account collegato — apri le impostazioni',

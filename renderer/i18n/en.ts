@@ -11,8 +11,7 @@ export const en = {
   'widget.minimize': 'Minimize',
   'widget.hide': 'Hide',
   'widget.counts.creditRatio': '{used} / {total} AI credits used',
-  'widget.counts.creditsUsed': '{used} AI credits used',
-  'widget.counts.claudeLocalOutput': '{count} local Claude Code output tokens',
+  'widget.counts.extraCreditRatio': '{used} / {total} USD of extra credit used',
 
   // --- Widget: main value ----------------------------------------------------
   'widget.waiting': 'Waiting for data…',

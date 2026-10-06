@@ -525,21 +525,14 @@ function renderLocalInsights(account: AccountSnapshot | undefined): void {
   });
 }
 
-function copilotCreditCount(window: QuotaWindow | null, provider: ProviderId): string | null {
-  if (!window || provider !== 'copilot' || window.unit !== 'count') return null;
-  const used = formatNumber(window.used, 2);
-  return typeof window.total === 'number' && window.total > 0
-    ? t('widget.counts.creditRatio', { used, total: formatNumber(window.total, 2) })
-    : t('widget.counts.creditsUsed', { used });
-}
-
-function absoluteCountLabel(account: AccountSnapshot, window: QuotaWindow | null): string | null {
-  const credits = copilotCreditCount(window, account.provider);
-  if (credits) return credits;
-  const insights = account.localInsights;
-  return account.provider === 'claude' && insights
-    ? t('widget.counts.claudeLocalOutput', { count: formatNumber(insights.totalOutputTokens, 0) })
-    : null;
+// Absolute "used / total" under the main value, only for count windows with a total:
+// Copilot AI credits and Claude extra credit (USD). A Claude percentage window has no
+// token total behind it (the endpoint gives utilization and reset only), and a count
+// window without a total already shows its used value as the main value.
+function absoluteCountLabel(win: QuotaWindow | null, provider: ProviderId): string | null {
+  if (!win || win.unit !== 'count' || typeof win.total !== 'number' || win.total <= 0) return null;
+  const params = { used: formatNumber(win.used, 2), total: formatNumber(win.total, 2) };
+  return t(provider === 'claude' ? 'widget.counts.extraCreditRatio' : 'widget.counts.creditRatio', params);
 }
 
 // --- Accounts and quota windows ------------------------------------------------------
@@ -736,7 +729,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
   applySeverity(byId('current-value'), severityLevel(utilization, warningThreshold()));
   const countLabel = byId('current-count', HTMLDivElement);
-  const absoluteCount = absoluteCountLabel(account, win);
+  const absoluteCount = absoluteCountLabel(win, account.provider);
   countLabel.textContent = absoluteCount ?? '';
   countLabel.hidden = absoluteCount === null;
 
@@ -818,6 +811,7 @@ async function init(): Promise<void> {
     btn.disabled = true;
     window.hypermiler.requestUsageRefresh();
   });
+
   window.hypermiler.onUsageUpdate((snapshot) => {
     renderSnapshot(snapshot);
     byId('btn-refresh', HTMLButtonElement).disabled = false;
