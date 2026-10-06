@@ -506,11 +506,9 @@ function renderLocalInsights(account: AccountSnapshot | undefined): void {
   byId('local-insights-duration').textContent = formatPercent(insights.longSessionSharePercent);
   byId('local-insights-context-count').textContent = t('widget.insights.tokenCount', {
     count: formatNumber(insights.highContextOutputTokens, 0),
-    total: formatNumber(insights.totalOutputTokens, 0),
   });
   byId('local-insights-duration-count').textContent = t('widget.insights.tokenCount', {
     count: formatNumber(insights.longSessionOutputTokens, 0),
-    total: formatNumber(insights.totalOutputTokens, 0),
   });
 
   const list = byId('local-insights-tools', HTMLUListElement);
@@ -525,6 +523,23 @@ function renderLocalInsights(account: AccountSnapshot | undefined): void {
     li.appendChild(share);
     list.appendChild(li);
   });
+}
+
+function copilotCreditCount(window: QuotaWindow | null, provider: ProviderId): string | null {
+  if (!window || provider !== 'copilot' || window.unit !== 'count') return null;
+  const used = formatNumber(window.used, 2);
+  return typeof window.total === 'number' && window.total > 0
+    ? t('widget.counts.creditRatio', { used, total: formatNumber(window.total, 2) })
+    : t('widget.counts.creditsUsed', { used });
+}
+
+function absoluteCountLabel(account: AccountSnapshot, window: QuotaWindow | null): string | null {
+  const credits = copilotCreditCount(window, account.provider);
+  if (credits) return credits;
+  const insights = account.localInsights;
+  return account.provider === 'claude' && insights
+    ? t('widget.counts.claudeLocalOutput', { count: formatNumber(insights.totalOutputTokens, 0) })
+    : null;
 }
 
 // --- Accounts and quota windows ------------------------------------------------------
@@ -703,6 +718,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   if (!account) {
     byId('window-list').hidden = true;
     byId('current-value').textContent = '--';
+    byId('current-count').hidden = true;
     byId('current-label').textContent = t('widget.noAccount');
     renderInstantGauge(undefined);
     renderEfficiencyRating(undefined, chartDays);
@@ -719,6 +735,10 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   byId('current-value').textContent =
     utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
   applySeverity(byId('current-value'), severityLevel(utilization, warningThreshold()));
+  const countLabel = byId('current-count', HTMLDivElement);
+  const absoluteCount = absoluteCountLabel(account, win);
+  countLabel.textContent = absoluteCount ?? '';
+  countLabel.hidden = absoluteCount === null;
 
   let label = t('widget.waiting');
   if (win) {
@@ -798,7 +818,6 @@ async function init(): Promise<void> {
     btn.disabled = true;
     window.hypermiler.requestUsageRefresh();
   });
-
   window.hypermiler.onUsageUpdate((snapshot) => {
     renderSnapshot(snapshot);
     byId('btn-refresh', HTMLButtonElement).disabled = false;

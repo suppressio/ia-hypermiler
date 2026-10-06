@@ -9,6 +9,9 @@ export const it: Record<MessageKey, string> = {
   'widget.settings': 'Impostazioni',
   'widget.minimize': 'Riduci a icona',
   'widget.hide': 'Nascondi',
+  'widget.counts.creditRatio': '{used} / {total} crediti AI usati',
+  'widget.counts.creditsUsed': '{used} crediti AI usati',
+  'widget.counts.claudeLocalOutput': '{count} token di output Claude Code locali',
 
   'widget.waiting': 'In attesa di dati…',
   'widget.noAccount': 'Nessun account collegato — apri le impostazioni',
@@ -67,7 +70,7 @@ export const it: Record<MessageKey, string> = {
   'widget.insights.yieldTrend': '{over} · {arrow}{percent}% vs prima metà',
   'widget.insights.context': 'Contesto oltre 150k',
   'widget.insights.longSessions': 'Da sessioni 8h+',
-  'widget.insights.tokenCount': '{count} / {total} token di output',
+  'widget.insights.tokenCount': '{count} token di output',
   'widget.insights.topTools': 'Tool più usati',
 
   'tips.none': 'Non ci sono ancora abbastanza dati per un consiglio specifico su questa finestra.',
