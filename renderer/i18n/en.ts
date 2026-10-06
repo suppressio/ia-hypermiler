@@ -10,6 +10,9 @@ export const en = {
   'widget.settings': 'Settings',
   'widget.minimize': 'Minimize',
   'widget.hide': 'Hide',
+  'widget.counts.creditRatio': '{used} / {total} AI credits used',
+  'widget.counts.creditsUsed': '{used} AI credits used',
+  'widget.counts.claudeLocalOutput': '{count} local Claude Code output tokens',
 
   // --- Widget: main value ----------------------------------------------------
   'widget.waiting': 'Waiting for data…',
@@ -73,7 +76,7 @@ export const en = {
   'widget.insights.yieldTrend': '{over} · {arrow}{percent}% vs first half',
   'widget.insights.context': 'Context over 150k',
   'widget.insights.longSessions': 'From 8h+ sessions',
-  'widget.insights.tokenCount': '{count} / {total} output tokens',
+  'widget.insights.tokenCount': '{count} output tokens',
   'widget.insights.topTools': 'Most used tools',
 
   // --- Tips (budget.generateDailyTip keys) -----------------------------------
