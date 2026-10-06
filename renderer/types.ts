@@ -125,6 +125,9 @@ export interface ClaudeLocalInsights {
   computedAt: string;
   windowDays: number;
   sessionsAnalyzed: number;
+  totalOutputTokens: number;
+  highContextOutputTokens: number;
+  longSessionOutputTokens: number;
   highContextSharePercent: number | null;
   longSessionSharePercent: number | null;
   topTools: ToolUsageShare[];

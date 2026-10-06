@@ -56,7 +56,7 @@ export const it: Record<MessageKey, string> = {
   'widget.rating.insufficient': 'dati insufficienti',
   'widget.rating.avgRatio': 'Rapporto medio ideale/reale: {ratio}',
 
-  'widget.tips.title': 'Consiglio del giorno',
+  'widget.tips.title': 'Consigli',
   'widget.tips.waiting': 'In attesa di dati per generare un consiglio.',
   'widget.insights.header': 'Insight locali · Claude Code',
   'widget.insights.yield': 'Resa (token per 1% di quota)',
@@ -67,6 +67,7 @@ export const it: Record<MessageKey, string> = {
   'widget.insights.yieldTrend': '{over} · {arrow}{percent}% vs prima metà',
   'widget.insights.context': 'Contesto oltre 150k',
   'widget.insights.longSessions': 'Da sessioni 8h+',
+  'widget.insights.tokenCount': '{count} / {total} token di output',
   'widget.insights.topTools': 'Tool più usati',
 
   'tips.none': 'Non ci sono ancora abbastanza dati per un consiglio specifico su questa finestra.',
@@ -222,6 +223,12 @@ export const it: Record<MessageKey, string> = {
   'settings.appearance.chartRange': 'Intervallo grafico',
   'settings.appearance.week': 'Settimana',
   'settings.appearance.month': 'Mese',
+  'settings.appearance.refreshInterval': 'Intervallo aggiornamento',
+  'settings.appearance.refresh5': '5 minuti',
+  'settings.appearance.refresh10': '10 minuti',
+  'settings.appearance.refresh15': '15 minuti',
+  'settings.appearance.refresh30': '30 minuti',
+  'settings.appearance.refresh60': '60 minuti',
   'settings.appearance.alwaysOnTop': 'Sempre in primo piano',
   'settings.appearance.accentColor': 'Colore accento',
 

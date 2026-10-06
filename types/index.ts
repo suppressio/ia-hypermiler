@@ -222,6 +222,9 @@ export interface ClaudeLocalInsights {
   computedAt: string;
   windowDays: number;
   sessionsAnalyzed: number;
+  totalOutputTokens: number;
+  highContextOutputTokens: number;
+  longSessionOutputTokens: number;
   highContextSharePercent: number | null;
   longSessionSharePercent: number | null;
   topTools: ToolUsageShare[];
@@ -347,6 +350,7 @@ export interface UiSettings {
   accentColor: string;
   bounds: { x?: number; y?: number; width: number; height: number };
   chartRange: ChartRange;
+  refreshIntervalMinutes: number;
   notificationThresholdPercent: number;
 }
 

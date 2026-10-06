@@ -69,6 +69,9 @@ function readFieldValue(el: HTMLInputElement | HTMLSelectElement): unknown {
     if (el.type === 'checkbox') return el.checked;
     if (el.type === 'number') return el.value === '' ? null : Number(el.value);
   }
+  if (el instanceof HTMLSelectElement && el.dataset.type === 'number') {
+    return el.value === '' ? null : Number(el.value);
+  }
   return el.value;
 }
 

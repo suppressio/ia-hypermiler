@@ -73,6 +73,7 @@ export const en = {
   'widget.insights.yieldTrend': '{over} · {arrow}{percent}% vs first half',
   'widget.insights.context': 'Context over 150k',
   'widget.insights.longSessions': 'From 8h+ sessions',
+  'widget.insights.tokenCount': '{count} / {total} output tokens',
   'widget.insights.topTools': 'Most used tools',
 
   // --- Tips (budget.generateDailyTip keys) -----------------------------------
@@ -239,6 +240,12 @@ export const en = {
   'settings.appearance.chartRange': 'Chart range',
   'settings.appearance.week': 'Week',
   'settings.appearance.month': 'Month',
+  'settings.appearance.refreshInterval': 'Refresh interval',
+  'settings.appearance.refresh5': '5 minutes',
+  'settings.appearance.refresh10': '10 minutes',
+  'settings.appearance.refresh15': '15 minutes',
+  'settings.appearance.refresh30': '30 minutes',
+  'settings.appearance.refresh60': '60 minutes',
   'settings.appearance.alwaysOnTop': 'Always on top',
   'settings.appearance.accentColor': 'Accent color',
 

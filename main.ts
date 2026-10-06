@@ -49,7 +49,7 @@ import type {
   WindowStyle,
 } from './types/index';
 
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes, as per CLAUDE.md
+const DEFAULT_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes, as per CLAUDE.md
 // New-version check (issue #5): at startup (with a short delay, not to overlap
 // the first usage refresh) and then every 24 hours.
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -117,6 +117,13 @@ function startWindowHoverPolling(): void {
       mainWindow.webContents.send('window:hoverChanged', isOver);
     }
   }, 120);
+}
+
+function scheduleRefreshLoop(): void {
+  const intervalMinutes = Number(store.get('ui').refreshIntervalMinutes) || DEFAULT_REFRESH_INTERVAL_MS / (60 * 1000);
+  const intervalMs = Math.max(5, intervalMinutes) * 60 * 1000;
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => { runDetached('refresh usage', refreshAndBroadcast()); }, intervalMs);
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +247,9 @@ async function computeLocalInsightsIfNeeded(): Promise<ClaudeLocalInsights | nul
   // Previous cache without `daily` (before point 4) or `firstSessionStartByDay`, or for
   // another window: recompute.
   const usable = cached !== null && Array.isArray(cached.daily) && cached.firstSessionStartByDay !== undefined
+    && typeof cached.totalOutputTokens === 'number'
+    && typeof cached.highContextOutputTokens === 'number'
+    && typeof cached.longSessionOutputTokens === 'number'
     && cached.windowDays === windowDays;
   if (usable && cacheAgeMs < LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS) return cached;
 
@@ -1036,6 +1046,7 @@ function registerIpcHandlers(): void {
     // or a field missing from the patch never reaches the store.
     store.store = normalizeSettings(next, DEFAULTS);
     applyMainLocale();
+    scheduleRefreshLoop();
     const redacted = redactSecretsForRenderer(store.store);
     // Propagates the change to the widget if open: some fields (e.g. accent color) have
     // no dedicated IPC like ui.windowStyle/ui.alwaysOnTop and would otherwise apply only
@@ -1306,7 +1317,7 @@ app.whenReady().then(async () => {
   // start and after a skin change that recreates the window) — a second trigger here
   // would duplicate the Claude/Copilot API call every time the widget opens.
 
-  refreshTimer = setInterval(() => { runDetached('refresh usage', refreshAndBroadcast()); }, REFRESH_INTERVAL_MS);
+  scheduleRefreshLoop();
   startWindowHoverPolling();
   startUpdateChecks();
 

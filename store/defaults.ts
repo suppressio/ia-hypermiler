@@ -39,6 +39,7 @@ export const DEFAULTS: AppSettings = {
     // x/y missing until the user moves the window (see main/windows.ts).
     bounds: { width: 360, height: 480 },
     chartRange: 'week',
+    refreshIntervalMinutes: 30,
     notificationThresholdPercent: 80,
   },
 

@@ -70,6 +70,8 @@ test('computeClaudeLocalInsights computes a token-weighted highContextSharePerce
   });
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result?.highContextSharePercent, 70); // 70 of the 100 total output_tokens come from high-context turns
+  assert.equal(result?.highContextOutputTokens, 70);
+  assert.equal(result?.totalOutputTokens, 100);
 });
 
 test('computeClaudeLocalInsights computes longSessionSharePercent only for 8h+ sessions', async () => {
@@ -81,6 +83,8 @@ test('computeClaudeLocalInsights computes longSessionSharePercent only for 8h+ s
   });
   const result = await computeClaudeLocalInsights(7, deps);
   assert.equal(result?.longSessionSharePercent, 60);
+  assert.equal(result?.longSessionOutputTokens, 60);
+  assert.equal(result?.totalOutputTokens, 100);
 });
 
 test('computeClaudeLocalInsights truncates topTools to 5 and sorts by frequency', async () => {

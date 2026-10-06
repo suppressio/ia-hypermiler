@@ -504,6 +504,14 @@ function renderLocalInsights(account: AccountSnapshot | undefined): void {
   details.hidden = false;
   byId('local-insights-context').textContent = formatPercent(insights.highContextSharePercent);
   byId('local-insights-duration').textContent = formatPercent(insights.longSessionSharePercent);
+  byId('local-insights-context-count').textContent = t('widget.insights.tokenCount', {
+    count: formatNumber(insights.highContextOutputTokens, 0),
+    total: formatNumber(insights.totalOutputTokens, 0),
+  });
+  byId('local-insights-duration-count').textContent = t('widget.insights.tokenCount', {
+    count: formatNumber(insights.longSessionOutputTokens, 0),
+    total: formatNumber(insights.totalOutputTokens, 0),
+  });
 
   const list = byId('local-insights-tools', HTMLUListElement);
   list.innerHTML = '';
@@ -541,9 +549,10 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
   nav.innerHTML = '';
   available.forEach((account) => {
     const id = account.accountId;
+    const utilization = account.criticalWindow ? budgetNormalizedUtilization(account.criticalWindow) : null;
     const btn = document.createElement('button');
-    btn.textContent = account.label;
-    btn.title = account.label;
+    btn.textContent = `${account.label} ${utilization === null ? '--%' : formatPercent(utilization)}`;
+    btn.title = `${account.label} (${utilization === null ? '--%' : formatPercent(utilization)})`;
     btn.className = id === activeId ? 'active' : '';
     btn.addEventListener('click', () => {
       state.activeAccount = id;
