@@ -12,6 +12,8 @@ import { createTray } from './main/tray';
 import { captureClaudeSession, buildClaudeCookieHeader, migrateDefaultSessionCookies } from './main/claude-auth';
 import { captureGithubOAuthToken } from './main/copilot-oauth';
 import * as providers from './main/providers';
+import * as refreshPolicy from './main/refreshPolicy';
+import type { AccountFetchState, RefreshMode } from './main/refreshPolicy';
 import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts } from './store/migrate';
 import * as budget from './budget';
 import * as claudeService from './services/claude';
@@ -87,6 +89,8 @@ const timings: { lastRefresh: { at: string; ms: number } | null; lastLocalInsigh
   lastLocalInsights: null,
 };
 let refreshTimer: NodeJS.Timeout | null = null;
+// Whether the last refresh that fetched something saw consumption rise (fast pace).
+let lastConsumptionRose = false;
 let hoverPollTimer: NodeJS.Timeout | null = null;
 let updateTimer: NodeJS.Timeout | null = null;
 let trayHandle: TrayHandle | null = null;
@@ -119,11 +123,22 @@ function startWindowHoverPolling(): void {
   }, 120);
 }
 
-function scheduleRefreshLoop(): void {
+function configuredRefreshIntervalMs(): number {
   const intervalMinutes = store.get('ui').refreshIntervalMinutes || DEFAULT_REFRESH_INTERVAL_MS / (60 * 1000);
-  const intervalMs = Math.max(5, intervalMinutes) * 60 * 1000;
-  if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(() => { runDetached('refresh usage', refreshAndBroadcast()); }, intervalMs);
+  return Math.max(5, intervalMinutes) * 60 * 1000;
+}
+
+// One timer, re-armed after every refresh (main/refreshPolicy.ts): the configured
+// interval, or the fast pace while consumption rises.
+function scheduleNextRefresh(delayMs: number): void {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => { runDetached('refresh usage', refreshAndBroadcast('scheduled')); }, delayMs);
+}
+
+// Startup, a settings change (new interval) or a failed refresh: the pace stays fast
+// if the last refresh saw consumption rise.
+function scheduleRefreshLoop(): void {
+  scheduleNextRefresh(refreshPolicy.nextRefreshDelayMs(lastConsumptionRose, configuredRefreshIntervalMs()));
 }
 
 // ---------------------------------------------------------------------------
@@ -152,9 +167,9 @@ function openHistoryDraft(): HistoryDraft {
 }
 
 // Samples are kept for the whole current day (the working span comes from the day's
-// samples, budget.todayActivitySpan) and at least this long (margin above the 3h
-// lookback of budget.instantaneousRate, also right after midnight). Still tiny: one
-// append every 30 min, at most ~48 samples per window.
+// samples, budget.todayActivitySpan) and at least this long (margin above the 1h
+// lookback of budget.instantaneousRate and its anchor, also right after midnight).
+// Still small: one append per fetch, every 5 min at most while consumption rises.
 const RECENT_SAMPLES_MIN_AGE_MS = 4 * 60 * 60 * 1000;
 
 // Prunes and writes the draft in a single store write. The rest of `history` is read
@@ -265,7 +280,7 @@ function startLocalInsights(windowDays: number, refreshWhenDone: boolean): Promi
       timings.lastLocalInsights = { at: new Date().toISOString(), ms: Date.now() - startedAt };
       store.set('localInsightsCache.claudeCode', result);
       // The refresh that started this used the stale cache: show the new insights.
-      if (refreshWhenDone) runDetached('refresh usage', refreshAndBroadcast());
+      if (refreshWhenDone) runDetached('refresh usage', refreshAndBroadcast('manual'));
       return result;
     })
     .catch((err: unknown) => {
@@ -350,10 +365,13 @@ function computeWindowSnapshot(
   workSchedule: WorkSchedule,
   now: Date,
   localInsights: ClaudeLocalInsights | null,
+  fresh: boolean,
 ): QuotaWindowSnapshot {
   const { periodStart, periodEnd } = resolvePeriodBounds(window, subscription, providerRenewsAt, now);
   const todayPoint = recordDailyUsage(draft, accountId, window, periodStart, now);
-  recordRecentSample(draft, accountId, window, now);
+  // Only a value just read from the provider is a sample: last known data repeated
+  // after a failed or skipped fetch would flatten the instant pace.
+  if (fresh) recordRecentSample(draft, accountId, window, now);
   const { chartDays } = draft;
   // chartDays + 1 points: N+1 cumulative values are needed for N daily deltas
   // (consumption-per-day chart and rating) — the rating used to see only N-1.
@@ -434,7 +452,13 @@ function computeWindowSnapshot(
   return {
     window,
     dailyHistory,
-    dailyDeltas: dailyDeltasForWindow,
+    // Not on rolling-hours windows (no daily reading there, see dailyDeltasForWindow).
+    chart: isRollingHours ? [] : budget.chartDays({
+      dailyHistory, workSchedule, periodStart, periodEnd, now, todayBudget, redistribution,
+      totalPeriodWorkingUnits: pacingAvailable ? totalPeriodWorkingUnits : 0,
+      pastDays: chartDays,
+      upcomingDays: chartDays === 30 ? 5 : 2,
+    }),
     deltaStats: budget.deltaStats(dailyDeltasForWindow, now),
     verdict: budget.windowVerdict({
       window, projectedUsage, workingDaysUntilReset, estimatedAutonomyWorkingDays, redistribution, pacePerUnit, preliminary, hourly,
@@ -475,10 +499,11 @@ function computeAccountSnapshot(
   cfg: AccountConfig,
   now: Date,
   localInsights: ClaudeLocalInsights | null,
+  fresh: boolean,
 ): AccountSnapshot {
   const { subscription, workSchedule } = cfg;
   const identity = { accountId: cfg.id, provider: cfg.provider, label: cfg.label };
-  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(draft, cfg.id, w, subscription, raw.subscriptionRenewsAt, workSchedule, now, localInsights));
+  const windows = raw.quotaWindows.map((w) => computeWindowSnapshot(draft, cfg.id, w, subscription, raw.subscriptionRenewsAt, workSchedule, now, localInsights, fresh));
   // The window needing attention first (at risk/exhausted), then the most used.
   const criticalSnapshot = budget.pickCriticalSnapshot(windows) ?? undefined;
   const criticalWindow = criticalSnapshot?.window ?? null;
@@ -557,6 +582,14 @@ function applyMainLocale(): void {
   trayHandle?.refreshMenu();
 }
 
+// Per-account fetch attempts, in memory (main/refreshPolicy.ts): the backoff of a
+// failing provider and the short cache of manual refreshes. Lost on restart, which
+// simply means the first refresh fetches everything.
+const accountFetchStates = new Map<AccountId, AccountFetchState>();
+// Last fetch error of each account, until a fetch succeeds: a refresh that skips a
+// failing account (backoff) still shows its data as stale, with the reason.
+const accountFetchErrors = new Map<AccountId, string>();
+
 async function fetchAccountOrFallback(
   accountId: AccountId,
   provider: ProviderId,
@@ -565,10 +598,13 @@ async function fetchAccountOrFallback(
 ): Promise<StampedUsage> {
   try {
     const raw = await fetchFn();
+    accountFetchStates.set(accountId, refreshPolicy.recordFetchAttempt(accountFetchStates.get(accountId), Date.now(), true));
+    accountFetchErrors.delete(accountId);
     const stamped: StampedUsage = { ...raw, accountId, lastUpdatedAt: new Date().toISOString(), stale: false };
     store.set(lastGoodKey, stamped);
     return stamped;
   } catch (err) {
+    accountFetchStates.set(accountId, refreshPolicy.recordFetchAttempt(accountFetchStates.get(accountId), Date.now(), false));
     const error = err as Error;
     console.error(`[main] refresh ${accountId} failed:`, error.message);
     // Reported here (not only in the caller) because a fallback to valid previous data
@@ -576,6 +612,7 @@ async function fetchAccountOrFallback(
     // first successful fetch would never be detected.
     maybeReportFormatDrift(provider, err);
     const lastGood = store.get('history').lastGood?.[accountId];
+    accountFetchErrors.set(accountId, friendlyErrorMessage(err));
     if (!lastGood) throw err; // no previous data: propagate, the caller decides how to show it
     return { ...lastGood, stale: true, lastError: friendlyErrorMessage(err) };
   }
@@ -640,9 +677,29 @@ function emptyAccountSnapshot(cfg: AccountConfig, lastError: string): AccountSna
   };
 }
 
-async function buildUsageSnapshot(): Promise<UsageSnapshot> {
+// The last result of an account not fetched in this refresh: stale with the reason
+// while it is in backoff after a failure.
+function cachedUsage(lastGood: Omit<StampedUsage, 'stale'>, lastError: string | undefined): StampedUsage {
+  return lastError === undefined ? { ...lastGood, stale: false } : { ...lastGood, stale: true, lastError };
+}
+
+// Whether any window of a freshly fetched account rose since its last sample: the
+// next refresh then comes at the fast pace (main/refreshPolicy.ts).
+function windowsRose(draft: HistoryDraft, accountId: AccountId, windows: QuotaWindow[]): boolean {
+  return windows.some((window) => {
+    const utilization = budget.normalizedUtilization(window);
+    const last = getRecentSamples(draft, accountId, window.id).at(-1);
+    return utilization !== null && last !== undefined && utilization - last.used > budget.ACTIVITY_EPSILON;
+  });
+}
+
+// `consumptionRose` is null when no account was fetched (all reused from the last
+// refresh): nothing new is known, the pace stays as it was.
+async function buildUsageSnapshot(mode: RefreshMode): Promise<{ snapshot: UsageSnapshot; consumptionRose: boolean | null }> {
   const now = new Date();
   const snapshot: UsageSnapshot = { generatedAt: now.toISOString(), accounts: [] };
+  const intervalMs = configuredRefreshIntervalMs();
+  let consumptionRose: boolean | null = null;
 
   // Read once here, written once at the end (see HistoryDraft).
   const draft = openHistoryDraft();
@@ -653,8 +710,17 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
     const localInsights = cfg.provider === 'claude' && cfg.localInsights ? await computeLocalInsightsIfNeeded() : null;
     let account: AccountSnapshot;
     try {
-      const raw = await fetchAccountOrFallback(cfg.id, cfg.provider, () => providers.fetchUsage(cfg), `history.lastGood.${cfg.id}`);
-      account = computeAccountSnapshot(draft, raw, cfg, now, localInsights);
+      // An account in backoff, or fetched moments ago, keeps its last result: nothing
+      // new is learned, so no sample is recorded (a repeated old value at a new time
+      // would read as a pause in the instant pace).
+      const lastGood = store.get('history').lastGood?.[cfg.id];
+      const fetchNow = !lastGood || refreshPolicy.shouldFetchAccount(accountFetchStates.get(cfg.id), mode, now.getTime(), intervalMs);
+      const raw = fetchNow
+        ? await fetchAccountOrFallback(cfg.id, cfg.provider, () => providers.fetchUsage(cfg), `history.lastGood.${cfg.id}`)
+        : cachedUsage(lastGood, accountFetchErrors.get(cfg.id));
+      const fresh = fetchNow && !raw.stale;
+      if (fetchNow) consumptionRose = consumptionRose === true || (fresh && windowsRose(draft, cfg.id, raw.quotaWindows));
+      account = computeAccountSnapshot(draft, raw, cfg, now, localInsights, fresh);
     } catch (err) {
       const message = friendlyErrorMessage(err);
       console.error(`[main] ${cfg.label} unavailable and no previous data:`, message);
@@ -665,7 +731,7 @@ async function buildUsageSnapshot(): Promise<UsageSnapshot> {
   }
   commitHistoryDraft(draft, now);
 
-  return snapshot;
+  return { snapshot, consumptionRose };
 }
 
 // ---------------------------------------------------------------------------
@@ -841,40 +907,46 @@ function maybeNotifyPace(snapshot: UsageSnapshot): void {
 // One refresh at a time: the startup refresh, the widget's own request and the timer
 // used to overlap, each repeating the same fetches and store writes. A request
 // arriving during a refresh queues exactly one more run (it may follow a settings
-// change the running one did not see).
+// change the running one did not see), with the stronger of the queued modes.
 let refreshRunning: Promise<void> | null = null;
-let refreshQueued = false;
+let refreshQueued: RefreshMode | null = null;
 
-function refreshAndBroadcast(): Promise<void> {
+function refreshAndBroadcast(mode: RefreshMode): Promise<void> {
   if (refreshRunning) {
-    refreshQueued = true;
+    refreshQueued = refreshQueued ? refreshPolicy.strongerMode(refreshQueued, mode) : mode;
     return refreshRunning;
   }
-  refreshQueued = false;
+  refreshQueued = null;
   refreshRunning = (async () => {
-    do {
-      await refreshOnce();
-    } while (takeQueuedRefresh());
+    let next: RefreshMode | null = mode;
+    while (next) {
+      await refreshOnce(next);
+      next = takeQueuedRefresh();
+    }
   })().finally(() => { refreshRunning = null; });
   return refreshRunning;
 }
 
 // Read-and-clear in a function: set by another IPC call while refreshOnce awaits.
-function takeQueuedRefresh(): boolean {
+function takeQueuedRefresh(): RefreshMode | null {
   const queued = refreshQueued;
-  refreshQueued = false;
+  refreshQueued = null;
   return queued;
 }
 
-async function refreshOnce(): Promise<void> {
-  let snapshot: UsageSnapshot;
+async function refreshOnce(mode: RefreshMode): Promise<void> {
+  let built: { snapshot: UsageSnapshot; consumptionRose: boolean | null };
   const startedAt = Date.now();
   try {
-    snapshot = await buildUsageSnapshot();
+    built = await buildUsageSnapshot(mode);
   } catch (err) {
     console.error('[main] usage refresh failed:', err);
+    scheduleRefreshLoop();
     return;
   }
+  const { snapshot } = built;
+  lastConsumptionRose = built.consumptionRose ?? lastConsumptionRose;
+  scheduleNextRefresh(refreshPolicy.nextRefreshDelayMs(lastConsumptionRose, configuredRefreshIntervalMs()));
   timings.lastRefresh = { at: new Date().toISOString(), ms: Date.now() - startedAt };
   lastSnapshot = snapshot;
   maybeNotifyThreshold(snapshot);
@@ -1057,7 +1129,7 @@ function registerIpcHandlers(): void {
     return redacted;
   });
 
-  ipcMain.on('usage:refreshRequest', () => { runDetached('refresh usage', refreshAndBroadcast()); });
+  ipcMain.on('usage:refreshRequest', () => { runDetached('refresh usage', refreshAndBroadcast('manual')); });
 
   ipcMain.on('window:openSettings', () => {
     settingsWindow = createSettingsWindow(settingsWindow);
@@ -1114,7 +1186,7 @@ function registerIpcHandlers(): void {
     await providers.disconnect(cfg);
     store.set('accounts', getAccounts().filter((a) => a.id !== id));
     broadcastSettings();
-    runDetached('refresh usage', refreshAndBroadcast());
+    runDetached('refresh usage', refreshAndBroadcast('forced'));
   });
 
   ipcMain.handle('accounts:connectClaude', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
@@ -1134,7 +1206,7 @@ function registerIpcHandlers(): void {
       ? { ...a, enabled: true, session: { sessionKey, organizationId, capturedAt, expiresAt: null } }
       : a));
     broadcastSettings();
-    runDetached('refresh usage', refreshAndBroadcast());
+    runDetached('refresh usage', refreshAndBroadcast('forced'));
     return { organizationId };
   });
 
@@ -1147,7 +1219,7 @@ function registerIpcHandlers(): void {
       ? { ...a, enabled: true, authMethod: 'pat', host, credentials: { token, username } }
       : a));
     broadcastSettings();
-    runDetached('refresh usage', refreshAndBroadcast());
+    runDetached('refresh usage', refreshAndBroadcast('forced'));
     return { username };
   });
 
@@ -1168,7 +1240,7 @@ function registerIpcHandlers(): void {
       ? { ...a, enabled: true, authMethod: 'oauth', host: payload.host, credentials: { token: accessToken, username }, oauthApp: { clientId: payload.clientId } }
       : a));
     broadcastSettings();
-    runDetached('refresh usage', refreshAndBroadcast());
+    runDetached('refresh usage', refreshAndBroadcast('forced'));
     return { username };
   });
 
@@ -1266,7 +1338,7 @@ function registerIpcHandlers(): void {
     const cleared = await providers.disconnect(cfg);
     updateAccount(id, () => cleared);
     broadcastSettings();
-    runDetached('refresh usage', refreshAndBroadcast());
+    runDetached('refresh usage', refreshAndBroadcast('forced'));
   });
 }
 
@@ -1308,7 +1380,7 @@ app.whenReady().then(async () => {
   trayHandle = createTray({
     getMainWindow: () => mainWindow,
     openSettings: openSettingsWindow,
-    refreshNow: () => { runDetached('refresh usage', refreshAndBroadcast()); },
+    refreshNow: () => { runDetached('refresh usage', refreshAndBroadcast('manual')); },
     store,
   });
 
@@ -1340,7 +1412,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  if (refreshTimer) clearInterval(refreshTimer);
+  if (refreshTimer) clearTimeout(refreshTimer);
   if (hoverPollTimer) clearInterval(hoverPollTimer);
   if (updateTimer) clearInterval(updateTimer);
 });

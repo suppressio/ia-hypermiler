@@ -60,6 +60,7 @@ ia-hypermiler/
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
 │   ├── claude-auth.ts           ← Claude session capture via login BrowserWindow, one Electron partition per account
 │   ├── providers.ts             ← provider-specific part of the account registry (connection, fetch, disconnect, secret redaction)
+│   ├── refreshPolicy.ts         ← adaptive refresh pace, per-account backoff, manual-refresh cache (+ test)
 │   ├── copilot-oauth.ts         ← GitHub OAuth App login (loopback PKCE), experimental alternative to the PAT (+ test)
 │   └── i18n/                    ← main-process strings (tray, notifications, dialogs, OAuth page): en.ts, it.ts, index.ts (+ test)
 ├── renderer/
@@ -67,6 +68,7 @@ ia-hypermiler/
 │   ├── settings.html, settings.css, settings.ts ← Settings window (accounts table, language, updates, …)
 │   ├── dom.ts                   ← byId(id, ElementType): typed, checked element access
 │   ├── schedule.ts              ← one-line summary of an account work schedule (+ test)
+│   ├── gauge.ts                 ← log-scale position of the instant pace against its target (+ test)
 │   ├── types.ts                 ← reduced local copy of the shared types (renderer tsconfig is isolated)
 │   └── i18n/                    ← UI strings: en.ts (reference), it.ts, index.ts (t, applyTranslations, Intl formatting) (+ test)
 ├── agents/advisor.ts            ← Claude advice agent (stub)
@@ -179,9 +181,10 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - `todayBudget` — today's budget (what was left at the start of the day over the working units from today on) vs today's consumption; `PACE_ALERT_RATIO`
 - `redistributedQuota` — what is left NOW over the working units from today on (`perUnit`) next to the even share (`idealPerUnit`): the primary pacing signal, needs no history
 - `daysUntilReset` / `workingDaysUntilReset`
-- `instantaneousRate`, `sustainableHourlyRate`, `efficiencyRating` — instant gauge (sustainable %/h spread over remaining working hours = working units × `hoursPerDay`, also with the schedule disabled) and star rating
+- `instantaneousRate`, `sustainableHourlyRate`, `efficiencyRating` — instant gauge (pace over the last hour, anchored on the sample just before it when not older than two hours; sustainable %/h spread over remaining working hours = working units × `hoursPerDay`, also with the schedule disabled; drawn on a log scale of pace/target, `renderer/gauge.ts`) and star rating
 - `hourlyOutlook`, `currentPacePerUnit`, `pickCriticalSnapshot` — rolling-hours windows read in hours (time to reset, projection at reset and autonomy at the instant pace; day metrics hidden); the verdict turns at risk when the pace (not preliminary) exceeds `PACE_ALERT_RATIO` × the redistributed quota; the widget opens on an at-risk/exhausted window first, then the most used
-- `dailyDeltas`, `deltaStats`, `windowVerdict` — daily consumption chart, peak/average/streak (completed days only), per-window verdict from the redistribution (at risk < 0.5× / behind < 0.95× / on track / ahead > 1.05× the even share; rolling-hours windows: projection/autonomy)
+- `chartDays` — the chart slots (last 7/30 days + 2/5 days to come): consumption, even share × day unit (thin bar), moving budget (dashed: that morning's budget on past days, `todayBudget` today, redistributed quota ahead; none outside the current period)
+- `dailyDeltas`, `deltaStats`, `windowVerdict` — daily consumption, peak/average/streak (completed days only), per-window verdict from the redistribution (at risk < 0.5× / behind < 0.95× / on track / ahead > 1.05× the even share; rolling-hours windows: projection/autonomy)
 - `hasPacing`, `repairFirstDayBaseline` — a billing cycle of unknown length has no pacing (also the tie-break of `pickCriticalWindow`); first history point on the period start day gets baseline 0
 - `tokenYield`, `consumptionCause` — value per token (Claude local insights; a cause is stated only with a clear signal)
 - `generateDailyTip` — `{ key, params }` from explicit conditions on the metrics above, never a generic tip
@@ -192,7 +195,8 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - Pace notification when today's consumption of any window exceeds `PACE_ALERT_RATIO` (1.5×) today's budget, at most once per day per account (`<account>:pace:<day>` flag). Only today's flags are kept.
 
 ### Auto-refresh
-- The main process refreshes every **30 minutes** via `setInterval`, also with the window closed (tray only). After each successful fetch the data is stored and sent to the renderer (`usage:update`).
+- The main process refreshes at the configured interval (default **30 minutes**), also with the window closed (tray only), with one `setTimeout` re-armed after every refresh. After each successful fetch the data is stored and sent to the renderer (`usage:update`).
+- Adaptive pace (`main/refreshPolicy.ts`): after a refresh where a freshly fetched window rose, the next one comes after **5 minutes**; the first one without a rise goes back to the interval. Per-account backoff: every consecutive failed fetch doubles that account's minimum gap (5 → 10 → 20 min, capped at the interval), a scheduled tick skips it meanwhile and shows its last data as stale with the error. Refresh modes: `scheduled` (timer, backoff applies), `manual` (button, tray, widget opening: reuses a fetch less than 1 minute old), `forced` (login, disconnect, account changes: always fetches). Only freshly fetched values are recorded as samples.
 
 ### Update check
 - At startup (packaged app only) and every 24h: GitHub Releases list (not `/releases/latest`, which skips pre-releases), one notification per version, download opens in the browser. No electron-updater (unsigned packages).

@@ -432,6 +432,39 @@ test('instantaneousRate clamps a negative delta to 0 (window reset in between)',
   assert.equal(budget.instantaneousRate(samples, now), 0);
 });
 
+test('instantaneousRate measures the last hour, anchored on the sample just before it', () => {
+  const now = new Date(2026, 6, 20, 12, 0, 0);
+  const samples = [
+    { timestamp: new Date(2026, 6, 20, 9, 0, 0), used: 0 }, // burst three hours ago: out
+    { timestamp: new Date(2026, 6, 20, 10, 50, 0), used: 30 }, // anchor
+    { timestamp: new Date(2026, 6, 20, 11, 30, 0), used: 31 },
+    { timestamp: new Date(2026, 6, 20, 12, 0, 0), used: 32 },
+  ];
+  // 2 points in 70 minutes: the morning burst no longer weighs on the pace.
+  assert.equal(budget.instantaneousRate(samples, now), 1.71);
+});
+
+test('instantaneousRate drops to 0 within the hour after consumption stops', () => {
+  const now = new Date(2026, 6, 20, 12, 0, 0);
+  const samples = [
+    { timestamp: new Date(2026, 6, 20, 10, 0, 0), used: 10 },
+    { timestamp: new Date(2026, 6, 20, 10, 55, 0), used: 20 },
+    { timestamp: new Date(2026, 6, 20, 11, 30, 0), used: 20 },
+    { timestamp: new Date(2026, 6, 20, 12, 0, 0), used: 20 },
+  ];
+  assert.equal(budget.instantaneousRate(samples, now), 0);
+});
+
+test('instantaneousRate ignores an anchor older than two lookbacks (the night is not averaged in)', () => {
+  const now = new Date(2026, 6, 20, 9, 30, 0);
+  const samples = [
+    { timestamp: new Date(2026, 6, 19, 18, 0, 0), used: 10 }, // yesterday evening
+    { timestamp: new Date(2026, 6, 20, 9, 0, 0), used: 10 },
+    { timestamp: new Date(2026, 6, 20, 9, 30, 0), used: 11 },
+  ];
+  assert.equal(budget.instantaneousRate(samples, now), 2); // 1 point in the last 30 min
+});
+
 // ---------------------------------------------------------------------------
 // sustainableHourlyRate — the gauge "target" marker
 // ---------------------------------------------------------------------------
@@ -834,4 +867,93 @@ test('parseDateKey returns local midnight, so the weekday matches the key', () =
   assert.equal(date.getDay(), 1);
   assert.equal(date.getHours(), 0);
   assert.equal(budget.localDateKey(date), '2026-07-13');
+});
+
+// ---------------------------------------------------------------------------
+// chartDays — daily chart slots: consumption, fixed share, moving budget
+// ---------------------------------------------------------------------------
+
+const HALF_FRIDAY_SCHEDULE: WorkSchedule = {
+  enabled: true,
+  days: { mon: 'full', tue: 'full', wed: 'full', thu: 'full', fri: 'half', sat: 'off', sun: 'off' },
+  hoursPerDay: 8,
+};
+
+test('chartDays: past days show that morning budget, today its budget, days to come the redistributed quota', () => {
+  // Monthly period of 19.5 working units (Fridays are half days): even share 5.13.
+  const periodStart = new Date(2026, 9, 1);
+  const periodEnd = new Date(2026, 10, 1);
+  const now = new Date(2026, 9, 9, 10, 12); // Friday
+  const slots = budget.chartDays({
+    dailyHistory: [
+      point('2026-10-07', 6, { dayStartUsed: 1 }),
+      point('2026-10-08', 15, { dayStartUsed: 6 }),
+      point('2026-10-09', 17.5, { dayStartUsed: 15 }),
+    ],
+    workSchedule: HALF_FRIDAY_SCHEDULE,
+    periodStart,
+    periodEnd,
+    totalPeriodWorkingUnits: budget.workingUnitsBetween(periodStart, periodEnd, HALF_FRIDAY_SCHEDULE),
+    now,
+    pastDays: 3,
+    upcomingDays: 2,
+    todayBudget: { budget: 3, usedToday: 2.5 },
+    redistribution: { perUnit: 6, idealPerUnit: 5.13, unitsLeft: 14 },
+  });
+  assert.deepEqual(slots, [
+    // 99% left over 16 working units from Wednesday on.
+    { date: '2026-10-07', delta: 5, fullShare: 5.13, dayUnit: 1, budget: 6.19, upcoming: false },
+    // Wednesday stayed under its budget: the Thursday budget went up, not down.
+    { date: '2026-10-08', delta: 9, fullShare: 5.13, dayUnit: 1, budget: 6.27, upcoming: false },
+    // Today: half day, its own budget.
+    { date: '2026-10-09', delta: 2.5, fullShare: 5.13, dayUnit: 0.5, budget: 3, upcoming: false },
+    // Weekend: no working share, no budget to spend.
+    { date: '2026-10-10', delta: null, fullShare: 5.13, dayUnit: 0, budget: 0, upcoming: true },
+    { date: '2026-10-11', delta: null, fullShare: 5.13, dayUnit: 0, budget: 0, upcoming: true },
+  ]);
+});
+
+test('chartDays: a working day to come gets the redistributed quota times its unit', () => {
+  const periodStart = new Date(2026, 9, 1);
+  const periodEnd = new Date(2026, 10, 1);
+  const slots = budget.chartDays({
+    dailyHistory: [],
+    workSchedule: HALF_FRIDAY_SCHEDULE,
+    periodStart,
+    periodEnd,
+    totalPeriodWorkingUnits: 19.5,
+    now: new Date(2026, 9, 8, 10, 0), // Thursday
+    pastDays: 1,
+    upcomingDays: 1,
+    todayBudget: null,
+    redistribution: { perUnit: 6, idealPerUnit: 5.13, unitsLeft: 15 },
+  });
+  assert.deepEqual(slots.map((s) => s.budget), [null, 3]); // no baseline today; Friday: half of 6
+});
+
+test('chartDays: no budget outside the period or without pacing', () => {
+  const periodStart = new Date(2026, 9, 1);
+  const periodEnd = new Date(2026, 9, 31); // the period ends tomorrow
+  const now = new Date(2026, 9, 30, 10, 0);
+  const args = {
+    dailyHistory: [point('2026-09-30', 90, { dayStartUsed: 80 })],
+    workSchedule: FULL_WEEK_SCHEDULE,
+    periodStart,
+    periodEnd,
+    now,
+    pastDays: 31,
+    upcomingDays: 2,
+    todayBudget: null,
+    redistribution: { perUnit: 10, idealPerUnit: 5, unitsLeft: 1 },
+  };
+  const slots = budget.chartDays({ ...args, totalPeriodWorkingUnits: 22 });
+  const lastMonth = slots.find((s) => s.date === '2026-09-30');
+  assert.ok(lastMonth);
+  // Previous period: its total is unknown, only the consumption is shown.
+  assert.deepEqual([lastMonth.budget, lastMonth.fullShare, lastMonth.delta], [null, null, 10]);
+  const afterReset = slots.at(-1);
+  assert.deepEqual([afterReset?.budget, afterReset?.fullShare], [null, null]);
+
+  const noPacing = budget.chartDays({ ...args, totalPeriodWorkingUnits: 0 });
+  assert.ok(noPacing.every((s) => s.budget === null && s.fullShare === null));
 });

@@ -31,7 +31,8 @@ export const it: Record<MessageKey, string> = {
   'widget.chart.notApplicable': 'Non applicabile su finestre di poche ore — vedi il consumo istantaneo.',
   'widget.chart.noData': '{date}: nessun dato',
   'widget.chart.point': '{date}: {value}',
-  'widget.chart.pointWithIdeal': '{date}: {value} (ideale {ideal})',
+  'widget.chart.pointWithBudget': '{date}: {value} (budget {budget})',
+  'widget.chart.upcoming': '{date}: budget {budget}',
 
   'widget.metric.efficiency': 'Indice efficienza',
   'widget.metric.efficiencyBelow': 'sotto il ritmo ideale',
