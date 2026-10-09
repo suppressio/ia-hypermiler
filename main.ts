@@ -1047,6 +1047,14 @@ function getUpdateSettings(): UpdateSettings {
 
 function openSettingsWindow(): void {
   settingsWindow = createSettingsWindow(settingsWindow);
+  // Return focus to the widget when Settings closes so that the next mouse click
+  // lands on the widget content directly rather than first focusing the window
+  // (the "focus-click" issue: on some platforms, the first click on an unfocused
+  // window activates it but is not forwarded to the web content — seen as
+  // "tab not clickable right after closing Settings", issue #25).
+  settingsWindow.once('closed', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
+  });
 }
 
 async function checkForUpdates(source: 'auto' | 'manual'): Promise<UpdateSettings> {
