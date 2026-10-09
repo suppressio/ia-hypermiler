@@ -19,7 +19,7 @@ import * as budget from './budget';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
 import path from 'path';
-import { fetchLatestUpdate, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
+import { fetchLatestUpdate, guideUrl, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
 import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost';
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
@@ -29,7 +29,7 @@ import type { ReportAccount } from './diagnostics/report';
 import { LogBuffer, captureConsole } from './diagnostics/logBuffer';
 import os from 'os';
 import { writeFile } from 'fs/promises';
-import { formatNumber, resolveLocale, setLocale, t } from './main/i18n/index';
+import { formatNumber, getLocale, resolveLocale, setLocale, t } from './main/i18n/index';
 import { randomUUID } from 'crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import type {
@@ -442,8 +442,8 @@ function computeWindowSnapshot(
   const todayBudget = pacingAvailable && !isRollingHours
     ? budget.todayBudget(ctx, todayPoint?.dayStartUsed ?? null)
     : null;
-  // The remaining quota redistributed per working day: the verdict and the "rebalance"
-  // tip rest on it (same scope as todayBudget: no daily budget on rolling hours).
+  // The remaining quota redistributed per working day: the verdict and the hint under
+  // today's budget rest on it (same scope as todayBudget: no daily budget on rolling hours).
   const redistribution = pacingAvailable && !isRollingHours ? budget.redistributedQuota(ctx) : null;
   const preliminary = pacingAvailable && !isRollingHours
     && budget.elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule, todayElapsedUnits) < PRELIMINARY_WORKING_UNITS;
@@ -478,16 +478,11 @@ function computeWindowSnapshot(
     tokenYield: localDaily ? budget.tokenYield(localDaily, dailyDeltasForWindow) : null,
     dailyTip: budget.generateDailyTip({
       window,
-      efficiencyIndex,
-      projectedUsage,
       daysUntilReset,
       workingDaysUntilReset,
       estimatedAutonomyWorkingDays,
-      instantRate,
-      sustainableRate,
       efficiencyRating,
       consumptionCause: localDaily ? budget.consumptionCause(localDaily, dailyDeltasForWindow) : null,
-      redistribution,
       preliminary,
     }),
   };
@@ -1258,6 +1253,8 @@ function registerIpcHandlers(): void {
   };
   ipcMain.handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
   ipcMain.handle('updates:openReleaseNotes', () => openTrustedUpdateUrl((a) => a.releaseUrl));
+  // The user guide (README on GitHub) in the interface language; fixed URL.
+  ipcMain.handle('app:openGuide', () => shell.openExternal(guideUrl(getLocale())));
 
   // Manual diagnostic report (Settings → Diagnostics, diagnostics/report.ts): after an
   // explicit confirmation listing what goes in, one text file in Downloads with the

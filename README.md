@@ -2,125 +2,152 @@
 
 # IA Hypermiler
 
-Electron desktop app (Windows / macOS / Linux) that monitors AI token usage — Claude and GitHub Copilot — and computes an optimal daily budget so the periodic quota does not run out before renewal. Built for the individual developer keeping an eye on their own usage, not for an admin monitoring a team.
+A small always-on-top widget for Windows, macOS and Linux that tells you how fast you are using your **Claude** and **GitHub Copilot** quotas, and how much you can still use today so the quota lasts until it renews.
 
-It shows an always-visible widget with the current usage, daily consumption against the ideal budget, an efficiency index and star rating, an end-of-period projection and tips derived from your real data. The interface is available in **English and Italian** (automatic from the system language, or chosen in Settings).
+<p align="center"><img src="docs/screenshots/widget-en.png" alt="The IA Hypermiler widget with example data" width="406"></p>
 
-> Personal project in active development, built in pair programming with Claude. Pre-releases (`v0.x-beta`) are published on GitHub; see "Project status" below for what works today.
+<sub>Example data, not a real account.</sub>
+
+- **Several accounts**, any mix of Claude and Copilot (e.g. a personal Claude account and a company Copilot seat), each with its own session.
+- **Your working days**: each account can follow its own schedule (full, half or day off per day of the week), so weekends do not count as time you could have spent the quota.
+- **A budget for today**, recomputed every morning from what is left.
+- **Notifications** when a quota passes your alert threshold, or when today's use goes well over today's budget.
+- English and Italian interface.
+
+> Personal project in active development. Releases are pre-releases (`v0.x-beta`).
 
 ---
-
-## Features
-
-- **Several accounts, any mix of providers** — e.g. two Claude accounts and one Copilot, each with its own isolated session; "Disconnect" really deletes the saved session.
-- **Your own pace per account** — each account has its own work schedule: e.g. a personal account with no constraints and a work account paced on working days (full, half or off per day of the week).
-- **A view of its own, not a copy of the provider dashboard** — consumption per day against the ideal share, a list of quota windows with a verdict based on the remaining quota redistributed per working day (on track / quota reduced / room to spare / at risk), instant consumption gauge, efficiency rating.
-- **Today's budget, on your real working hours** — how much you can still use today so the quota lasts until renewal; the working day is measured from the day's data (first to last increase in usage), and a notification warns you on the day you go well over (not only at 80%). The renewal day is asked only when the provider does not report it.
-- **Value per token** (Claude, opt-in) — reads local Claude Code sessions (token counts and tool names only, never message content) to show how many tokens you produce per 1% of quota and, when the signal is clear, why you are consuming faster.
-- **Update check** — at startup and every 24 hours; the right package for your system opens in the browser.
-- **Format-drift report** — if a provider changes its response format, a pre-filled GitHub issue draft opens (structure only, never real values) for you to review.
-
-## Requirements
-
-- Node.js 22 LTS or later
-- npm
 
 ## Install
 
-```bash
-git clone https://github.com/suppressio/ia-hypermiler.git
-cd ia-hypermiler
-npm install
-```
+Download the package for your system from [Releases](https://github.com/suppressio/ia-hypermiler/releases): `.exe` (Windows), `.dmg` (macOS), `.AppImage` or `.deb` (Linux).
 
-Or download a pre-built package (`.exe`, `.dmg`, `.AppImage`, `.deb`) from [Releases](https://github.com/suppressio/ia-hypermiler/releases).
+The packages are not signed: Windows SmartScreen and macOS Gatekeeper show a warning the first time. The app checks for new versions at startup and every 24 hours and opens the right download in your browser.
 
-## Run in development
+## First start
 
-```bash
-npm start
-```
+1. Open **Settings** (⚙ in the widget, or from the tray icon) → **Add account**.
+2. **Claude**: *Connect…* opens the claude.ai login (email/password or company SSO) in a window of its own. The app never asks you to paste a cookie.
+   **GitHub Copilot**: paste a Personal Access Token (fine-grained, *Plan* read-only, or classic with no scope), or sign in with a GitHub OAuth App. For a company seat on a `<name>.ghe.com` tenant, set the GitHub domain first.
+3. Optional, per account: the **work schedule** (last section of the account) and, only when the provider does not report it, the **renewal day**.
 
-Compiles TypeScript (main process + renderer) and starts Electron. On first start there are no accounts: open Settings (gear icon in the widget, or from the tray) and add a Claude and/or GitHub Copilot account.
-
-## Build, lint and test
-
-```bash
-npm run build      # TypeScript (main + renderer) + static assets into dist/
-npm run lint       # ESLint with type-aware rules (must stay at zero findings)
-npm run typecheck  # tsc --noEmit on every TypeScript project
-npm test           # build + unit tests (Node's built-in node:test runner)
-npm run coverage   # tests with Node's built-in coverage
-```
-
-- **Unit tests** run always and never touch the network (`fetch` and the SDK are mocked).
-- **Integration tests** (`tests/integration/`) call the real Claude and GitHub APIs and **skip themselves** when credentials are missing. To enable them locally — **never pasting credentials in chat or commits**:
-
-```bash
-cp .env.test.example .env.test
-# fill .env.test with your credentials (see the comments in the file)
-npm test
-```
-
-`.env.test` is already in `.gitignore` and is loaded automatically by Node (`--env-file-if-exists`), with no extra dependency.
-
-## Packaging
-
-```bash
-npm run package
-```
-
-Build + `electron-builder`: produces the installer for the current platform (`.dmg` on macOS, `.exe`/NSIS on Windows, `.AppImage` and `.deb` on Linux) in `release/`.
-
-### Cross-platform build (GitHub Actions)
-
-`.github/workflows/build.yml` builds on macOS/Windows/Linux in parallel from the same commit. It runs when a `v*` tag is pushed (e.g. `v0.4.0-beta`) or manually from the Actions tab: lint, tests, then the packages are attached to the GitHub Release of the tag. Packages are not signed: macOS Gatekeeper and Windows SmartScreen show a warning at install time.
+The widget stays in the tray when you close it; *Quit* is in the tray menu.
 
 ---
 
-## Project structure
+## Reading the widget
 
-```
-ia-hypermiler/
-├── main.ts, preload.ts        ← Electron main process + secure bridge to the renderer
-├── main/                      ← windows, tray, Claude login, OAuth, per-provider logic, main-process i18n
-├── renderer/                  ← widget and Settings window (vanilla HTML/CSS/TS) + UI i18n
-├── services/                  ← Claude/Copilot usage fetch, local sessions, update check (+ tests)
-├── diagnostics/               ← format-drift report via a GitHub issue draft
-├── store/                     ← local persistence (encrypted electron-store), defaults, normalization, migration
-├── budget.ts                  ← budget/efficiency/projection logic (+ budget.test.ts)
-├── agents/                    ← Claude agent for usage advice (stub)
-├── types/                     ← shared TypeScript types
-├── tests/                     ← test helpers + integration tests gated by local credentials
-└── *.md / *.it.md             ← project documentation, English + Italian
-```
+All the values below are about the quota window shown, usually the one needing attention most. With several accounts there is one tab per account; with several quota windows (e.g. Claude's 5-hour and weekly limits) a list above the main value shows each one with a short verdict. Click a row to see that window.
 
-Further reading:
+### The verdict on each window
 
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — data model, windows, indicators, extensibility
-- [`RESEARCH.md`](./RESEARCH.md) — what can really be read from the Claude and Copilot APIs, and with which limits
-- [`EVOLUTION.md`](./EVOLUTION.md) — retrospective and future directions with a cost/benefit analysis
-- [`PLAN.md`](./PLAN.md) — the original day-by-day plan
-- [`CLAUDE.md`](./CLAUDE.md) — project memory for Claude Code: stack, rules, milestones
+From the quota left **now**, spread over the working days until the reset, compared with an even split of the whole period:
+
+| Verdict | Meaning |
+|---|---|
+| **on track** | within ±5% of the even split |
+| **room to spare** | you have used less than planned: more per day is available |
+| **quota reduced** | you have used more than planned: less per day is left |
+| **at risk** | less than half the even split is left per day, or your current pace would run out before the reset |
+
+### Main value
+
+Percentage of the quota used, and below it the absolute value when the provider gives one (e.g. Copilot AI credits, Claude extra credit in USD) and the renewal date.
+
+### Instant consumption
+
+How fast you are using the quota right now, in % of the quota per hour.
+
+- **How it is computed**: the rise in usage over about the last hour of readings. While usage is rising the app reads the provider every 5 minutes, otherwise at the interval set in Settings (30 minutes by default).
+- **Target** (the white marker): the pace that would bring you exactly to 100% at the reset, spread over the working hours left.
+- **How to read it**: the marker is always in the middle. The faint ticks mark half the target (left) and twice the target (right), and the far right end is four times the target or more. The bar turns red above the target. A short burst is fine; a bar that stays red for hours is what to watch.
+
+### Daily consumption vs budget
+
+One slot per day: the last 7 or 30 days (Settings → Chart range), then the next 2 or 5 days.
+
+- **Wide bar**: what you used that day. Red when it went over that day's budget.
+- **Thin bar beside it**: the even split of a full working day. The coloured part is that day's working share (all of it, half on a half day); the grey part is the share the day does not get (all of it on a day off).
+- **Dashed line**, the part that moves:
+  - on a past day, the budget you had **that morning**;
+  - today, **today's budget**;
+  - on the days to come, what is left **redistributed** over the working days until the reset.
+
+  A heavy day lowers the line of the days after it; a light day raises it.
+- **Ideal share** (top right): the even split of a full working day for the whole period.
+
+### Today: used / budget
+
+What you have used today against **today's budget**: what was left this morning, divided by the working days until the reset (today included), times today's share (half on a half day). It stays fixed for the day.
+
+Below it: the quota left per working day from now on, next to the ideal one, and what is left today or how far over you are.
+
+### Efficiency index and rating
+
+- **Efficiency index**: the ideal pace divided by your actual pace since the start of the period, on working days. Above 1 you are using less than the ideal pace, below 1 more.
+- **Stars** (over the chart range): how consistently each day stayed close to its ideal share. 5 stars: on average you used two thirds of the share or less; 3 stars: about the share; 1 star: well over it.
+
+### Projection
+
+Where usage would be at the reset if you keep going like this: half the average pace of the period, half the pace of the last three completed working days. It can go over 100%: that is the point.
+
+### Days to reset
+
+Calendar days until the reset, and in brackets the working days according to the account's schedule.
+
+### Estimated autonomy
+
+How many working days the quota lasts at the current pace. **Shown only when it runs out before the reset**: otherwise it would only repeat the projection.
+
+### Daily peak / average
+
+Your heaviest day and your average day among the completed days of the chart range. Shown from two completed days on.
+
+### Streak under budget
+
+Consecutive completed days, up to yesterday, that stayed within their share. Hidden while it is 0.
+
+### Tip of the day
+
+Shown only when it adds something the numbers above do not say: you would run out before the reset (and by how much to slow down), a good rating that leaves room for a longer session, a quota almost used up close to the reset, or (with local insights) a link between your heaviest days and very long contexts.
+
+### Colours
+
+Percent-of-quota values (main value, projection, today against today's budget) turn **orange** 5 points below your alert threshold and **red** from the threshold on (Settings → Notifications, 80% by default).
+
+### Local insights (Claude Code, optional)
+
+When enabled on one Claude account, the app reads the Claude Code sessions on this computer (token counts and tool names only, never the content of your messages). It shows how many tokens you get per 1% of quota, how much of it comes from very long contexts (over 150k) or very long sessions, and your most used tools.
 
 ---
 
-## Security and credentials
+## Settings
 
-- `nodeIntegration: false` and `contextIsolation: true` always: the renderer never has direct access to Node.js; every value coming from it through IPC is validated.
-- The Claude session comes from a real login in an embedded window (classic or SSO), in a partition dedicated to the account: the app never asks you to paste a cookie.
-- The GitHub Copilot token is a Personal Access Token (fine-grained, "Plan" read-only) or an OAuth App token, stored encrypted locally.
-- No credential is ever exposed to the renderer or logged; `.env.test` is excluded from git.
+| Section | What you can set |
+|---|---|
+| **Accounts** | add, connect, disconnect (deletes the saved session), enable/disable; per account: name, work schedule, renewal day when the provider does not report it, Claude login method and local insights, Copilot domain and authentication |
+| **Appearance** | language, window style (light, dark, transparent), chart range (7 or 30 days), refresh interval, accent colour |
+| **Notifications** | alert threshold (%), also used by the colours |
+| **Updates** | installed version, check now, automatic check; **User guide** opens this page |
+| **Diagnostics** | automatic report of a provider format change; diagnostic report file |
 
-## Project status
+## Notifications
 
-- ✅ Real data from Claude (internal endpoint + session) and Copilot (official API for personal plans; company seats have no self-service data source, see `RESEARCH.md`)
-- ✅ Several accounts, multi-language UI (EN/IT), update check, format-drift diagnostics
-- ✅ Own visualizations: daily consumption vs budget, window verdicts, instant gauge, rating, value per token
-- ✅ Strict TypeScript (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), type-aware ESLint at zero findings, unit tests on every pure module
-- ✅ Cross-platform CI publishing pre-releases
-- 🟨 Advice agent (`agents/advisor.ts`) still a stub
-- ⬜ Next: shared IPC contract, then extracting a testable core from `main.ts` to work test-first
+- **Threshold**: when a quota passes your alert threshold, once a day per account.
+- **Pace**: when today's use goes over 1.5× today's budget, once a day per account. It warns you on the day things go wrong, while there is still time to adjust.
+
+## Privacy and security
+
+- Sessions and tokens are stored only on your computer, encrypted, and are never shown to the interface or written to logs.
+- The app talks only to the providers (claude.ai, the GitHub API of your domain) and to GitHub Releases for the update check. Nothing is sent anywhere else.
+- **Reporting a problem**: Settings → Diagnostics → *Create diagnostic report (GitHub)* saves a text file in Downloads and opens a GitHub issue draft. The file **does** contain your usage values (percentages, amounts, reset dates) but no names, ids or credentials. Issues on this repository are **public**: read the file before attaching it, or describe the problem without it.
+- If a provider changes its response format, a pre-filled issue draft opens with the structure only (field names and types, never values). You can turn this off in Settings.
+
+---
+
+## Development
+
+Building from source, tests, packaging and the project structure are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 

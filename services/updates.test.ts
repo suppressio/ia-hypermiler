@@ -3,7 +3,7 @@
 
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { compareVersions, fetchLatestUpdate, pickDownloadAsset, pickLatestRelease, RELEASES_API_URL } from './updates';
+import { compareVersions, fetchLatestUpdate, guideUrl, pickDownloadAsset, pickLatestRelease, RELEASES_API_URL, TRUSTED_DOWNLOAD_PREFIX } from './updates';
 import type { GithubRelease, GithubReleaseAsset } from './updates';
 
 const originalFetch = globalThis.fetch;
@@ -105,4 +105,10 @@ test('fetchLatestUpdate: HTTP error or unexpected response → explicit error', 
   await assert.rejects(fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), /GitHub Releases answered 403/);
   globalThis.fetch = (async () => new Response(JSON.stringify({ message: 'x' }), { status: 200 }));
   await assert.rejects(fetchLatestUpdate('0.2.1-beta', { platform: 'linux', arch: 'x64', isAppImage: true }), /not a list/);
+});
+
+test('guideUrl: the README of the repository in the interface language', () => {
+  assert.equal(guideUrl('en'), 'https://github.com/suppressio/ia-hypermiler/blob/main/README.md');
+  assert.equal(guideUrl('it'), 'https://github.com/suppressio/ia-hypermiler/blob/main/README.it.md');
+  assert.ok(guideUrl('it').startsWith(TRUSTED_DOWNLOAD_PREFIX));
 });

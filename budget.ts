@@ -403,7 +403,7 @@ export function todayBudget(ctx: Omit<PeriodContext, 'todayElapsedUnits' | 'rece
  * what is left NOW spread over the working units from today on (today counted whole,
  * as in todayBudget) — down after heavy days, up after light ones — next to the even
  * share of the whole period. The primary pacing signal (windowVerdict, tip
- * `rebalance`): it needs no history, so it is there from the first refresh of the
+ * the "Today" hint): it needs no history, so it is there from the first refresh of the
  * morning, and it follows today's consumption while the day runs (todayBudget stays
  * fixed). Null when utilization is unknown or no working unit is left.
  */
@@ -920,18 +920,12 @@ function round2(value: number): number {
 
 export interface DailyTipContext {
   window: QuotaWindow;
-  efficiencyIndex: number | null;
-  projectedUsage: number | null;
   daysUntilReset: number | null;
   workingDaysUntilReset: number | null;
   estimatedAutonomyWorkingDays: number | null;
-  instantRate: number | null;
-  sustainableRate: number | null;
   efficiencyRating: EfficiencyRating | null;
   // Only for the Claude account with local insights enabled — see consumptionCause.
   consumptionCause?: ConsumptionCause | null;
-  // The remaining quota redistributed (redistributedQuota), null without a daily budget.
-  redistribution: Redistribution | null;
   // Projection/autonomy rest on too little data (see main.ts PRELIMINARY_WORKING_UNITS):
   // the tips built on them are skipped.
   preliminary: boolean;
@@ -946,20 +940,20 @@ export const NO_TIP: DailyTip = { key: 'none', params: {} };
  * without a refresh. Every candidate below has an explicit condition on values
  * already computed in this file — never a generic tip picked at random. When
  * several hold, one is chosen among the applicable ones (variety without ever
- * stating something false); when none holds, `none` says so honestly.
+ * stating something false); when none holds, `none` and the widget shows no tip.
+ * Only tips that add an action or a cause to what the widget already shows (user
+ * feedback: a rich dashboard is not useful if it repeats itself): the pace above
+ * target is the instant gauge, a projection over 100% is the projection, the quota
+ * redistributed per day is the hint under today's budget — those tips are gone.
  */
 export function generateDailyTip(ctx: DailyTipContext, random: () => number = Math.random): DailyTip {
   const {
     window,
-    projectedUsage,
     daysUntilReset,
     workingDaysUntilReset,
     estimatedAutonomyWorkingDays,
-    instantRate,
-    sustainableRate,
     efficiencyRating,
     consumptionCause: cause,
-    redistribution,
     preliminary,
   } = ctx;
   const utilization = normalizedUtilization(window);
@@ -984,16 +978,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
     });
   }
 
-  // 2. The pace of the last hours is above the sustainable one to reach the
-  // reset exactly at 100% — see instantaneousRate/sustainableHourlyRate.
-  if (instantRate !== null && sustainableRate !== null && instantRate > sustainableRate) {
-    candidates.push({
-      key: 'instantRate',
-      params: { instantRate: round2(instantRate), sustainableRate: round2(sustainableRate) },
-    });
-  }
-
-  // 3. High rating over the last days: real room for heavier use today.
+  // 2. High rating over the last days: real room for heavier use today.
   if (efficiencyRating !== null && efficiencyRating.stars >= 4) {
     candidates.push({
       key: 'rating',
@@ -1001,7 +986,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
     });
   }
 
-  // 4. Few days to the reset and usage already high: better to ration what is left.
+  // 3. Few days to the reset and usage already high: better to ration what is left.
   if (daysUntilReset !== null && daysUntilReset <= 2 && utilization !== null && utilization >= 70) {
     candidates.push({
       key: daysUntilReset === 0 ? 'nearResetToday' : 'nearReset',
@@ -1009,13 +994,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
     });
   }
 
-  // 5. The linear projection to the end of the period exceeds 100%, even though
-  // it has not been reached yet — earlier signal than case 1 (which needs autonomy).
-  if (!preliminary && projectedUsage !== null && projectedUsage >= 100 && utilization !== null && utilization < 100) {
-    candidates.push({ key: 'projected', params: { projectedUsage: round1(projectedUsage) } });
-  }
-
-  // 6. Strong link between high-consumption days and large context (local
+  // 4. Strong link between high-consumption days and large context (local
   // Claude Code sessions) — see consumptionCause: present only when the signal is clear.
   if (cause) {
     candidates.push({
@@ -1026,19 +1005,6 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
         days: cause.daysCompared,
       },
     });
-  }
-
-  // 7. The quota left per working day is clearly below or above the even share:
-  // how much per day from now on (the redistribution, see redistributedQuota).
-  if (redistribution && redistribution.idealPerUnit > 0) {
-    const ratio = redistribution.perUnit / redistribution.idealPerUnit;
-    if (ratio < REDISTRIBUTION_ON_TRACK_LOW || ratio > REDISTRIBUTION_ON_TRACK_HIGH) {
-      candidates.push({
-        key: ratio < 1 ? 'rebalanceDown' : 'rebalanceUp',
-        // One decimal, as the redistribution shown next to today's budget.
-        params: { perUnit: round1(redistribution.perUnit), idealPerUnit: round1(redistribution.idealPerUnit), days: redistribution.unitsLeft },
-      });
-    }
   }
 
   // Index capped to the last candidate: an injected random returning 1
