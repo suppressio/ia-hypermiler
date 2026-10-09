@@ -55,6 +55,7 @@ export interface ChartDay {
   dayUnit: number;
   budget: number | null;
   upcoming: boolean;
+  overBudget: boolean;
 }
 
 export interface DeltaStats {

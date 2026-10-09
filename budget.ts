@@ -634,13 +634,17 @@ export function chartDays(args: {
         budget = base !== undefined && unitsFromDay > 0 ? round2((Math.max(0, 100 - base) / unitsFromDay) * dayUnit) : null;
       }
     }
+    const delta = offset > 0 ? null : deltas.get(date) ?? null;
+    const share = inPeriod ? fullShare : null;
+    const limit = budget ?? (share !== null ? share * dayUnit : null);
     slots.push({
       date,
-      delta: offset > 0 ? null : deltas.get(date) ?? null,
-      fullShare: inPeriod ? fullShare : null,
+      delta,
+      fullShare: share,
       dayUnit,
       budget,
       upcoming: offset > 0,
+      overBudget: delta !== null && limit !== null && delta > limit,
     });
   }
   return slots;
@@ -699,28 +703,28 @@ export function repairFirstDayBaseline(points: DailyUsagePoint[], periodStart: D
 
 /**
  * Daily consumption peak/average and streak of consecutive days (from the most
- * recent) within the ideal share — computed on the `dailyDeltas` deltas, not on the
- * cumulative value: on the cumulative value the "peak" was always the last day and
- * the streak meant nothing. Days with a reset (delta null) are ignored; the streak is
- * null without pacing (no ideal share to compare with). Only completed days: today is
- * still running (in the morning its 0% lowered the average and lengthened the streak).
+ * recent) under budget, on the chart slots (chartDays): the same days and the same
+ * limit as the bars, so a day drawn over budget never counts in the streak (it used
+ * to compare with the even share while the bars compared with the moving budget).
+ * Days with a reset (delta null) are ignored; a day off with no consumption neither
+ * extends nor breaks the streak; the streak is null without any limit to compare with
+ * or without any consumption. Only completed days: today is still running.
  */
-export function deltaStats(deltas: DailyDelta[], now: Date): DeltaStats {
+export function deltaStats(chart: ChartDay[], now: Date): DeltaStats {
   const todayKey = localDateKey(now);
-  const valid = deltas.filter((d): d is DailyDelta & { delta: number } => d.delta !== null && d.date < todayKey);
+  const valid = chart.filter((d): d is ChartDay & { delta: number } => !d.upcoming && d.delta !== null && d.date < todayKey);
   if (valid.length === 0) return { peak: null, avg: null, streakUnderBudget: null };
   const values = valid.map((d) => d.delta);
   const peak = round2(Math.max(...values));
   const avg = round2(values.reduce((sum, v) => sum + v, 0) / values.length);
 
-  // No streak without any consumption (as efficiencyRating): "1 day under budget" on an
-  // unused quota said nothing.
   let streakUnderBudget: number | null = null;
-  if (valid.some((d) => d.idealShare !== null) && valid.some((d) => d.delta > 0)) {
+  if (valid.some((d) => d.budget !== null || d.fullShare !== null) && valid.some((d) => d.delta > 0)) {
     streakUnderBudget = 0;
-    for (const { delta, idealShare } of [...valid].reverse()) {
-      if (idealShare !== null && delta <= idealShare) streakUnderBudget += 1;
-      else break;
+    for (const day of [...valid].reverse()) {
+      if (day.dayUnit === 0 && day.delta === 0) continue;
+      if (day.overBudget || (day.budget === null && day.fullShare === null)) break;
+      streakUnderBudget += 1;
     }
   }
   return { peak, avg, streakUnderBudget };

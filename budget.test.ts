@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as budget from './budget';
-import type { QuotaWindow, WorkSchedule, DailyUsagePoint } from './types/index';
+import type { ChartDay, QuotaWindow, WorkSchedule, DailyUsagePoint } from './types/index';
 import { at } from './tests/support/at';
 
 const FULL_WEEK_SCHEDULE: WorkSchedule = {
@@ -307,6 +307,11 @@ function point(date: string, used: number, extra: Partial<DailyUsagePoint> = {})
   return { date, accountId: 'acc', windowId: 'w', used, ...extra };
 }
 
+// A chart slot (budget.chartDays) of a full working day with share and budget 5.
+function slot(date: string, delta: number | null, extra: Partial<ChartDay> = {}): ChartDay {
+  return { date, delta, fullShare: 5, dayUnit: 1, budget: 5, upcoming: false, overBudget: delta !== null && delta > 5, ...extra };
+}
+
 test('updateDailyPoint: new day → baseline from the previous point, kept for the whole day', () => {
   const morning = new Date(2026, 6, 14, 8, 0);
   const created = budget.updateDailyPoint({
@@ -543,8 +548,8 @@ test('efficiencyRating and deltaStats ignore today (still running)', () => {
   const wednesdayMorning = new Date(2026, 6, 15, 9);
   // Only Tuesday counts (10 vs ideal 5 → ratio 0.5), not today's 0 (which scored 3×).
   assert.deepEqual(budget.efficiencyRating(history, FULL_WEEK_SCHEDULE, 20, wednesdayMorning), { stars: 1, avgRatio: 0.5 });
-  const deltas = budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 20);
-  assert.deepEqual(budget.deltaStats(deltas, wednesdayMorning), { peak: 10, avg: 10, streakUnderBudget: 0 });
+  const stats = budget.deltaStats([slot('2026-07-14', 10), slot('2026-07-15', 0)], wednesdayMorning);
+  assert.deepEqual(stats, { peak: 10, avg: 10, streakUnderBudget: 0 });
 });
 
 test('efficiencyRating: no consumption on any rated day → null (no 5 stars for an unused quota)', () => {
@@ -649,27 +654,39 @@ test('dailyDeltas: without pacing (0 total units) deltas remain, ideal share is 
   assert.deepEqual(budget.dailyDeltas(history, FULL_WEEK_SCHEDULE, 0), [{ date: '2026-07-14', delta: 2, idealShare: null }]);
 });
 
-test('deltaStats: peak/average on deltas (not on the cumulative value) and streak within the ideal share', () => {
+test('deltaStats: peak/average on daily consumption and streak of days not over budget', () => {
   const stats = budget.deltaStats([
-    { date: '2026-07-13', delta: 8, idealShare: 5 },
-    { date: '2026-07-14', delta: null, idealShare: 5 },
-    { date: '2026-07-15', delta: 2, idealShare: 5 },
-    { date: '2026-07-16', delta: 4, idealShare: 5 },
+    slot('2026-07-13', 8),
+    slot('2026-07-14', null),
+    slot('2026-07-15', 2),
+    slot('2026-07-16', 4),
   ], LATER);
   assert.deepEqual(stats, { peak: 8, avg: 4.67, streakUnderBudget: 2 });
 });
 
-test('deltaStats: no streak without any consumption', () => {
+test('deltaStats: the streak uses the same limit as the bars (the moving budget)', () => {
+  // Under the even share (5) but over that morning's budget (3): drawn red, so it breaks the streak.
+  const stats = budget.deltaStats([slot('2026-07-15', 2), slot('2026-07-16', 4, { budget: 3, overBudget: true })], LATER);
+  assert.equal(stats.streakUnderBudget, 0);
+});
+
+test('deltaStats: a day off with no consumption neither extends nor breaks the streak', () => {
+  const off = { dayUnit: 0, budget: 0 };
   const stats = budget.deltaStats([
-    { date: '2026-07-13', delta: 0, idealShare: 5 },
-    { date: '2026-07-14', delta: 0, idealShare: 5 },
+    slot('2026-07-16', 3), slot('2026-07-17', 4), slot('2026-07-18', 0, off), slot('2026-07-19', 0, off),
   ], LATER);
+  assert.equal(stats.streakUnderBudget, 2);
+});
+
+test('deltaStats: no streak without any consumption', () => {
+  const stats = budget.deltaStats([slot('2026-07-13', 0), slot('2026-07-14', 0)], LATER);
   assert.deepEqual(stats, { peak: 0, avg: 0, streakUnderBudget: null });
 });
 
-test('deltaStats: no data → all null; without pacing the streak is null', () => {
+test('deltaStats: no data → all null; without any limit the streak is null; days to come ignored', () => {
   assert.deepEqual(budget.deltaStats([], LATER), { peak: null, avg: null, streakUnderBudget: null });
-  assert.equal(budget.deltaStats([{ date: '2026-07-13', delta: 3, idealShare: null }], LATER).streakUnderBudget, null);
+  assert.equal(budget.deltaStats([slot('2026-07-13', 3, { budget: null, fullShare: null })], LATER).streakUnderBudget, null);
+  assert.deepEqual(budget.deltaStats([slot('2026-08-03', null, { upcoming: true })], LATER).peak, null);
 });
 
 test('windowVerdict without a redistribution (rolling hours): exhausted, at risk (autonomy or projection), on track, no pacing', () => {
@@ -763,8 +780,12 @@ test('scenario: heavy first day of a monthly window first read in the afternoon,
   assert.deepEqual(budget.todayBudget(ctx, today.dayStartUsed ?? null), { budget: 8.33, usedToday: 0.03 });
   assert.equal(budget.windowVerdict({ window, projectedUsage: null, workingDaysUntilReset: null, estimatedAutonomyWorkingDays: null, redistribution, pacePerUnit: null, preliminary: true, hourly: null }).kind, 'behind');
 
-  const deltas = budget.dailyDeltas([repaired, today], FULL_WEEK_SCHEDULE, 10);
-  assert.deepEqual(budget.deltaStats(deltas, morning), { peak: 25, avg: 25, streakUnderBudget: 0 });
+  const chart = budget.chartDays({
+    dailyHistory: [repaired, today], workSchedule: FULL_WEEK_SCHEDULE, periodStart: P_START, periodEnd: P_END,
+    totalPeriodWorkingUnits: 10, now: morning, pastDays: 2, upcomingDays: 0, todayBudget: null, redistribution,
+  });
+  assert.equal(chart[0]?.overBudget, true); // 25% on a morning budget of 10%
+  assert.deepEqual(budget.deltaStats(chart, morning), { peak: 25, avg: 25, streakUnderBudget: 0 });
   assert.equal(budget.efficiencyRating([repaired, today], FULL_WEEK_SCHEDULE, 10, morning)?.stars, 1);
 });
 
@@ -873,14 +894,14 @@ test('chartDays: past days show that morning budget, today its budget, days to c
   });
   assert.deepEqual(slots, [
     // 99% left over 16 working units from Wednesday on.
-    { date: '2026-10-07', delta: 5, fullShare: 5.13, dayUnit: 1, budget: 6.19, upcoming: false },
+    { date: '2026-10-07', delta: 5, fullShare: 5.13, dayUnit: 1, budget: 6.19, upcoming: false, overBudget: false },
     // Wednesday stayed under its budget: the Thursday budget went up, not down.
-    { date: '2026-10-08', delta: 9, fullShare: 5.13, dayUnit: 1, budget: 6.27, upcoming: false },
+    { date: '2026-10-08', delta: 9, fullShare: 5.13, dayUnit: 1, budget: 6.27, upcoming: false, overBudget: true },
     // Today: half day, its own budget.
-    { date: '2026-10-09', delta: 2.5, fullShare: 5.13, dayUnit: 0.5, budget: 3, upcoming: false },
+    { date: '2026-10-09', delta: 2.5, fullShare: 5.13, dayUnit: 0.5, budget: 3, upcoming: false, overBudget: false },
     // Weekend: no working share, no budget to spend.
-    { date: '2026-10-10', delta: null, fullShare: 5.13, dayUnit: 0, budget: 0, upcoming: true },
-    { date: '2026-10-11', delta: null, fullShare: 5.13, dayUnit: 0, budget: 0, upcoming: true },
+    { date: '2026-10-10', delta: null, fullShare: 5.13, dayUnit: 0, budget: 0, upcoming: true, overBudget: false },
+    { date: '2026-10-11', delta: null, fullShare: 5.13, dayUnit: 0, budget: 0, upcoming: true, overBudget: false },
   ]);
 });
 

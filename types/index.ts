@@ -127,7 +127,9 @@ export interface DailyDelta {
  * - `budget`: the moving budget (dashed line) — for a past day what was available that
  *   morning, for today today's budget, for a day to come the remaining quota
  *   redistributed; null when unknown (other period, no pacing);
- * - `upcoming`: a day after today.
+ * - `upcoming`: a day after today;
+ * - `overBudget`: the day used more than its limit — the moving budget, or the even
+ *   share of the day where that is unknown (bar colour, streak under budget).
  */
 export interface ChartDay {
   date: string;
@@ -136,6 +138,7 @@ export interface ChartDay {
   dayUnit: number;
   budget: number | null;
   upcoming: boolean;
+  overBudget: boolean;
 }
 
 /** Daily consumption statistics — see budget.deltaStats. */
