@@ -118,6 +118,26 @@ export interface DailyDelta {
   idealShare: number | null;
 }
 
+/**
+ * One slot of the daily chart — see budget.chartDays:
+ * - `delta`: that day's consumption (null: no data, reset in between, or a day to come);
+ * - `fullShare`: the even share of a full working day (100 / working units of the
+ *   period), null without pacing or outside the current period; `dayUnit` (1/0.5/0) says how much of it is a working
+ *   share that day — the thin bar, coloured for the working part, grey for the rest;
+ * - `budget`: the moving budget (dashed line) — for a past day what was available that
+ *   morning, for today today's budget, for a day to come the remaining quota
+ *   redistributed; null when unknown (other period, no pacing);
+ * - `upcoming`: a day after today.
+ */
+export interface ChartDay {
+  date: string;
+  delta: number | null;
+  fullShare: number | null;
+  dayUnit: number;
+  budget: number | null;
+  upcoming: boolean;
+}
+
 /** Daily consumption statistics — see budget.deltaStats. */
 export interface DeltaStats {
   peak: number | null;
@@ -168,8 +188,8 @@ export interface DailyTip {
 export interface QuotaWindowSnapshot {
   window: QuotaWindow;
   dailyHistory: DailyUsagePoint[];
-  // Daily consumption vs ideal share (widget chart) and related statistics.
-  dailyDeltas: DailyDelta[];
+  // Daily consumption vs budget (widget chart, budget.chartDays) and related statistics.
+  chart: ChartDay[];
   deltaStats: DeltaStats;
   verdict: WindowVerdict;
   efficiencyIndex: number | null;

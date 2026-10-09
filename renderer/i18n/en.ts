@@ -35,7 +35,8 @@ export const en = {
   'widget.chart.notApplicable': 'Not applicable to windows of a few hours — see instant consumption.',
   'widget.chart.noData': '{date}: no data',
   'widget.chart.point': '{date}: {value}',
-  'widget.chart.pointWithIdeal': '{date}: {value} (ideal {ideal})',
+  'widget.chart.pointWithBudget': '{date}: {value} (budget {budget})',
+  'widget.chart.upcoming': '{date}: budget {budget}',
 
   // --- Widget: metrics -------------------------------------------------------
   'widget.metric.efficiency': 'Efficiency index',

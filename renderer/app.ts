@@ -6,7 +6,6 @@ import type {
   AccountId,
   AccountSnapshot,
   AppSettings,
-  DailyDelta,
   DailyTip,
   HypermilerBridge,
   ProviderId,
@@ -17,7 +16,8 @@ import type {
 } from './types';
 import { byId } from './dom.js';
 import { applySeverity, severityLevel } from './severity.js';
-import { localDateKey, parseDateKey } from './dates.js';
+import { GAUGE_TARGET_POSITION, GAUGE_TICK_RATIOS, gaugePosition } from './gauge.js';
+import { parseDateKey } from './dates.js';
 import {
   applyTranslations,
   formatDate,
@@ -260,28 +260,15 @@ function renderTodayBudget(winSnap: QuotaWindowSnapshot | undefined): void {
 
 // --- Daily chart -------------------------------------------------------------------
 
-// Fixed date slots (7 or 30), filling days without data: with a single day of
-// history (account just connected) one full-width bar looked like a filled
-// rectangle instead of a chart (user feedback).
-function buildChartSeries(deltas: DailyDelta[], days: number): DailyDelta[] {
-  const byDate = new Map(deltas.map((d) => [d.date, d]));
-  const series: DailyDelta[] = [];
-  const today = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = localDateKey(d);
-    series.push(byDate.get(dateStr) ?? { date: dateStr, delta: null, idealShare: null });
-  }
-  return series;
-}
-
-// "Daily consumption vs budget" chart (EVOLUTION.md point 1): each bar is the
-// consumption of THAT day (winSnap.dailyDeltas, from budget.dailyDeltas), not the
-// cumulative % shown by the provider dashboard. The tick on each slot is the
-// day's ideal share (0 on non-working days, half on half days): bars above it use
-// --warning. Days without data or with a reset in between stay a faint bar.
-function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): void {
+// "Daily consumption vs budget" chart (EVOLUTION.md point 1), one slot per day from
+// winSnap.chart (budget.chartDays: the last 7 or 30 days, then 2 or 5 days to come):
+// - wide bar: the consumption of THAT day (not the cumulative % of the provider
+//   dashboard), --warning above that day's budget; faint when there is no data;
+// - thin bar beside it: the even share of a full working day, coloured for the part
+//   that is working time that day (all of it, half, none) and grey for the rest;
+// - dashed line: the moving budget — what was available that morning on a past day,
+//   today's budget today, the remaining quota redistributed on the days to come.
+function renderChart(winSnap: QuotaWindowSnapshot | undefined): void {
   const container = byId('chart', HTMLDivElement);
   const idealLabel = byId('chart-ideal', HTMLSpanElement);
   container.innerHTML = '';
@@ -297,14 +284,18 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): vo
     return;
   }
 
-  const series = buildChartSeries(winSnap?.dailyDeltas ?? [], days);
-  const fullDayIdeal = Math.max(0, ...series.map((d) => d.idealShare ?? 0));
-  if (fullDayIdeal > 0) idealLabel.textContent = t('widget.chart.ideal', { value: formatPercent(fullDayIdeal) });
+  const series = winSnap?.chart ?? [];
+  if (series.length === 0) return;
+  const fullShare = Math.max(0, ...series.map((d) => d.fullShare ?? 0));
+  if (fullShare > 0) idealLabel.textContent = t('widget.chart.ideal', { value: formatPercent(fullShare) });
 
   const width = container.clientWidth || 300;
   const height = 90;
-  const max = Math.max(0.1, ...series.map((d) => Math.max(d.delta ?? 0, d.idealShare ?? 0)));
-  const barWidth = width / series.length;
+  const max = Math.max(0.1, ...series.map((d) => Math.max(d.delta ?? 0, d.fullShare ?? 0, d.budget ?? 0)));
+  const slotWidth = width / series.length;
+  const barWidth = Math.max(1, slotWidth * 0.62 - 1);
+  const shareX = slotWidth * 0.66;
+  const shareWidth = Math.max(1.5, slotWidth * 0.2);
   const scale = (value: number) => (value / max) * (height - 4);
 
   const svgNs = 'http://www.w3.org/2000/svg';
@@ -312,40 +303,61 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): vo
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   svg.setAttribute('width', '100%');
   svg.setAttribute('height', String(height));
+  const addRect = (x: number, y: number, w: number, h: number, fill: string, opacity: string): SVGRectElement => {
+    const rect = document.createElementNS(svgNs, 'rect');
+    rect.setAttribute('x', String(x));
+    rect.setAttribute('y', String(y));
+    rect.setAttribute('width', String(w));
+    rect.setAttribute('height', String(h));
+    rect.setAttribute('fill', fill);
+    rect.setAttribute('opacity', opacity);
+    svg.appendChild(rect);
+    return rect;
+  };
 
   series.forEach((point, i) => {
-    const delta = point.delta;
-    const barHeight = Math.max(2, scale(delta ?? 0));
-    const overBudget = delta !== null && point.idealShare !== null && delta > point.idealShare;
-    const rect = document.createElementNS(svgNs, 'rect');
-    rect.setAttribute('x', String(i * barWidth + 1));
-    rect.setAttribute('y', String(height - barHeight));
-    rect.setAttribute('width', String(Math.max(1, barWidth - 2)));
-    rect.setAttribute('height', String(barHeight));
-    rect.setAttribute('fill', overBudget ? 'var(--warning)' : 'var(--accent)');
-    rect.setAttribute('opacity', delta !== null ? '0.85' : '0.15');
-    const title = document.createElementNS(svgNs, 'title');
+    const x = i * slotWidth;
     const date = formatDate(parseDateKey(point.date));
-    title.textContent = delta === null
-      ? t('widget.chart.noData', { date })
-      : point.idealShare !== null
-        ? t('widget.chart.pointWithIdeal', { date, value: formatPercent(delta), ideal: formatPercent(point.idealShare) })
-        : t('widget.chart.point', { date, value: formatPercent(delta) });
-    rect.appendChild(title);
-    svg.appendChild(rect);
+    const delta = point.delta;
 
-    if (point.idealShare !== null && point.idealShare > 0) {
-      const y = height - scale(point.idealShare);
-      const tick = document.createElementNS(svgNs, 'line');
-      tick.setAttribute('x1', String(i * barWidth));
-      tick.setAttribute('x2', String((i + 1) * barWidth));
-      tick.setAttribute('y1', String(y));
-      tick.setAttribute('y2', String(y));
-      tick.setAttribute('stroke', 'currentColor');
-      tick.setAttribute('stroke-width', '1');
-      tick.setAttribute('stroke-dasharray', '3 2');
-      tick.setAttribute('opacity', '0.7');
-      svg.appendChild(tick);
+    if (!point.upcoming) {
+      const barHeight = Math.max(2, scale(delta ?? 0));
+      const limit = point.budget ?? (point.fullShare !== null ? point.fullShare * point.dayUnit : null);
+      const overBudget = delta !== null && limit !== null && delta > limit;
+      const bar = addRect(x + 1, height - barHeight, barWidth, barHeight, overBudget ? 'var(--warning)' : 'var(--accent)', delta !== null ? '0.85' : '0.15');
+      const title = document.createElementNS(svgNs, 'title');
+      title.textContent = delta === null
+        ? t('widget.chart.noData', { date })
+        : point.budget !== null
+          ? t('widget.chart.pointWithBudget', { date, value: formatPercent(delta), budget: formatPercent(point.budget) })
+          : t('widget.chart.point', { date, value: formatPercent(delta) });
+      bar.appendChild(title);
+    }
+
+    if (point.fullShare !== null && point.fullShare > 0) {
+      const working = scale(point.fullShare * point.dayUnit);
+      const rest = scale(point.fullShare * (1 - point.dayUnit));
+      if (working > 0) addRect(x + shareX, height - working, shareWidth, working, 'var(--accent)', '0.45');
+      if (rest > 0) addRect(x + shareX, height - working - rest, shareWidth, rest, 'currentColor', '0.12');
+    }
+
+    if (point.budget !== null && point.budget > 0) {
+      const y = height - scale(point.budget);
+      const line = document.createElementNS(svgNs, 'line');
+      line.setAttribute('x1', String(x));
+      line.setAttribute('x2', String(x + slotWidth));
+      line.setAttribute('y1', String(y));
+      line.setAttribute('y2', String(y));
+      line.setAttribute('stroke', 'currentColor');
+      line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('stroke-dasharray', '4 2');
+      line.setAttribute('opacity', point.upcoming ? '0.6' : '0.95');
+      if (point.upcoming) {
+        const title = document.createElementNS(svgNs, 'title');
+        title.textContent = t('widget.chart.upcoming', { date, budget: formatPercent(point.budget) });
+        line.appendChild(title);
+      }
+      svg.appendChild(line);
     }
   });
 
@@ -354,10 +366,11 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined, days: number): vo
 
 // --- Instant consumption gauge ------------------------------------------------------
 
-// A bar filled by the recent pace (winSnap.instantRate, %/h) with a vertical
-// marker on the sustainable pace that reaches exactly 100% at the reset
-// (winSnap.sustainableRate, the "target"). The scale adapts to the larger of the
-// two; a pace well above the target fills most of the bar in --warning.
+// A bar filled by the recent pace (winSnap.instantRate, %/h) against the sustainable
+// pace that reaches exactly 100% at the reset over the remaining working hours
+// (winSnap.sustainableRate, the "target"), on a logarithmic scale of their ratio
+// (renderer/gauge.ts): the target marker stays in the middle, faint ticks mark ½× and
+// 2×. Without a target there is no scale to read the pace on: only the number.
 function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
   const container = byId('instant-gauge', HTMLDivElement);
   const label = byId('gauge-label', HTMLSpanElement);
@@ -376,10 +389,6 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
 
   const width = container.clientWidth || 300;
   const height = 20;
-  const scaleMax = Math.max(instant, sustainable ?? 0, 0.01) * 1.5;
-  const fillWidth = Math.max(0, Math.min(1, instant / scaleMax)) * width;
-  const overBudget = sustainable !== null && instant > sustainable;
-
   const svgNs = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNs, 'svg');
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -396,19 +405,30 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
   track.setAttribute('opacity', '0.1');
   svg.appendChild(track);
 
-  const fill = document.createElementNS(svgNs, 'rect');
-  fill.setAttribute('x', '0');
-  fill.setAttribute('y', '0');
-  fill.setAttribute('width', String(fillWidth));
-  fill.setAttribute('height', String(height));
-  fill.setAttribute('rx', '4');
-  fill.setAttribute('fill', overBudget ? 'var(--warning)' : 'var(--accent)');
-  svg.appendChild(fill);
-
   if (sustainable !== null) {
-    const markerX = Math.max(0, Math.min(width - 2, (sustainable / scaleMax) * width));
+    const overBudget = instant > sustainable;
+    const fill = document.createElementNS(svgNs, 'rect');
+    fill.setAttribute('x', '0');
+    fill.setAttribute('y', '0');
+    fill.setAttribute('width', String(gaugePosition(instant, sustainable) * width));
+    fill.setAttribute('height', String(height));
+    fill.setAttribute('rx', '4');
+    fill.setAttribute('fill', overBudget ? 'var(--warning)' : 'var(--accent)');
+    svg.appendChild(fill);
+
+    for (const ratio of GAUGE_TICK_RATIOS) {
+      const tick = document.createElementNS(svgNs, 'rect');
+      tick.setAttribute('x', String(gaugePosition(ratio, 1) * width - 0.5));
+      tick.setAttribute('y', String(height * 0.6));
+      tick.setAttribute('width', '1');
+      tick.setAttribute('height', String(height * 0.4));
+      tick.setAttribute('fill', 'currentColor');
+      tick.setAttribute('opacity', '0.35');
+      svg.appendChild(tick);
+    }
+
     const marker = document.createElementNS(svgNs, 'rect');
-    marker.setAttribute('x', String(markerX));
+    marker.setAttribute('x', String(GAUGE_TARGET_POSITION * width - 1));
     marker.setAttribute('y', '0');
     marker.setAttribute('width', '2');
     marker.setAttribute('height', String(height));
@@ -768,7 +788,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     stats?.streakUnderBudget == null ? '--' : formatDays(stats.streakUnderBudget);
 
   byId('chart-title').textContent = t('widget.chart.title', { days: chartDays });
-  renderChart(winSnap, chartDays);
+  renderChart(winSnap);
 
   byId('tips-text').textContent = winSnap && win
     ? formatTip(winSnap.dailyTip, win, account.provider)

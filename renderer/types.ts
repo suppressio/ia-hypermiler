@@ -48,10 +48,13 @@ export interface EfficiencyRating {
   avgRatio: number;
 }
 
-export interface DailyDelta {
+export interface ChartDay {
   date: string;
   delta: number | null;
-  idealShare: number | null;
+  fullShare: number | null;
+  dayUnit: number;
+  budget: number | null;
+  upcoming: boolean;
 }
 
 export interface DeltaStats {
@@ -96,7 +99,7 @@ export interface DailyTip {
 export interface QuotaWindowSnapshot {
   window: QuotaWindow;
   dailyHistory: DailyUsagePoint[];
-  dailyDeltas: DailyDelta[];
+  chart: ChartDay[];
   deltaStats: DeltaStats;
   verdict: WindowVerdict;
   efficiencyIndex: number | null;

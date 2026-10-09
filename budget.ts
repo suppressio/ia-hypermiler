@@ -15,6 +15,7 @@ import type {
   DailyUsagePoint,
   EfficiencyRating,
   DailyDelta,
+  ChartDay,
   DeltaStats,
   WindowVerdict,
   LocalDailyTokens,
@@ -129,7 +130,7 @@ export function pickCriticalWindow(quotaWindows: QuotaWindow[]): QuotaWindow | n
 const MIN_OBSERVED_WORK_HOURS = 2;
 
 // Smallest rise (quota percentage points) counted as activity — see todayActivitySpan.
-const ACTIVITY_EPSILON = 0.05;
+export const ACTIVITY_EPSILON = 0.05;
 
 /**
  * Today's working span, from the day's own data (user feedback: "from the first data
@@ -421,33 +422,37 @@ export function redistributedQuota(ctx: Omit<PeriodContext, 'todayElapsedUnits' 
 }
 
 /**
- * Recent consumption pace (%/h), computed between the oldest and the newest sample
- * available within `lookbackMinutes` (default 3h). Not truly instantaneous (refresh
- * runs every 30 min, see CLAUDE.md), but the pace observed in the recent window.
- * Returns null when samples are insufficient or the interval is too short (< 5 min)
- * to be meaningful. A negative delta (quota window reset in between) is clamped to 0
- * instead of showing a negative pace that means nothing to the user.
+ * Recent consumption pace (%/h) over about the last `lookbackMinutes` (default 1h):
+ * from the last sample at or before the start of the lookback (the anchor, so the
+ * measured span covers the whole hour even when refreshes are sparse) to the newest
+ * sample. Without a recent enough anchor (an older one would average the night or a
+ * weekend in), from the oldest sample inside the lookback. Not truly instantaneous —
+ * samples arrive with the refreshes, every 5 minutes while consumption rises (see
+ * main/refreshPolicy.ts) — but a pause shows within the hour, a burst no longer
+ * lingers for three. Returns null when samples are insufficient or the interval is
+ * too short (< 5 min) to be meaningful. A negative delta (quota window reset in
+ * between) is clamped to 0 instead of showing a negative pace that means nothing to
+ * the user.
  */
 export function instantaneousRate(
   samples: { timestamp: Date | string; used: number }[],
   now: Date = new Date(),
-  lookbackMinutes = 180,
+  lookbackMinutes = 60,
 ): number | null {
   if (!Array.isArray(samples) || samples.length < 2) return null;
 
-  const cutoff = now.getTime() - lookbackMinutes * 60 * 1000;
+  const lookbackMs = lookbackMinutes * 60 * 1000;
+  const cutoff = now.getTime() - lookbackMs;
   const points = samples
     .map((s) => ({ time: new Date(s.timestamp).getTime(), used: s.used }))
     .filter((s) => s.time <= now.getTime())
     .sort((a, b) => a.time - b.time);
 
-  const withinLookback = points.filter((s) => s.time >= cutoff);
-  const relevant = withinLookback.length >= 2 ? withinLookback : points;
-  if (relevant.length < 2) return null;
-
-  const oldest = relevant[0];
-  const latest = relevant.at(-1);
-  if (!oldest || !latest) return null;
+  const latest = points.at(-1);
+  if (!latest) return null;
+  const anchor = points.filter((s) => s.time <= cutoff && s.time >= cutoff - lookbackMs).at(-1);
+  const oldest = anchor ?? points.find((s) => s.time > cutoff);
+  if (!oldest || oldest === latest) return null;
   const elapsedHours = (latest.time - oldest.time) / (3600 * 1000);
   if (elapsedHours < 5 / 60) return null;
 
@@ -568,6 +573,77 @@ export function dailyDeltas(
     prev = curr;
   }
   return result;
+}
+
+/**
+ * The slots of the daily chart: `pastDays` days ending today, then `upcomingDays` days
+ * to come (user feedback: the dashed line should be "the moving part" — how much was
+ * really available on a past day, how much can still be spent today and next). See
+ * ChartDay for the fields. The moving budget uses the same rule as todayBudget: what
+ * was left at the start of the day spread over the working units from that day to the
+ * reset, times the day's unit — so a heavy day lowers the line of the days after it.
+ * Days outside the current period get no share and no budget (another period, another
+ * total).
+ * `todayBudget`/`redistribution` are the values already computed for today.
+ */
+export function chartDays(args: {
+  dailyHistory: DailyUsagePoint[];
+  workSchedule: WorkSchedule;
+  periodStart: Date | string;
+  periodEnd: Date | string;
+  totalPeriodWorkingUnits: number;
+  now: Date;
+  pastDays: number;
+  upcomingDays: number;
+  todayBudget: TodayBudget | null;
+  redistribution: Redistribution | null;
+}): ChartDay[] {
+  const { workSchedule, periodStart, periodEnd, totalPeriodWorkingUnits, now } = args;
+  const pacing = totalPeriodWorkingUnits > 0;
+  const fullShare = pacing ? round2(100 / totalPeriodWorkingUnits) : null;
+  const deltas = new Map(dailyDeltas(args.dailyHistory, workSchedule, totalPeriodWorkingUnits).map((d) => [d.date, d.delta]));
+
+  // Each history day's baseline, same rule as dailyDeltas.
+  const bases = new Map<string, number>();
+  let prev: DailyUsagePoint | undefined;
+  for (const point of [...args.dailyHistory].sort((a, b) => a.date.localeCompare(b.date))) {
+    const base = point.dayStartUsed ?? prev?.used;
+    if (base !== undefined) bases.set(point.date, base);
+    prev = point;
+  }
+
+  const firstDay = startOfDay(new Date(periodStart));
+  const lastDay = startOfDay(new Date(periodEnd));
+  const today = startOfDay(now);
+  const todayKey = localDateKey(today);
+  const slots: ChartDay[] = [];
+  for (let offset = 1 - args.pastDays; offset <= args.upcomingDays; offset++) {
+    const day = addDays(today, offset);
+    const date = localDateKey(day);
+    const dayUnit = getDayUnit(day, workSchedule);
+    const inPeriod = pacing && !isBefore(day, firstDay) && isBefore(day, lastDay);
+    let budget: number | null = null;
+    if (inPeriod) {
+      if (date === todayKey) {
+        budget = args.todayBudget?.budget ?? null;
+      } else if (offset > 0) {
+        budget = args.redistribution ? round2(args.redistribution.perUnit * dayUnit) : null;
+      } else {
+        const base = bases.get(date);
+        const unitsFromDay = workingUnitsBetween(day, periodEnd, workSchedule);
+        budget = base !== undefined && unitsFromDay > 0 ? round2((Math.max(0, 100 - base) / unitsFromDay) * dayUnit) : null;
+      }
+    }
+    slots.push({
+      date,
+      delta: offset > 0 ? null : deltas.get(date) ?? null,
+      fullShare: inPeriod ? fullShare : null,
+      dayUnit,
+      budget,
+      upcoming: offset > 0,
+    });
+  }
+  return slots;
 }
 
 /**
