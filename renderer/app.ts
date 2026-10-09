@@ -775,6 +775,8 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   if (win) {
     const name = windowLabel(win, account.provider);
     label = win.resetsAt ? t('widget.windowWithReset', { window: name, moment: formatResetMoment(win.resetsAt) }) : name;
+  } else if (account.planTier === 'free') {
+    label = t('widget.freePlan');
   }
   if (account.stale) {
     // Never a successful sync so far: the account IS connected but the very first

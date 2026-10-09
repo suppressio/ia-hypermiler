@@ -15,6 +15,7 @@ export const en = {
 
   // --- Widget: main value ----------------------------------------------------
   'widget.waiting': 'Waiting for data…',
+  'widget.freePlan': 'Free plan — no quota to monitor',
   'widget.noAccount': 'No account connected — open the settings',
   'widget.firstSyncFailed': 'Account connected — first sync failed',
   'widget.windowWithReset': '{window} · renews {moment}',

@@ -309,6 +309,12 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
   }
 
   if (windows.length === 0 && !recognizedAny) {
+    // Free plan: all window fields are null and limits is empty. member_dashboard_available=false
+    // is Anthropic's own signal that the usage dashboard is not available for this account
+    // (Free tier). Known state — no drift, no issue (RESEARCH.md §1 addendum 6).
+    if (usage && usage.member_dashboard_available === false) {
+      return [];
+    }
     // The whole raw response is logged to the console (terminal/main-process log, never
     // the renderer): it contains no credentials, only usage percentages — it helps
     // understand the real format when it diverges from RESEARCH.md.
@@ -359,8 +365,8 @@ async function requestUsage(credentials: ClaudeCredentials): Promise<ClaudeUsage
 export async function fetchUsage(credentials: ClaudeCredentials): Promise<RawAccountUsage> {
   const usage = await requestUsage(credentials);
   return {
-    // The usage endpoint does not say which plan the account has.
-    planTier: null,
+    // Free tier: member_dashboard_available=false is the only reliable signal (RESEARCH.md §1 addendum 6).
+    planTier: usage?.member_dashboard_available === false ? 'free' : null,
     // Claude does not expose the subscription billing date through this endpoint: it
     // stays a value configured by hand in Settings (account subscription).
     subscriptionRenewsAt: null,
