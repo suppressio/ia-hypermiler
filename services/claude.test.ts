@@ -282,6 +282,31 @@ test('buildQuotaWindows: `spend` with an unexpected shape is still a format drif
   );
 });
 
+test('buildQuotaWindows: Free tier (member_dashboard_available=false, all nulls) returns empty array, not a format drift', () => {
+  // Real shape received on 2026-10-09 after a Pro subscription expired (issue #44).
+  // All window fields are null, limits is empty, member_dashboard_available is false.
+  const windows = claudeService.buildQuotaWindows({
+    amber_cistern: null, amber_gauge: null, cedar_ember: null, cinder_cove: null,
+    copper_kite: null, extra_usage: null, five_hour: null, harbor_lantern: null,
+    iguana_necktie: null, juniper_tide: null, nimbus_quill: null, omelette_promotional: null,
+    seven_day: null, seven_day_breakdown: null, seven_day_cowork: null,
+    seven_day_oauth_apps: null, seven_day_omelette: null, seven_day_opus: null,
+    seven_day_sonnet: null, spend: null, tangelo: null, wattle_ember: null,
+    weekly_scoped_shares: null,
+    limits: [],
+    member_dashboard_available: false,
+  });
+  assert.equal(windows.length, 0);
+});
+
+test('buildQuotaWindows: Free tier with member_dashboard_available=true still drifts when no window recognized', () => {
+  // Only false is the known "no dashboard" signal; true with no windows is still a drift.
+  assert.throws(
+    () => claudeService.buildQuotaWindows({ limits: [], member_dashboard_available: true }),
+    FormatDriftError,
+  );
+});
+
 
 test('fetchUsage uses the given organizationId without calling /organizations', async () => {
   const calledUrls: string[] = [];

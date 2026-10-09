@@ -309,6 +309,12 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
   }
 
   if (windows.length === 0 && !recognizedAny) {
+    // Free plan: all window fields are null and limits is empty. member_dashboard_available=false
+    // is Anthropic's own signal that the usage dashboard is not available for this account
+    // (Free tier). Known state — no drift, no issue (RESEARCH.md §1 addendum 6).
+    if (usage && usage.member_dashboard_available === false) {
+      return [];
+    }
     // The whole raw response is logged to the console (terminal/main-process log, never
     // the renderer): it contains no credentials, only usage percentages — it helps
     // understand the real format when it diverges from RESEARCH.md.
