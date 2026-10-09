@@ -311,6 +311,17 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined): void {
     return rect;
   };
 
+  // Today stands out from the past and the days to come: a faint band behind its slot
+  // (the last one that is not upcoming), drawn first so bars and lines stay on top.
+  const todayIndex = series.filter((d) => !d.upcoming).length - 1;
+  if (todayIndex >= 0) {
+    const band = addRect(todayIndex * slotWidth, 0, slotWidth, height, 'currentColor', '0.1');
+    band.setAttribute('rx', '3');
+    const title = document.createElementNS(svgNs, 'title');
+    title.textContent = t('widget.chart.today');
+    band.appendChild(title);
+  }
+
   series.forEach((point, i) => {
     const x = i * slotWidth;
     const date = formatDate(parseDateKey(point.date));

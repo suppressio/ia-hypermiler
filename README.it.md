@@ -64,7 +64,7 @@ A che velocità stai usando la quota in questo momento, in % della quota all'ora
 
 ### Consumo giornaliero vs budget
 
-Uno spazio per giorno: gli ultimi 7 o 30 giorni (Impostazioni → Intervallo grafico), poi i prossimi 2 o 5.
+Uno spazio per giorno: gli ultimi 7 o 30 giorni (Impostazioni → Intervallo grafico), poi i prossimi 2 o 5. Oggi è lo spazio con lo sfondo chiaro.
 
 - **Barra larga**: quanto hai usato quel giorno. Rossa se ha superato il budget di quel giorno.
 - **Barretta sottile accanto**: la ripartizione uniforme di una giornata lavorativa intera. La parte colorata è la quota lavorativa di quel giorno (tutta, o metà in una mezza giornata); la parte grigia è la quota che quel giorno non ha (tutta in un giorno libero).

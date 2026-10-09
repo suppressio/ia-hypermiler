@@ -64,7 +64,7 @@ How fast you are using the quota right now, in % of the quota per hour.
 
 ### Daily consumption vs budget
 
-One slot per day: the last 7 or 30 days (Settings → Chart range), then the next 2 or 5 days.
+One slot per day: the last 7 or 30 days (Settings → Chart range), then the next 2 or 5 days. Today is the slot with a light background.
 
 - **Wide bar**: what you used that day. Red when it went over that day's budget.
 - **Thin bar beside it**: the even split of a full working day. The coloured part is that day's working share (all of it, half on a half day); the grey part is the share the day does not get (all of it on a day off).

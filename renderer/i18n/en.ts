@@ -37,6 +37,7 @@ export const en = {
   'widget.chart.point': '{date}: {value}',
   'widget.chart.pointWithBudget': '{date}: {value} (budget {budget})',
   'widget.chart.upcoming': '{date}: budget {budget}',
+  'widget.chart.today': 'Today',
 
   // --- Widget: metrics -------------------------------------------------------
   'widget.metric.efficiency': 'Efficiency index',

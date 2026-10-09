@@ -33,6 +33,7 @@ export const it: Record<MessageKey, string> = {
   'widget.chart.point': '{date}: {value}',
   'widget.chart.pointWithBudget': '{date}: {value} (budget {budget})',
   'widget.chart.upcoming': '{date}: budget {budget}',
+  'widget.chart.today': 'Oggi',
 
   'widget.metric.efficiency': 'Indice efficienza',
   'widget.metric.efficiencyBelow': 'sotto il ritmo ideale',
