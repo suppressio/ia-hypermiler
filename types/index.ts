@@ -175,7 +175,7 @@ export interface HourlyOutlook {
  * numbers it states; the renderer renders it in the active language.
  */
 export interface DailyTip {
-  key: 'none' | 'autonomy' | 'instantRate' | 'rating' | 'nearReset' | 'nearResetToday' | 'projected' | 'cause' | 'rebalanceDown' | 'rebalanceUp';
+  key: 'none' | 'autonomy' | 'rating' | 'nearReset' | 'nearResetToday' | 'cause';
   params: Record<string, number>;
 }
 
@@ -485,4 +485,6 @@ export interface HypermilerBridge {
   checkForUpdates(): Promise<UpdateSettings>;
   downloadUpdate(): Promise<void>;
   openReleaseNotes(): Promise<void>;
+  // Opens the user guide (README on GitHub) in the browser; the URL is fixed in main.
+  openGuide(): Promise<void>;
 }

@@ -43,7 +43,6 @@ export const en = {
   'widget.metric.efficiencyBelow': 'below the ideal pace',
   'widget.metric.efficiencyAbove': 'above the ideal pace',
   'widget.metric.efficiencyNegligible': 'usage negligible so far',
-  'widget.metric.autonomyBeyondReset': 'beyond renewal',
   'widget.metric.today': 'Today: used / budget',
   'widget.metric.todayHelp': "Today's consumption against today's budget: what was left this morning spread over the working days until renewal. Below: what is left now per working day, next to the even share of the period.",
   'widget.metric.todayLeft': '{value} left today',
@@ -80,16 +79,11 @@ export const en = {
   'widget.insights.topTools': 'Most used tools',
 
   // --- Tips (budget.generateDailyTip keys) -----------------------------------
-  'tips.none': 'Not enough data yet for a specific tip on this window.',
   'tips.autonomy': 'At the current pace {window} would last about {autonomyDays} working days, but {daysToReset} are left until renewal: you need a pace about {reductionPercent}% lower to make it.',
-  'tips.instantRate': 'The pace of the last hours on {window} ({instantRate}%/h) is above the {sustainableRate}%/h that is sustainable to reach {reset} without going over.',
   'tips.rating': 'Rating {stars}/5 on {window} over the last days (on average {avgRatio}× the ideal pace): there is room for a longer session today.',
   'tips.nearReset': '{days} days left until {window} renews and you are already at {utilization}%: consider consolidating the remaining requests before the reset.',
   'tips.nearResetToday': 'Less than a day until {window} renews and you are already at {utilization}%: consider consolidating the remaining requests before the reset.',
-  'tips.projected': 'At this pace {window} would reach {projectedUsage}% by renewal: it would go over the limit if the pace stays the same.',
   'tips.cause': 'On days when you use more {window} quota, {highPercent}% of tokens are produced with context over 150k (vs {lowPercent}% on other days, over {days} days): reducing context (/clear between tasks, /compact) lowers the cost of each turn.',
-  'tips.rebalanceDown': 'On {window}, to last until renewal about {perUnit}% per working day is left for the next {days} working days, instead of the ideal {idealPerUnit}%.',
-  'tips.rebalanceUp': 'You are below plan on {window}: {perUnit}% per working day is available over the next {days} working days (ideal {idealPerUnit}%).',
   'tips.nextReset': 'the next reset',
 
   // --- Quota window verdicts (budget.windowVerdict) --------------------------
@@ -258,6 +252,7 @@ export const en = {
 
   // --- Settings: updates ------------------------------------------------------------
   'settings.updates.title': 'Updates',
+  'settings.guide.open': 'User guide',
   'settings.updates.installed': 'Installed version:',
   'settings.updates.neverChecked': 'No check performed yet.',
   'settings.updates.checkNow': 'Check now',

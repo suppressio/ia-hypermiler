@@ -2,126 +2,153 @@
 
 # IA Hypermiler
 
-App desktop Electron (Windows / macOS / Linux) che monitora il consumo di token AI — Claude e GitHub Copilot — e calcola un budget giornaliero ottimale per non esaurire la quota periodica prima del rinnovo. Pensata per il singolo sviluppatore che vuole tenere sotto controllo il proprio utilizzo, non per un admin che monitora un team.
+Un piccolo widget sempre in primo piano, per Windows, macOS e Linux, che ti dice a che ritmo stai usando le quote di **Claude** e **GitHub Copilot** e quanto puoi ancora usare oggi perché la quota arrivi al rinnovo.
 
-Mostra un widget sempre visibile con l'utilizzo corrente, il consumo giornaliero rispetto al budget ideale, un indice di efficienza con rating a stelle, una proiezione a fine periodo e consigli ricavati dai tuoi dati reali. L'interfaccia è disponibile in **italiano e inglese** (automatica dalla lingua del sistema, oppure scelta nelle Impostazioni).
+<p align="center"><img src="docs/screenshots/widget-it.png" alt="Il widget di IA Hypermiler con dati di esempio" width="406"></p>
 
-> Progetto personale in sviluppo attivo, costruito in pair programming con Claude. Le pre-release (`v0.x-beta`) sono pubblicate su GitHub; vedi "Stato del progetto" più sotto per cosa funziona oggi.
+<sub>Dati di esempio, non un account reale.</sub>
+
+- **Più account**, Claude e Copilot in qualsiasi combinazione (per esempio un account Claude personale e una licenza Copilot aziendale), ognuno con la sua sessione.
+- **I tuoi giorni lavorativi**: ogni account può seguire un suo orario (giornata intera, mezza o libera per ogni giorno della settimana), così i weekend non contano come tempo in cui avresti potuto usare la quota.
+- **Un budget per oggi**, ricalcolato ogni mattina da quanto resta.
+- **Notifiche** quando una quota supera la tua soglia di allarme, o quando il consumo di oggi va molto oltre il budget di oggi.
+- Interfaccia in italiano e inglese.
+
+> Progetto personale in sviluppo attivo. Le versioni sono pre-release (`v0.x-beta`).
 
 ---
-
-## Funzionalità
-
-- **Più account, di qualunque provider** — per esempio due account Claude e uno Copilot, ognuno con la propria sessione isolata; "Disconnetti" cancella davvero la sessione salvata.
-- **Un ritmo per ogni account** — ogni account ha il suo calendario di lavoro: per esempio un account personale senza vincoli e uno di lavoro calcolato sui giorni lavorativi (intera, mezza o riposo per ogni giorno della settimana).
-- **Una vista propria, non il calco della dashboard del provider** — consumo giorno per giorno rispetto alla quota ideale, lista delle finestre di quota con un verdetto basato sulla quota restante ripartita per giorno lavorativo (in linea / quota ridotta / margine / a rischio), gauge del consumo istantaneo, rating di efficienza.
-- **Il budget di oggi, sulle tue ore di lavoro reali** — quanto puoi ancora usare oggi perché la quota arrivi al rinnovo; la giornata si misura dai dati del giorno (dal primo all'ultimo aumento di consumo), e una notifica ti avvisa il giorno in cui sfori di molto (non solo all'80%). Il giorno di rinnovo è chiesto solo se il provider non lo indica.
-- **Valore per token** (Claude, opt-in) — legge le sessioni Claude Code locali (solo conteggi di token e nomi dei tool, mai il contenuto dei messaggi) per mostrare quanti token produci per ogni 1% di quota e, quando il segnale è netto, perché stai consumando più in fretta.
-- **Controllo aggiornamenti** — all'avvio e ogni 24 ore; il pacchetto giusto per il tuo sistema si apre nel browser.
-- **Segnalazione dei cambi di formato** — se un provider cambia il formato delle risposte, si apre una bozza di issue GitHub precompilata (solo struttura, mai valori reali) da rivedere tu.
-
-## Requisiti
-
-- Node.js 22 LTS o superiore
-- npm
 
 ## Installazione
 
-```bash
-git clone https://github.com/suppressio/ia-hypermiler.git
-cd ia-hypermiler
-npm install
-```
+Scarica il pacchetto per il tuo sistema da [Releases](https://github.com/suppressio/ia-hypermiler/releases): `.exe` (Windows), `.dmg` (macOS), `.AppImage` o `.deb` (Linux).
 
-Oppure scarica un pacchetto già pronto (`.exe`, `.dmg`, `.AppImage`, `.deb`) dalle [Release](https://github.com/suppressio/ia-hypermiler/releases).
+I pacchetti non sono firmati: Windows SmartScreen e macOS Gatekeeper mostrano un avviso la prima volta. L'app controlla le nuove versioni all'avvio e ogni 24 ore e apre nel browser il download giusto.
 
-## Avvio in sviluppo
+## Primo avvio
 
-```bash
-npm start
-```
+1. Apri **Impostazioni** (⚙ nel widget, o dall'icona nel tray) → **Aggiungi account**.
+2. **Claude**: *Connetti…* apre il login di claude.ai (email e password o SSO aziendale) in una finestra dedicata. L'app non ti chiede mai di incollare un cookie.
+   **GitHub Copilot**: incolla un Personal Access Token (fine-grained con *Plan* in sola lettura, o classic senza scope), oppure accedi con una GitHub OAuth App. Per una licenza aziendale su un tenant `<nome>.ghe.com`, imposta prima il dominio GitHub.
+3. Facoltativo, per ogni account: il **calendario di lavoro** (ultima sezione dell'account) e, solo se il provider non lo comunica, il **giorno di rinnovo**.
 
-Compila TypeScript (main process + renderer) e avvia Electron. Al primo avvio non ci sono account: apri le Impostazioni (icona ingranaggio nel widget, o dal tray) e aggiungi un account Claude e/o GitHub Copilot.
-
-## Build, lint e test
-
-```bash
-npm run build      # TypeScript (main + renderer) + asset statici in dist/
-npm run lint       # ESLint con regole basate sui tipi (deve restare a zero segnalazioni)
-npm run typecheck  # tsc --noEmit su ogni progetto TypeScript
-npm test           # build + test unitari (runner integrato node:test)
-npm run coverage   # test con la coverage integrata di Node
-```
-
-- I **test unitari** girano sempre e non toccano mai la rete (`fetch` e l'SDK sono simulati).
-- I **test di integrazione** (`tests/integration/`) chiamano le vere API di Claude e GitHub e **si saltano da soli** se mancano le credenziali. Per attivarli in locale — **senza mai incollare credenziali in chat o nei commit**:
-
-```bash
-cp .env.test.example .env.test
-# compila .env.test con le tue credenziali (vedi i commenti nel file)
-npm test
-```
-
-`.env.test` è già in `.gitignore` e viene caricato automaticamente da Node (`--env-file-if-exists`), senza dipendenze aggiuntive.
-
-## Packaging
-
-```bash
-npm run package
-```
-
-Build + `electron-builder`: produce l'installer per la piattaforma corrente (`.dmg` su macOS, `.exe`/NSIS su Windows, `.AppImage` e `.deb` su Linux) in `release/`.
-
-### Build multipiattaforma (GitHub Actions)
-
-`.github/workflows/build.yml` builda in parallelo su macOS/Windows/Linux dallo stesso commit. Parte pushando un tag `v*` (es. `v0.4.0-beta`) o manualmente dalla tab Actions: lint, test, poi i pacchetti vengono allegati alla Release GitHub del tag. I pacchetti non sono firmati: macOS Gatekeeper e Windows SmartScreen mostrano un avviso all'installazione.
+Chiudendo il widget l'app resta nel tray; *Esci* è nel menu del tray.
 
 ---
 
-## Struttura del progetto
+## Come leggere il widget
 
-```
-ia-hypermiler/
-├── main.ts, preload.ts        ← processo principale Electron + bridge sicuro verso il renderer
-├── main/                      ← finestre, tray, login Claude, OAuth, logica per provider, i18n del main
-├── renderer/                  ← widget e finestra Impostazioni (HTML/CSS/TS vanilla) + i18n dell'interfaccia
-├── services/                  ← fetch dell'utilizzo Claude/Copilot, sessioni locali, controllo aggiornamenti (+ test)
-├── diagnostics/               ← segnalazione dei cambi di formato via bozza di issue GitHub
-├── store/                     ← persistenza locale (electron-store cifrato), default, normalizzazione, migrazione
-├── budget.ts                  ← calcolo budget/efficienza/previsionale (+ budget.test.ts)
-├── agents/                    ← agente Claude per i consigli d'uso (stub)
-├── types/                     ← tipi TypeScript condivisi
-├── tests/                     ← helper dei test + test di integrazione attivati da credenziali locali
-└── *.md / *.it.md             ← documentazione di progetto, inglese + italiano
-```
+Tutti i valori qui sotto riguardano la finestra di quota mostrata, di solito quella che richiede più attenzione. Con più account c'è una scheda per account; con più finestre di quota (per esempio il limite di 5 ore e quello settimanale di Claude) una lista sopra il valore principale le mostra tutte con un breve verdetto. Clicca una riga per vedere quella finestra.
 
-Approfondimenti:
+### Il verdetto di ogni finestra
 
-- [`ARCHITECTURE.it.md`](./ARCHITECTURE.it.md) — modello dati, finestre, indicatori, estensibilità
-- [`RESEARCH.it.md`](./RESEARCH.it.md) — cosa si può leggere davvero dalle API di Claude e Copilot, e con quali limiti
-- [`EVOLUTION.it.md`](./EVOLUTION.it.md) — retrospettiva e direzioni future con analisi costi/benefici
-- [`PLAN.it.md`](./PLAN.it.md) — il piano originale giorno per giorno
-- [`CLAUDE.md`](./CLAUDE.md) — memoria di progetto per Claude Code (in inglese): stack, regole, milestone
+Si basa sulla quota che resta **adesso**, ripartita sui giorni lavorativi fino al reset, confrontata con una ripartizione uniforme di tutto il periodo:
+
+| Verdetto | Significato |
+|---|---|
+| **in linea** | entro ±5% della ripartizione uniforme |
+| **margine** | hai usato meno del previsto: hai più quota al giorno a disposizione |
+| **quota ridotta** | hai usato più del previsto: resta meno quota al giorno |
+| **a rischio** | resta meno di metà della ripartizione uniforme al giorno, oppure al ritmo attuale finiresti prima del reset |
+
+### Valore principale
+
+La percentuale di quota usata e, sotto, il valore assoluto quando il provider lo fornisce (per esempio i crediti AI di Copilot, il credito extra di Claude in USD) e la data di rinnovo.
+
+### Consumo istantaneo
+
+A che velocità stai usando la quota in questo momento, in % della quota all'ora.
+
+- **Come si calcola**: quanto è salito il consumo nell'ultima ora circa di letture. Mentre il consumo sale l'app interroga il provider ogni 5 minuti, altrimenti all'intervallo scelto nelle Impostazioni (30 minuti di default).
+- **Target** (la tacca bianca): il ritmo che ti porterebbe esattamente al 100% al reset, ripartito sulle ore lavorative rimaste.
+- **Come leggerlo**: la tacca è sempre a metà. Le tacche leggere segnano metà del target (a sinistra) e il doppio (a destra), e l'estremità destra vale quattro volte il target o più. La barra diventa rossa sopra il target. Un picco breve va bene; una barra rossa per ore è il segnale da tenere d'occhio.
+
+### Consumo giornaliero vs budget
+
+Uno spazio per giorno: gli ultimi 7 o 30 giorni (Impostazioni → Intervallo grafico), poi i prossimi 2 o 5.
+
+- **Barra larga**: quanto hai usato quel giorno. Rossa se ha superato il budget di quel giorno.
+- **Barretta sottile accanto**: la ripartizione uniforme di una giornata lavorativa intera. La parte colorata è la quota lavorativa di quel giorno (tutta, o metà in una mezza giornata); la parte grigia è la quota che quel giorno non ha (tutta in un giorno libero).
+- **Linea tratteggiata**, la parte che si muove:
+  - su un giorno passato, il budget che avevi **quella mattina**;
+  - oggi, il **budget di oggi**;
+  - sui giorni a venire, quanto resta **ridistribuito** sui giorni lavorativi fino al reset.
+
+  Una giornata pesante abbassa la linea dei giorni successivi; una leggera la alza.
+- **Quota ideale** (in alto a destra): la ripartizione uniforme di una giornata lavorativa intera su tutto il periodo.
+
+### Oggi: usato / budget
+
+Quanto hai usato oggi rispetto al **budget di oggi**: quello che restava stamattina, diviso per i giorni lavorativi fino al reset (oggi compreso), per la quota di oggi (metà in una mezza giornata). Resta fisso per tutta la giornata.
+
+Sotto: la quota che resta per giorno lavorativo da ora in poi, accanto a quella ideale, e quanto ti resta oggi o di quanto sei oltre.
+
+### Indice di efficienza e rating
+
+- **Indice di efficienza**: il ritmo ideale diviso per il tuo ritmo reale dall'inizio del periodo, sui giorni lavorativi. Sopra 1 stai usando meno del ritmo ideale, sotto 1 di più.
+- **Stelle** (sull'intervallo del grafico): quanto ogni giorno è rimasto vicino alla sua quota ideale. 5 stelle: in media hai usato due terzi della quota o meno; 3 stelle: circa la quota; 1 stella: molto oltre.
+
+### Previsionale
+
+Dove arriveresti al reset continuando così: metà ritmo medio del periodo, metà ritmo degli ultimi tre giorni lavorativi completi. Può superare il 100%: serve proprio a vederlo.
+
+### Giorni a scadenza
+
+I giorni di calendario fino al reset e, tra parentesi, i giorni lavorativi secondo l'orario dell'account.
+
+### Autonomia stimata
+
+Per quanti giorni lavorativi basta la quota al ritmo attuale. **Compare solo se finiresti prima del reset**: altrimenti ripeterebbe soltanto il previsionale.
+
+### Picco / media giornaliera
+
+Il tuo giorno più pesante e la media tra i giorni completi dell'intervallo del grafico. Compare da due giorni completi in poi.
+
+### Streak sotto budget
+
+Giorni completi consecutivi, fino a ieri, rimasti entro la loro quota. Nascosto finché è 0.
+
+### Consigli
+
+Compaiono solo quando aggiungono qualcosa che i numeri sopra non dicono: finiresti prima del reset (e di quanto rallentare), un buon rating che lascia spazio a una sessione più lunga, una quota quasi esaurita vicino al reset, oppure (con gli insight locali) un legame tra i tuoi giorni più pesanti e i contesti molto lunghi.
+
+### Colori
+
+I valori in percentuale di quota (valore principale, previsionale, oggi rispetto al budget di oggi) diventano **arancioni** 5 punti sotto la tua soglia di allarme e **rossi** dalla soglia in su (Impostazioni → Notifiche, 80% di default).
+
+### Insight locali (Claude Code, facoltativi)
+
+Se li attivi su un account Claude, l'app legge le sessioni di Claude Code su questo computer (solo conteggi di token e nomi degli strumenti, mai il contenuto dei messaggi). Mostra quanti token ottieni per ogni 1% di quota, quanta parte viene da contesti molto lunghi (oltre 150k) o da sessioni molto lunghe, e gli strumenti più usati.
 
 ---
 
-## Sicurezza e credenziali
+## Impostazioni
 
-- `nodeIntegration: false` e `contextIsolation: true` sempre attivi: il renderer non ha mai accesso diretto a Node.js; ogni valore che arriva da lui via IPC viene validato.
-- La sessione Claude si ottiene con un vero login in una finestra embedded (classico o SSO), in una partition dedicata all'account: l'app non chiede mai di incollare un cookie.
-- Il token GitHub Copilot è un Personal Access Token (fine-grained, "Plan" in sola lettura) o un token di OAuth App, salvato cifrato in locale.
-- Nessuna credenziale viene mai esposta al renderer o registrata nei log; `.env.test` è escluso da git.
+| Sezione | Cosa puoi impostare |
+|---|---|
+| **Account** | aggiungere, connettere, disconnettere (cancella la sessione salvata), attivare/disattivare; per account: nome, calendario di lavoro, giorno di rinnovo se il provider non lo comunica, metodo di login Claude e insight locali, dominio e autenticazione Copilot |
+| **Aspetto** | lingua, stile della finestra (chiaro, scuro, trasparente), intervallo del grafico (7 o 30 giorni), intervallo di aggiornamento, colore d'accento |
+| **Notifiche** | soglia di allarme (%), usata anche per i colori |
+| **Aggiornamenti** | versione installata, controllo manuale e automatico; **Guida** apre questa pagina |
+| **Diagnostica** | segnalazione automatica di un cambio di formato del provider; file di report di diagnosi |
 
-## Stato del progetto
+## Notifiche
 
-- ✅ Dati reali da Claude (endpoint interno + sessione) e Copilot (API ufficiale per i piani personali; per i seat aziendali non esiste una fonte dati self-service, vedi `RESEARCH.it.md`)
-- ✅ Più account, interfaccia multilingua (IT/EN), controllo aggiornamenti, diagnostica dei cambi di formato
-- ✅ Visualizzazioni proprie: consumo giornaliero vs budget, verdetti per finestra, gauge istantaneo, rating, valore per token
-- ✅ TypeScript severo (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), ESLint con controllo dei tipi a zero segnalazioni, test unitari su tutti i moduli puri
-- ✅ CI multipiattaforma che pubblica le pre-release
-- 🟨 Agente consigli (`agents/advisor.ts`) ancora uno stub
-- ⬜ Prossimi passi: contratto IPC condiviso, poi estrazione da `main.ts` di un nucleo testabile per lavorare test-first
+- **Soglia**: quando una quota supera la tua soglia di allarme, una volta al giorno per account.
+- **Ritmo**: quando il consumo di oggi supera 1,5 volte il budget di oggi, una volta al giorno per account. Ti avvisa il giorno in cui le cose si mettono male, quando c'è ancora tempo per correggere.
+
+## Privacy e sicurezza
+
+- Sessioni e token sono salvati solo sul tuo computer, cifrati, e non vengono mai mostrati all'interfaccia né scritti nei log.
+- L'app parla solo con i provider (claude.ai, l'API GitHub del tuo dominio) e con GitHub Releases per il controllo aggiornamenti. Nient'altro viene inviato altrove.
+- **Segnalare un problema**: Impostazioni → Diagnostica → *Crea report di diagnosi* salva un file di testo in Download e apre una bozza di issue su GitHub. Il file **contiene** i tuoi valori di consumo (percentuali, importi, date di reset) ma nessun nome, id o credenziale. Le issue di questo repository sono **pubbliche**: leggi il file prima di allegarlo, oppure descrivi il problema senza.
+- Se un provider cambia il formato delle risposte, si apre una bozza di issue precompilata con la sola struttura (nomi e tipi dei campi, mai i valori). Puoi disattivarla nelle Impostazioni.
+
+---
+
+## Sviluppo
+
+Compilazione dai sorgenti, test, packaging e struttura del progetto sono in [DEVELOPMENT.it.md](DEVELOPMENT.it.md).
 
 ## Licenza
 
-[MIT](./LICENSE) © 2026 Daniele 'suppressio'. Il testo legale della licenza è in inglese.
+[MIT](./LICENSE) © 2026 Daniele 'suppressio'.

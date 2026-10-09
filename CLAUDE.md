@@ -39,7 +39,8 @@ Project memory for Claude Code. Read it in full before touching the code.
 ia-hypermiler/
 ├── CLAUDE.md                    ← this file (English only)
 ├── LICENSE                      ← MIT
-├── README.md / README.it.md     ← user-facing docs (EN primary, IT secondary)
+├── README.md / README.it.md     ← user guide only: what the app does, install, how to read every indicator (EN primary, IT secondary)
+├── DEVELOPMENT.md / .it.md      ← build from source, tests, packaging, CI, project structure and status
 ├── ARCHITECTURE.md / .it.md     ← app design: data model, windows, widget, tray, updates, i18n
 ├── RESEARCH.md / .it.md         ← what the Claude/Copilot APIs really expose (Day 1 + addenda)
 ├── EVOLUTION.md / .it.md        ← retrospective and future directions with cost/benefit analysis
@@ -53,6 +54,7 @@ ia-hypermiler/
 │   ├── copy-assets.js           ← copies renderer html/css into dist/renderer/ + writes dist/renderer/package.json {type: module}
 │   └── generate-icons.js        ← one-off "gauge" icon generator (build/icon.png, build/icons/*, renderer/assets/*.png)
 ├── build/                       ← electron-builder resources (icons) — TRACKED, not an output (packages go to release/)
+├── docs/screenshots/            ← README screenshots, synthetic data only
 ├── main.ts                      ← Electron main process (lifecycle, IPC, refresh, update checks)
 ├── preload.ts                   ← contextBridge renderer ↔ main
 ├── main/
@@ -69,6 +71,7 @@ ia-hypermiler/
 │   ├── dom.ts                   ← byId(id, ElementType): typed, checked element access
 │   ├── schedule.ts              ← one-line summary of an account work schedule (+ test)
 │   ├── gauge.ts                 ← log-scale position of the instant pace against its target (+ test)
+│   ├── visibility.ts            ← which indicators are shown (autonomy, peak/average, streak) (+ test)
 │   ├── types.ts                 ← reduced local copy of the shared types (renderer tsconfig is isolated)
 │   └── i18n/                    ← UI strings: en.ts (reference), it.ts, index.ts (t, applyTranslations, Intl formatting) (+ test)
 ├── agents/advisor.ts            ← Claude advice agent (stub)
@@ -151,7 +154,7 @@ When a service receives a response whose format no longer matches the expected o
 - Main and renderer own their texts separately (separate TS projects); `resolveLocale` must stay identical in both.
 - Tips, verdicts and similar are **data** (`{ key, params }`), composed into sentences by the renderer. Technical error messages from services stay English; `friendlyErrorMessage` frames known cases in the user's language.
 - Numbers and dates via the `Intl` helpers in `renderer/i18n/index.ts`, never a hard-coded locale.
-- Documents: update both `X.md` and `X.it.md` when changing content.
+- Documents: update both `X.md` and `X.it.md` when changing content. The README is for users only (what each indicator is, how it is computed, how to read it): update it whenever an indicator changes; developer content goes in DEVELOPMENT.md. Screenshots use synthetic data only.
 
 ### Code quality
 - `npm run lint` must stay at **zero findings** (it gates CI). Do not turn off a rule to hide a real problem; the only documented exception is the `new Function` dynamic import in `services/claudeLocalSessions.ts`.
@@ -187,7 +190,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - `dailyDeltas`, `deltaStats`, `windowVerdict` — daily consumption, peak/average/streak (completed days only), per-window verdict from the redistribution (at risk < 0.5× / behind < 0.95× / on track / ahead > 1.05× the even share; rolling-hours windows: projection/autonomy)
 - `hasPacing`, `repairFirstDayBaseline` — a billing cycle of unknown length has no pacing (also the tie-break of `pickCriticalWindow`); first history point on the period start day gets baseline 0
 - `tokenYield`, `consumptionCause` — value per token (Claude local insights; a cause is stated only with a clear signal)
-- `generateDailyTip` — `{ key, params }` from explicit conditions on the metrics above, never a generic tip
+- `generateDailyTip` — `{ key, params }` from explicit conditions on the metrics above, never a generic tip; only tips adding an action or a cause (autonomy shortfall, rating, near reset, consumption cause), none restating a number already on the widget
 - `resolveRenewalDate(renewalRule, referenceDate)` — only `{ type: 'dayOfMonth', day }`; `rrule` throws "not supported". Only a fallback: the period end is the window's `resetsAt`, then the provider's `subscriptionRenewsAt`, then the manual day (`main.ts resolvePeriodBounds`); Settings locks the manual field when the provider reports every paced window's reset (`renderer/renewal.ts`)
 
 ### Threshold and pace notifications

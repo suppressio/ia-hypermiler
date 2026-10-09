@@ -20,6 +20,11 @@ export const RELEASES_API_URL = `https://api.github.com/repos/${REPO}/releases?p
 /** Every URL opened by the "Download" button must be under this prefix (see main.ts). */
 export const TRUSTED_DOWNLOAD_PREFIX = `https://github.com/${REPO}/`;
 
+/** The user guide (README) on GitHub, in the interface language (Settings → Guide). */
+export function guideUrl(locale: 'en' | 'it'): string {
+  return `${TRUSTED_DOWNLOAD_PREFIX}blob/main/${locale === 'it' ? 'README.it.md' : 'README.md'}`;
+}
+
 export interface GithubReleaseAsset {
   name: string;
   browser_download_url: string;
