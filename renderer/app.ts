@@ -591,6 +591,10 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
     btn.title = `${account.label} (${utilization === null ? '--%' : formatPercent(utilization)})`;
     btn.className = id === activeId ? 'active' : '';
     btn.addEventListener('click', () => {
+      // Diagnostic for issue #25 (tab occasionally not clickable right after login):
+      // if this fires but the widget stays unchanged, check state.activeAccount and
+      // state.latestSnapshot in the DevTools console.
+      console.debug('[widget] tab click id=%s active=%s accounts=%d', id, state.activeAccount, state.latestSnapshot?.accounts.length ?? 0);
       state.activeAccount = id;
       state.activeWindowId = null;
       if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);

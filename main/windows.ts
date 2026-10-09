@@ -35,6 +35,9 @@ export function createMainWindow(store: Store<AppSettings>): BrowserWindow {
     // renderer/style.css.
     backgroundColor: isTransparent ? '#00000000' : ui.windowStyle === 'filled-dark' ? '#1a1a1a' : '#fafafa',
     alwaysOnTop: ui.alwaysOnTop,
+    // macOS: accept the first mouse-down as a content click even when the window
+    // is not focused, preventing the "focus-click" issue (issue #25).
+    acceptFirstMouse: true,
     show: true,
     icon: ICON_PATH,
     webPreferences: {
