@@ -13,6 +13,7 @@ export const it: Record<MessageKey, string> = {
   'widget.counts.extraCreditRatio': '{used} / {total} USD di credito extra usati',
 
   'widget.waiting': 'In attesa di dati…',
+  'widget.freePlan': 'Piano Free — nessuna quota da monitorare',
   'widget.noAccount': 'Nessun account collegato — apri le impostazioni',
   'widget.firstSyncFailed': 'Account collegato — prima sincronizzazione non riuscita',
   'widget.windowWithReset': '{window} · rinnovo {moment}',

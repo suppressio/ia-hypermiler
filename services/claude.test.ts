@@ -307,6 +307,25 @@ test('buildQuotaWindows: Free tier with member_dashboard_available=true still dr
   );
 });
 
+test('fetchUsage: Free tier response sets planTier to "free"', async () => {
+  installFetchMock(async (url) => {
+    if (url.endsWith('/organizations')) return jsonResponse([{ uuid: 'org-free', name: 'Solo' }]);
+    return jsonResponse({ five_hour: null, seven_day: null, limits: [], member_dashboard_available: false });
+  });
+  const result = await claudeService.fetchUsage({ sessionKey: 'sess-free' });
+  assert.equal(result.planTier, 'free');
+  assert.equal(result.quotaWindows.length, 0);
+});
+
+test('fetchUsage: paid account keeps planTier null', async () => {
+  installFetchMock(async () =>
+    jsonResponse({ seven_day: { utilization: 20, resets_at: '2026-07-25T00:00:00Z' }, member_dashboard_available: true }),
+  );
+  const result = await claudeService.fetchUsage({ sessionKey: 'sess-paid', organizationId: 'org-xyz' });
+  assert.equal(result.planTier, null);
+  assert.equal(result.quotaWindows.length, 1);
+});
+
 
 test('fetchUsage uses the given organizationId without calling /organizations', async () => {
   const calledUrls: string[] = [];
