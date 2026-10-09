@@ -105,7 +105,7 @@ Your heaviest day and your average day among the completed days of the chart ran
 
 ### Streak under budget
 
-Consecutive completed days, up to yesterday, that stayed within their share. Hidden while it is 0.
+Consecutive completed days, up to yesterday, that stayed within their budget: the same days that are not red in the chart. Days off with no use are skipped. Hidden while it is 0.
 
 ### Tip of the day
 
@@ -113,7 +113,9 @@ Shown only when it adds something the numbers above do not say: you would run ou
 
 ### Colours
 
-Percent-of-quota values (main value, projection, today against today's budget) turn **orange** 5 points below your alert threshold and **red** from the threshold on (Settings → Notifications, 80% by default).
+- **Main value and projection** turn **orange** 5 points below your alert threshold and **red** from the threshold on (Settings → Notifications, 80% by default).
+- **Today: used / budget** turns **orange** once you have used the alert threshold of today's budget (80% of it by default) and **red** only when you go over it.
+- **Chart bars** are red when that day went over its budget (the dashed line).
 
 ### Local insights (Claude Code, optional)
 

@@ -15,7 +15,7 @@ import type {
   WindowVerdict,
 } from './types';
 import { byId } from './dom.js';
-import { applySeverity, severityLevel } from './severity.js';
+import { applySeverity, severityLevel, todaySeverity } from './severity.js';
 import { GAUGE_TARGET_POSITION, GAUGE_TICK_RATIOS, gaugePosition } from './gauge.js';
 import { localDateKey, parseDateKey } from './dates.js';
 import { showAutonomy, showPeakAvg, showStreak } from './visibility.js';
@@ -221,8 +221,8 @@ function formatVerdict(verdict: WindowVerdict, win: QuotaWindow): string {
 }
 
 // Today's budget (budget.todayBudget): today's consumption against the share of the
-// quota today can use, with what is left or how far over. Coloured like the other
-// percent-of-quota values (renderer/severity.ts) on its share of today's budget. The hint also carries the remaining quota redistributed per
+// quota today can use, with what is left or how far over. Red over budget, orange
+// near it (renderer/severity.ts todaySeverity). The hint also carries the remaining quota redistributed per
 // working day (budget.redistributedQuota), also on a non-working day.
 function renderTodayBudget(winSnap: QuotaWindowSnapshot | undefined): void {
   const valueEl = byId('metric-today', HTMLElement);
@@ -243,9 +243,8 @@ function renderTodayBudget(winSnap: QuotaWindowSnapshot | undefined): void {
     return;
   }
   valueEl.textContent = `${formatPercent(today.usedToday)} / ${formatPercent(today.budget)}`;
-  // Today's consumption as a percentage of today's budget, same thresholds as the quota.
-  if (today.budget > 0) applySeverity(valueEl, severityLevel((today.usedToday / today.budget) * 100, warningThreshold()));
-  else if (today.usedToday > 0) applySeverity(valueEl, 'warning');
+  // Red only over budget, orange from the alert threshold of it (renderer/severity.ts).
+  applySeverity(valueEl, todaySeverity(today.usedToday, today.budget, warningThreshold()));
   const diff = today.budget - today.usedToday;
   if (diff < 0) {
     hints.push(t('widget.metric.todayOver', { value: formatPercent(-diff) }));
@@ -319,9 +318,7 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined): void {
 
     if (!point.upcoming) {
       const barHeight = Math.max(2, scale(delta ?? 0));
-      const limit = point.budget ?? (point.fullShare !== null ? point.fullShare * point.dayUnit : null);
-      const overBudget = delta !== null && limit !== null && delta > limit;
-      const bar = addRect(x + 1, height - barHeight, barWidth, barHeight, overBudget ? 'var(--warning)' : 'var(--accent)', delta !== null ? '0.85' : '0.15');
+      const bar = addRect(x + 1, height - barHeight, barWidth, barHeight, point.overBudget ? 'var(--warning)' : 'var(--accent)', delta !== null ? '0.85' : '0.15');
       const title = document.createElementNS(svgNs, 'title');
       title.textContent = delta === null
         ? t('widget.chart.noData', { date })

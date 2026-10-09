@@ -448,18 +448,19 @@ function computeWindowSnapshot(
   const preliminary = pacingAvailable && !isRollingHours
     && budget.elapsedWorkingUnits(periodStart, periodEnd, now, workSchedule, todayElapsedUnits) < PRELIMINARY_WORKING_UNITS;
   const pacePerUnit = pacingAvailable && !isRollingHours ? budget.currentPacePerUnit(ctx) : null;
+  // Not on rolling-hours windows (no daily reading there, see dailyDeltasForWindow).
+  const chart = isRollingHours ? [] : budget.chartDays({
+    dailyHistory, workSchedule, periodStart, periodEnd, now, todayBudget, redistribution,
+    totalPeriodWorkingUnits: pacingAvailable ? totalPeriodWorkingUnits : 0,
+    pastDays: chartDays,
+    upcomingDays: chartDays === 30 ? 5 : 2,
+  });
 
   return {
     window,
     dailyHistory,
-    // Not on rolling-hours windows (no daily reading there, see dailyDeltasForWindow).
-    chart: isRollingHours ? [] : budget.chartDays({
-      dailyHistory, workSchedule, periodStart, periodEnd, now, todayBudget, redistribution,
-      totalPeriodWorkingUnits: pacingAvailable ? totalPeriodWorkingUnits : 0,
-      pastDays: chartDays,
-      upcomingDays: chartDays === 30 ? 5 : 2,
-    }),
-    deltaStats: budget.deltaStats(dailyDeltasForWindow, now),
+    chart,
+    deltaStats: budget.deltaStats(chart, now),
     verdict: budget.windowVerdict({
       window, projectedUsage, workingDaysUntilReset, estimatedAutonomyWorkingDays, redistribution, pacePerUnit, preliminary, hourly,
     }),

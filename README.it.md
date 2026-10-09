@@ -105,7 +105,7 @@ Il tuo giorno più pesante e la media tra i giorni completi dell'intervallo del 
 
 ### Streak sotto budget
 
-Giorni completi consecutivi, fino a ieri, rimasti entro la loro quota. Nascosto finché è 0.
+Giorni completi consecutivi, fino a ieri, rimasti entro il loro budget: gli stessi giorni che nel grafico non sono rossi. I giorni liberi senza consumo vengono saltati. Nascosto finché è 0.
 
 ### Consigli
 
@@ -113,7 +113,9 @@ Compaiono solo quando aggiungono qualcosa che i numeri sopra non dicono: finires
 
 ### Colori
 
-I valori in percentuale di quota (valore principale, previsionale, oggi rispetto al budget di oggi) diventano **arancioni** 5 punti sotto la tua soglia di allarme e **rossi** dalla soglia in su (Impostazioni → Notifiche, 80% di default).
+- **Valore principale e previsionale** diventano **arancioni** 5 punti sotto la tua soglia di allarme e **rossi** dalla soglia in su (Impostazioni → Notifiche, 80% di default).
+- **Oggi: usato / budget** diventa **arancione** quando hai usato la soglia di allarme del budget di oggi (l'80% di default) e **rosso** solo quando lo superi.
+- **Le barre del grafico** sono rosse quando quel giorno ha superato il suo budget (la linea tratteggiata).
 
 ### Insight locali (Claude Code, facoltativi)
 

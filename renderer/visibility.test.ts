@@ -4,7 +4,7 @@ import { completedDaysWithData, showAutonomy, showPeakAvg, showStreak } from './
 import type { ChartDay } from './types.js';
 
 const day = (date: string, delta: number | null, upcoming = false): ChartDay => ({
-  date, delta, fullShare: 5, dayUnit: 1, budget: 5, upcoming,
+  date, delta, fullShare: 5, dayUnit: 1, budget: 5, upcoming, overBudget: false,
 });
 
 test('showAutonomy: only when the quota runs out before the reset', () => {

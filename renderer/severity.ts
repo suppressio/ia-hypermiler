@@ -15,6 +15,18 @@ export function severityLevel(percent: number | null | undefined, threshold: num
   return 'none';
 }
 
+/**
+ * Colour of today's consumption against today's budget: red only once the budget is
+ * passed, orange from the alert threshold (as a share of the budget) up to it. The
+ * quota rule above made it red at 80% of the budget, while still under it (user
+ * feedback: a value in red under its budget read as over budget).
+ */
+export function todaySeverity(usedToday: number, budget: number, threshold: number): Severity {
+  if (usedToday > budget) return 'warning';
+  if (budget > 0 && (usedToday / budget) * 100 >= threshold) return 'caution';
+  return 'none';
+}
+
 const CLASSES: Record<Exclude<Severity, 'none'>, string> = { caution: 'severity-caution', warning: 'severity-warning' };
 
 /** Sets the severity class of an element (renderer/style.css, `.severity-*`). */
