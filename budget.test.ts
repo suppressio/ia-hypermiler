@@ -576,15 +576,10 @@ test('efficiencyRating returns null with insufficient data', () => {
 function baseTipContext(overrides: Partial<budget.DailyTipContext> = {}): budget.DailyTipContext {
   return {
     window: pctWindow(50),
-    efficiencyIndex: 1,
-    projectedUsage: 50,
     daysUntilReset: 10,
     workingDaysUntilReset: 8,
     estimatedAutonomyWorkingDays: 8,
-    instantRate: null,
-    sustainableRate: null,
     efficiencyRating: null,
-    redistribution: null,
     preliminary: false,
     ...overrides,
   };
@@ -597,11 +592,6 @@ test('generateDailyTip returns `none` when no condition holds', () => {
 test('generateDailyTip flags an estimated autonomy shorter than the time to reset', () => {
   const tip = budget.generateDailyTip(baseTipContext({ estimatedAutonomyWorkingDays: 4, workingDaysUntilReset: 8 }));
   assert.deepEqual(tip, { key: 'autonomy', params: { autonomyDays: 4, daysToReset: 8, reductionPercent: 50 } }); // 1 - 4/8
-});
-
-test('generateDailyTip flags a recent pace above the sustainable one', () => {
-  const tip = budget.generateDailyTip(baseTipContext({ instantRate: 5, sustainableRate: 2 }));
-  assert.deepEqual(tip, { key: 'instantRate', params: { instantRate: 5, sustainableRate: 2 } });
 });
 
 test('generateDailyTip reports a high rating as room for more usage', () => {
@@ -621,25 +611,14 @@ test('generateDailyTip flags few days to reset with usage already high', () => {
   assert.equal(today.key, 'nearResetToday');
 });
 
-test('generateDailyTip flags a projection above 100% before it is reached', () => {
-  const tip = budget.generateDailyTip(baseTipContext({ window: pctWindow(90), projectedUsage: 130 }));
-  assert.deepEqual(tip, { key: 'projected', params: { projectedUsage: 130 } });
-});
-
-test('generateDailyTip does not repeat the projection once usage is already 100%', () => {
-  const tip = budget.generateDailyTip(baseTipContext({ window: pctWindow(100), projectedUsage: 100 }));
-  assert.deepEqual(tip, budget.NO_TIP);
-});
-
 test('generateDailyTip picks among applicable candidates using the injected random, never a non-applicable one', () => {
   const ctx = baseTipContext({
-    instantRate: 5,
-    sustainableRate: 2, // candidate 2 applies
-    efficiencyRating: { stars: 5, avgRatio: 1.8 }, // candidate 3 applies
+    estimatedAutonomyWorkingDays: 4, // candidate 1 applies
+    efficiencyRating: { stars: 5, avgRatio: 1.8 }, // candidate 2 applies
   });
   const first = budget.generateDailyTip(ctx, () => 0);
   const second = budget.generateDailyTip(ctx, () => 0.99);
-  assert.deepEqual([first.key, second.key], ['instantRate', 'rating']);
+  assert.deepEqual([first.key, second.key], ['autonomy', 'rating']);
   // A random of exactly 1 must not overflow the candidate list.
   assert.equal(budget.generateDailyTip(ctx, () => 1).key, 'rating');
 });
@@ -686,11 +665,6 @@ test('deltaStats: no streak without any consumption', () => {
     { date: '2026-07-14', delta: 0, idealShare: 5 },
   ], LATER);
   assert.deepEqual(stats, { peak: 0, avg: 0, streakUnderBudget: null });
-});
-
-test('generateDailyTip: rebalance numbers with one decimal', () => {
-  const tip = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 4.26, idealPerUnit: 4.97, unitsLeft: 12 } }));
-  assert.deepEqual(tip.params, { perUnit: 4.3, idealPerUnit: 5, days: 12 });
 });
 
 test('deltaStats: no data → all null; without pacing the streak is null', () => {
@@ -759,15 +733,12 @@ test('pickCriticalSnapshot: at risk or exhausted first, then utilization, then p
   assert.equal(budget.pickCriticalSnapshot([]), null);
 });
 
-test('generateDailyTip: rebalance tips outside the on-track band; projection tips skipped while preliminary', () => {
-  const down = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 4.4, idealPerUnit: 5, unitsLeft: 12 } }));
-  assert.deepEqual(down, { key: 'rebalanceDown', params: { perUnit: 4.4, idealPerUnit: 5, days: 12 } });
-  const up = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 6, idealPerUnit: 5, unitsLeft: 9 } }));
-  assert.equal(up.key, 'rebalanceUp');
-  const even = budget.generateDailyTip(baseTipContext({ redistribution: { perUnit: 5.1, idealPerUnit: 5, unitsLeft: 9 } }));
-  assert.deepEqual(even, budget.NO_TIP);
+test('generateDailyTip: no tip restating a visible number; autonomy tip skipped while preliminary', () => {
+  // The quota per day, the pace above target and a projection over 100% are already
+  // on the widget (hint under today's budget, instant gauge, projection).
+  assert.deepEqual(budget.generateDailyTip(baseTipContext({ window: pctWindow(90) })), budget.NO_TIP);
   const preliminary = budget.generateDailyTip(baseTipContext({
-    preliminary: true, window: pctWindow(12), projectedUsage: 185, estimatedAutonomyWorkingDays: 9, workingDaysUntilReset: 18,
+    preliminary: true, window: pctWindow(12), estimatedAutonomyWorkingDays: 9, workingDaysUntilReset: 18,
   }));
   assert.deepEqual(preliminary, budget.NO_TIP);
 });

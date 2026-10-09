@@ -17,7 +17,8 @@ import type {
 import { byId } from './dom.js';
 import { applySeverity, severityLevel } from './severity.js';
 import { GAUGE_TARGET_POSITION, GAUGE_TICK_RATIOS, gaugePosition } from './gauge.js';
-import { parseDateKey } from './dates.js';
+import { localDateKey, parseDateKey } from './dates.js';
+import { showAutonomy, showPeakAvg, showStreak } from './visibility.js';
 import {
   applyTranslations,
   formatDate,
@@ -188,16 +189,12 @@ function formatTip(tip: DailyTip, win: QuotaWindow, provider: ProviderId): strin
   const numbers = Object.fromEntries(Object.entries(tip.params).map(([k, v]) => [k, formatNumber(v, 2)]));
   const params = { ...numbers, window, reset };
   switch (tip.key) {
-    case 'none': return t('tips.none');
+    case 'none': return '';
     case 'autonomy': return t('tips.autonomy', params);
-    case 'instantRate': return t('tips.instantRate', params);
     case 'rating': return t('tips.rating', params);
     case 'nearReset': return t('tips.nearReset', params);
     case 'nearResetToday': return t('tips.nearResetToday', params);
-    case 'projected': return t('tips.projected', params);
     case 'cause': return t('tips.cause', params);
-    case 'rebalanceDown': return t('tips.rebalanceDown', params);
-    case 'rebalanceUp': return t('tips.rebalanceUp', params);
   }
 }
 
@@ -670,12 +667,23 @@ function selectWindowSnapshot(account: AccountSnapshot): QuotaWindowSnapshot | u
 // budget.hourlyOutlook) is read in hours, and the metrics that only make sense per
 // working day (today's budget, efficiency, peak/average, streak) are hidden there
 // instead of showing "--" or "0 days".
+function setMetricVisible(id: string, visible: boolean): void {
+  const block = byId(id).closest<HTMLElement>('.metric');
+  if (block) block.hidden = !visible;
+}
+
 function renderPeriodMetrics(winSnap: QuotaWindowSnapshot | undefined): void {
   const hourly = winSnap?.hourly ?? null;
-  for (const id of ['metric-today', 'metric-efficiency', 'metric-peak-avg', 'metric-streak']) {
-    const block = byId(id).closest<HTMLElement>('.metric');
-    if (block) block.hidden = hourly !== null;
-  }
+  for (const id of ['metric-today', 'metric-efficiency']) setMetricVisible(id, hourly === null);
+  // Peak/average and streak only once they say something (renderer/visibility.ts).
+  const stats = winSnap?.deltaStats;
+  const todayKey = localDateKey(new Date());
+  setMetricVisible('metric-peak-avg', hourly === null && showPeakAvg(winSnap?.chart ?? [], todayKey));
+  setMetricVisible('metric-streak', hourly === null && showStreak(stats?.streakUnderBudget ?? null));
+  byId('metric-peak-avg').textContent =
+    stats?.peak == null ? '--' : `${formatPercent(stats.peak)} / ${formatPercent(stats.avg)}`;
+  byId('metric-streak').textContent =
+    stats?.streakUnderBudget == null ? '--' : formatDays(stats.streakUnderBudget);
   const setLabel = (id: string, key: MessageKey): void => {
     const el = byId(id);
     el.dataset.i18n = key;
@@ -689,9 +697,9 @@ function renderPeriodMetrics(winSnap: QuotaWindowSnapshot | undefined): void {
     projected.textContent = formatPercent(hourly.projectedAtReset);
     applySeverity(projected, severityLevel(hourly.projectedAtReset, warningThreshold()));
     byId('metric-days-left').textContent = formatHours(hourly.hoursLeft);
-    autonomyEl.textContent = hourly.autonomyHours === null || hourly.autonomyHours > hourly.hoursLeft
-      ? t('widget.metric.autonomyBeyondReset')
-      : formatHours(hourly.autonomyHours);
+    // Autonomy only when it runs out before the reset (renderer/visibility.ts).
+    setMetricVisible('metric-autonomy', showAutonomy(hourly.autonomyHours, hourly.hoursLeft));
+    autonomyEl.textContent = hourly.autonomyHours === null ? '--' : formatHours(hourly.autonomyHours);
     byId('metric-projected-hint').textContent = '';
     byId('metric-autonomy-hint').textContent = '';
     return;
@@ -710,13 +718,11 @@ function renderPeriodMetrics(winSnap: QuotaWindowSnapshot | undefined): void {
     days: winSnap?.daysUntilReset ?? '--',
     working: formatDays(winSnap?.workingDaysUntilReset ?? null),
   });
-  // Autonomy past the renewal says nothing more than "it lasts" (an absurd number of
-  // days on an almost unused quota).
+  // Autonomy past the renewal says nothing more than the projection under 100%: shown
+  // only when the quota would run out first (renderer/visibility.ts).
   const autonomy = winSnap?.estimatedAutonomyWorkingDays ?? null;
-  const daysLeft = winSnap?.workingDaysUntilReset ?? null;
-  autonomyEl.textContent = autonomy !== null && daysLeft !== null && autonomy > daysLeft
-    ? t('widget.metric.autonomyBeyondReset')
-    : formatDays(autonomy);
+  setMetricVisible('metric-autonomy', showAutonomy(autonomy, winSnap?.workingDaysUntilReset ?? null));
+  autonomyEl.textContent = formatDays(autonomy);
 }
 
 // --- Main render ------------------------------------------------------------------
@@ -736,6 +742,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     renderInstantGauge(undefined);
     renderEfficiencyRating(undefined, chartDays);
     renderLocalInsights(undefined);
+    setTipsVisible(true);
     byId('tips-text').textContent = t('widget.tips.waiting');
     return;
   }
@@ -781,18 +788,21 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     : formatEfficiencyHint(winSnap?.efficiencyIndex ?? null);
   renderTodayBudget(winSnap);
   renderPeriodMetrics(winSnap);
-  const stats = winSnap?.deltaStats;
-  byId('metric-peak-avg').textContent =
-    stats?.peak == null ? '--' : `${formatPercent(stats.peak)} / ${formatPercent(stats.avg)}`;
-  byId('metric-streak').textContent =
-    stats?.streakUnderBudget == null ? '--' : formatDays(stats.streakUnderBudget);
 
   byId('chart-title').textContent = t('widget.chart.title', { days: chartDays });
   renderChart(winSnap);
 
-  byId('tips-text').textContent = winSnap && win
-    ? formatTip(winSnap.dailyTip, win, account.provider)
+  // No tip section when there is nothing to add (budget.generateDailyTip: `none`).
+  const tip = winSnap?.dailyTip ?? null;
+  setTipsVisible(tip === null || tip.key !== 'none');
+  byId('tips-text').textContent = winSnap && win && tip
+    ? formatTip(tip, win, account.provider)
     : t('widget.tips.waiting');
+}
+
+function setTipsVisible(visible: boolean): void {
+  const section = byId('tips-text').closest<HTMLElement>('details');
+  if (section) section.hidden = !visible;
 }
 
 // --- Startup ----------------------------------------------------------------------

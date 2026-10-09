@@ -38,7 +38,6 @@ export const it: Record<MessageKey, string> = {
   'widget.metric.efficiencyBelow': 'sotto il ritmo ideale',
   'widget.metric.efficiencyAbove': 'sopra il ritmo ideale',
   'widget.metric.efficiencyNegligible': 'consumo finora trascurabile',
-  'widget.metric.autonomyBeyondReset': 'oltre il rinnovo',
   'widget.metric.today': 'Oggi: usato / budget',
   'widget.metric.todayHelp': "Consumo di oggi rispetto al budget di oggi: quanto restava stamattina, diviso sui giorni lavorativi fino al rinnovo. Sotto: quanto resta ora per giorno lavorativo, accanto alla quota ideale del periodo.",
   'widget.metric.todayLeft': '{value} ancora disponibile oggi',
@@ -73,16 +72,11 @@ export const it: Record<MessageKey, string> = {
   'widget.insights.tokenCount': '{count} token di output',
   'widget.insights.topTools': 'Tool più usati',
 
-  'tips.none': 'Non ci sono ancora abbastanza dati per un consiglio specifico su questa finestra.',
   'tips.autonomy': 'Al ritmo attuale {window} durerebbe circa {autonomyDays}gg lavorativi, ma mancano {daysToReset}gg al rinnovo: per arrivarci serve un ritmo circa il {reductionPercent}% più basso.',
-  'tips.instantRate': 'Il ritmo delle ultime ore su {window} ({instantRate}%/h) è sopra il {sustainableRate}%/h sostenibile per arrivare a {reset} senza sforare.',
   'tips.rating': "Rating {stars}/5 su {window} negli ultimi giorni (in media {avgRatio}× il ritmo ideale): c'è margine per una sessione più lunga oggi.",
   'tips.nearReset': 'Mancano {days}gg al rinnovo di {window} e sei già al {utilization}%: valuta di consolidare le richieste rimanenti prima del reset.',
   'tips.nearResetToday': 'Manca meno di un giorno al rinnovo di {window} e sei già al {utilization}%: valuta di consolidare le richieste rimanenti prima del reset.',
-  'tips.projected': 'Di questo passo {window} arriverebbe al {projectedUsage}% entro il rinnovo: supererebbe il limite se il ritmo resta questo.',
   'tips.cause': "Nei giorni in cui consumi più quota di {window}, il {highPercent}% dei token è prodotto a contesto oltre 150k (contro il {lowPercent}% negli altri giorni, su {days}gg): ridurre il contesto (/clear tra un task e l'altro, /compact) abbassa il costo di ogni turno.",
-  'tips.rebalanceDown': "Su {window}, per arrivare al rinnovo restano circa {perUnit}% per giorno lavorativo nei prossimi {days} giorni lavorativi, invece dell'ideale {idealPerUnit}%.",
-  'tips.rebalanceUp': 'Su {window} hai consumato meno del previsto: ti restano {perUnit}% per giorno lavorativo nei prossimi {days} giorni lavorativi (ideale {idealPerUnit}%).',
   'tips.nextReset': 'fine periodo',
 
   'verdict.exhausted': 'esaurita',
@@ -238,6 +232,7 @@ export const it: Record<MessageKey, string> = {
   'settings.notifications.title': 'Notifiche',
   'settings.notifications.threshold': 'Soglia di allarme (%)',
 
+  'settings.guide.open': 'Guida',
   'settings.updates.title': 'Aggiornamenti',
   'settings.updates.installed': 'Versione installata:',
   'settings.updates.neverChecked': 'Nessun controllo eseguito.',

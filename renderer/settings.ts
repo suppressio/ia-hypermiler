@@ -619,6 +619,10 @@ function bindEvents(): void {
     }
   }));
 
+  byId('btn-open-guide').addEventListener('click', guarded(async () => {
+    await window.hypermiler.openGuide();
+  }));
+
   byId('btn-download-update').addEventListener('click', guarded(async () => {
     try {
       await window.hypermiler.downloadUpdate();

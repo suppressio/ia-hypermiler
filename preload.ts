@@ -52,6 +52,7 @@ const bridge: HypermilerBridge = {
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
   downloadUpdate: () => ipcRenderer.invoke('updates:download'),
   openReleaseNotes: () => ipcRenderer.invoke('updates:openReleaseNotes'),
+  openGuide: () => ipcRenderer.invoke('app:openGuide'),
 };
 
 contextBridge.exposeInMainWorld('hypermiler', bridge);
