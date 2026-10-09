@@ -289,9 +289,12 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined): void {
   const height = 90;
   const max = Math.max(0.1, ...series.map((d) => Math.max(d.delta ?? 0, d.fullShare ?? 0, d.budget ?? 0)));
   const slotWidth = width / series.length;
-  const barWidth = Math.max(1, slotWidth * 0.62 - 1);
-  const shareX = slotWidth * 0.66;
-  const shareWidth = Math.max(1.5, slotWidth * 0.2);
+  // Thin share bar of about 2.5 px right beside the consumption bar (user feedback:
+  // a few pixels are enough), narrower only when 30 slots leave no room.
+  const shareWidth = Math.min(2.5, slotWidth * 0.2);
+  const shareGap = Math.min(2, slotWidth * 0.1);
+  const barWidth = Math.max(1, slotWidth * 0.85 - shareWidth - shareGap - 1);
+  const shareX = 1 + barWidth + shareGap;
   const scale = (value: number) => (value / max) * (height - 4);
 
   const svgNs = 'http://www.w3.org/2000/svg';
@@ -310,6 +313,17 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined): void {
     svg.appendChild(rect);
     return rect;
   };
+
+  // Today stands out from the past and the days to come: a faint band behind its slot
+  // (the last one that is not upcoming), drawn first so bars and lines stay on top.
+  const todayIndex = series.filter((d) => !d.upcoming).length - 1;
+  if (todayIndex >= 0) {
+    const band = addRect(todayIndex * slotWidth, 0, slotWidth, height, 'currentColor', '0.1');
+    band.setAttribute('rx', '3');
+    const title = document.createElementNS(svgNs, 'title');
+    title.textContent = t('widget.chart.today');
+    band.appendChild(title);
+  }
 
   series.forEach((point, i) => {
     const x = i * slotWidth;
@@ -331,8 +345,8 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined): void {
     if (point.fullShare !== null && point.fullShare > 0) {
       const working = scale(point.fullShare * point.dayUnit);
       const rest = scale(point.fullShare * (1 - point.dayUnit));
-      if (working > 0) addRect(x + shareX, height - working, shareWidth, working, 'var(--accent)', '0.45');
-      if (rest > 0) addRect(x + shareX, height - working - rest, shareWidth, rest, 'currentColor', '0.12');
+      if (working > 0) addRect(x + shareX, height - working, shareWidth, working, 'var(--accent)', '0.75');
+      if (rest > 0) addRect(x + shareX, height - working - rest, shareWidth, rest, 'currentColor', '0.25');
     }
 
     if (point.budget !== null && point.budget > 0) {
