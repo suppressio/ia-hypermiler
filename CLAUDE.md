@@ -225,6 +225,18 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 3. **Before a release:** `npm run lint`, `npm test`; review `agents/`, `services/` and `main.ts` for calls without timeout, secrets in the renderer, non cross-platform paths, `setInterval` leaks.
 4. **UI changes:** verify visually without asking the user for screenshots — offscreen rendering works in this environment: `env -u ELECTRON_RUN_AS_NODE xvfb-run -a npx electron --no-sandbox <script>` with a `BrowserWindow` `show: false` + a fake preload + `webContents.capturePage()`. Check both languages.
 
+### Branches
+
+Same model as every repo managed by agent-ops (full rules: agent-ops README › *Branch*):
+
+- `next` is the **default branch** and the staging line: every change reaches it through a PR merged with
+  **Rebase and merge** (linear history). Branch from `next` as `<type>/<n>-slug` (`feat/`, `fix/`, `chore/`, `docs/`…).
+- `main` is production: it only receives the release PR from `next` (agent-ops `release`, merge commit) or a
+  `hotfix/*` PR, then `release --backport`. Never push, commit or open a PR towards `main` yourself; never force-push.
+- In PR bodies write `Refs #n`, not `Closes #n`: the issue closes at release, not when the PR reaches `next`.
+- Agents run by the dispatcher work on the branch prepared for them (`agent/<n>-slug`) and do not push: the
+  dispatcher pushes and opens the PR.
+
 ---
 
 ## Build and test
@@ -240,7 +252,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 
 ### CI — cross-platform build (GitHub Actions)
 `.github/workflows/build.yml` builds on macos/windows/ubuntu in parallel:
-- **Trigger:** a pushed tag starting with `v` (e.g. `v0.4.0-beta`) → **release**; a manual run (`gh workflow run build.yml`, or Actions → Run workflow) → **test build**: version `<package.json version>.dev.<run number>`, packages only as run artifacts (`-test` suffix, 14 days), `--publish=never`, so no release and no update notification. No build on every push/PR. Workflow: iterate on `main`, try test builds on the real machines (preferably local, `npm run package:test`), tag a release only once a test build is verified (no extra branches: two people, not a team).
+- **Trigger:** a pushed tag starting with `v` (e.g. `v0.4.0-beta`) → **release**; a manual run (`gh workflow run build.yml`, or Actions → Run workflow) → **test build**: version `<package.json version>.dev.<run number>`, packages only as run artifacts (`-test` suffix, 14 days), `--publish=never`, so no release and no update notification. No build on every push/PR. Workflow: work lands on `next` (staging), try test builds on the real machines (preferably local, `npm run package:test`), release `next` → `main` with agent-ops `release` once verified, then tag `main` (see *Branches*).
 - **Each job:** `npm ci` → `npm run lint` → `npm test` → `npx electron-builder --<mac|win|linux> --publish=always`.
 - **Output:** packages attached to the GitHub Release of the tag (`contents: write` permission) and uploaded as run artifacts (14 days). Release notes are written by hand (EN + IT) after the run.
 - **No code signing** (`CSC_IDENTITY_AUTO_DISCOVERY: false`): Gatekeeper/SmartScreen warn at install time.
