@@ -2,6 +2,12 @@ version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "next"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
+    # Major bumps (Electron, electron-store, eslint…) need coordinated changes:
+    # they get a dedicated issue, not a one-package PR.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
