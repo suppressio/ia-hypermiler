@@ -228,7 +228,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 
 ### Branches
 
-Same model as every repo managed by agent-ops (full rules: agent-ops README › *Branch*):
+Same model as every repo managed by agent-ops (full rules: agent-ops `docs/BRANCHES.md`):
 
 - `next` is the **default branch** and the staging line: every change reaches it through a PR merged with
   **Rebase and merge** (linear history). Branch from `next` as `<type>/<n>-slug` (`feat/`, `fix/`, `chore/`, `docs/`…).
