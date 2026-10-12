@@ -36,7 +36,7 @@ export function buildFormatDriftIssueUrl({ provider, endpointLabel, shape }: For
     JSON.stringify(shape, null, 2),
     '```',
     '',
-    `Previously expected format: see \`RESEARCH.md\` and \`services/${provider}.ts\`.`,
+    `Previously expected format: see \`docs/RESEARCH.md\` and \`services/${provider}.ts\`.`,
     '',
     '_Draft generated automatically — review the content before submitting._',
   ].join('\n');

@@ -1,4 +1,4 @@
-// main/tray.ts — cross-platform system tray (see ARCHITECTURE.md §4)
+// main/tray.ts — cross-platform system tray (see docs/ARCHITECTURE.md §4)
 
 import { Tray, Menu, nativeImage, app, BrowserWindow, MenuItem } from 'electron';
 import path from 'path';

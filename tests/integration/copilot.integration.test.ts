@@ -1,5 +1,5 @@
 // tests/integration/copilot.integration.test.ts — tests against the real GitHub
-// endpoints (RESEARCH.md v3 §2). They activate only when the right environment
+// endpoints (docs/RESEARCH.md v3 §2). They activate only when the right environment
 // variables are set — see .env.test.example and claude.integration.test.ts for the
 // full procedure to provide credentials safely, locally.
 //
@@ -41,7 +41,7 @@ test('fetchUsage on a real account returns at least one quota window', { skip: s
   }
 
   if (scope === 'organization') {
-    // Best-effort path (RESEARCH.md v3 §2.2): getting here without exceptions means the
+    // Best-effort path (docs/RESEARCH.md v3 §2.2): getting here without exceptions means the
     // internal endpoint answered in a recognized format — useful to know right away when
     // GitHub changes something, instead of finding out from the app in production.
     console.log('[integration] Copilot company seat: internal endpoint still compatible.');

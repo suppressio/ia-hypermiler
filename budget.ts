@@ -1,4 +1,4 @@
-// budget.ts — budget/efficiency/projection logic (see ARCHITECTURE.md §0 and §3)
+// budget.ts — budget/efficiency/projection logic (see docs/ARCHITECTURE.md §0 and §3)
 //
 // Model: every account (Claude/Copilot) exposes one or more QuotaWindow:
 //   { id, label, periodType, periodLength, unit: 'percentage'|'count', used, total, resetsAt }
@@ -541,7 +541,7 @@ export function efficiencyRating(
 
 /**
  * Consumption of each day (difference with the day's baseline `dayStartUsed`, or with
- * the previous history point for older points, in quota percentage points) next to that day's ideal share — EVOLUTION.md point 1: the
+ * the previous history point for older points, in quota percentage points) next to that day's ideal share — docs/EVOLUTION.md point 1: the
  * widget chart shows this, no longer the cumulative % per day that mirrored the
  * provider dashboard.
  * - `delta` null: the window was reset in between (negative delta), the value is not
@@ -758,7 +758,7 @@ export const REDISTRIBUTION_ON_TRACK_LOW = 0.95;
 export const REDISTRIBUTION_ON_TRACK_HIGH = 1.05;
 
 /**
- * Short verdict of a quota window for the widget window list (EVOLUTION.md point 1:
+ * Short verdict of a quota window for the widget window list (docs/EVOLUTION.md point 1:
  * replacing tabs that only lined up the provider's metrics). The text is composed by
  * the renderer (reset date formatting is a UI concern).
  * - exhausted first;
@@ -821,7 +821,7 @@ export function pickCriticalSnapshot<T extends { window: QuotaWindow; verdict: W
 }
 
 // ---------------------------------------------------------------------------
-// Value per token (EVOLUTION.md point 4): crossing the tokens produced in local Claude
+// Value per token (docs/EVOLUTION.md point 4): crossing the tokens produced in local Claude
 // Code sessions (services/claudeLocalSessions.ts, per day) with the same day's quota
 // consumption (dailyDeltas). Only days present in both sources are compared: a day
 // with quota used but no local session (e.g. claude.ai in the browser) could not be
@@ -890,7 +890,7 @@ export function tokenYield(localDaily: LocalDailyTokens[], deltas: DailyDelta[])
  * least CAUSE_MIN_DAYS compared days, and on days above the consumption median the
  * share of tokens produced with context >150k is at least CAUSE_MIN_RATIO times (and
  * CAUSE_MIN_GAP_POINTS points above) that of days below the median. Otherwise null:
- * better no sentence than a weak correlation presented as a cause (EVOLUTION.md, "a bad
+ * better no sentence than a weak correlation presented as a cause (docs/EVOLUTION.md, "a bad
  * insight undermines trust more than no insight").
  */
 export function consumptionCause(localDaily: LocalDailyTokens[], deltas: DailyDelta[]): ConsumptionCause | null {

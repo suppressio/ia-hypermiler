@@ -110,7 +110,7 @@ test('buildQuotaWindows drops 0% windows without reset and amounts (not applicab
 test('buildQuotaWindows: real case — payload with obfuscated field names (2026-07) is parsed correctly', () => {
   // Real payload received from a connected account, with the old names (five_hour,
   // seven_day, ...) all null and new/arbitrary names in their place — see the CLAUDE.md
-  // progress log and the RESEARCH.md addendum.
+  // progress log and the docs/RESEARCH.md addendum.
   const windows = claudeService.buildQuotaWindows({
     five_hour: null,
     seven_day: null,
@@ -216,7 +216,7 @@ test('buildQuotaWindows: `spend` is not added when a dollar window already repor
   assert.equal(at(windows, 0).id, 'cinder_cove');
 });
 
-// Shape seen on 2026-10-02 on a company account (RESEARCH.md §1 addendum 4):
+// Shape seen on 2026-10-02 on a company account (docs/RESEARCH.md §1 addendum 4):
 // extra_usage now carries utilization and the monthly budget in minor units, the same
 // money as `spend`. Values here are invented.
 function companyExtraUsagePayload(spendUsedMinor: number): Record<string, unknown> {

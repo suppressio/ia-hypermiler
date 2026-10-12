@@ -143,7 +143,7 @@ function scheduleRefreshLoop(): void {
 
 // ---------------------------------------------------------------------------
 // Local history: neither Claude nor Copilot provides a daily history via API (see
-// RESEARCH.md), so we build it ourselves, one point per day, on every successful
+// docs/RESEARCH.md), so we build it ourselves, one point per day, on every successful
 // refresh.
 // ---------------------------------------------------------------------------
 // The store is encrypted and electron-store re-reads and decrypts the whole file on
@@ -241,7 +241,7 @@ function getRecentSamples(draft: HistoryDraft, accountId: AccountId, windowId: s
 
 // ---------------------------------------------------------------------------
 // Local insights from Claude Code sessions (services/claudeLocalSessions.ts, see
-// RESEARCH.md §5): opt-in per account (ClaudeAccountSettings.localInsights, at most
+// docs/RESEARCH.md §5): opt-in per account (ClaudeAccountSettings.localInsights, at most
 // one Claude account — the caller decides which), cached because more expensive than
 // a regular refresh (scanning files on disk, not a network poll) — recomputed at most
 // every LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
@@ -436,7 +436,7 @@ function computeWindowSnapshot(
   const efficiencyRating = ratingAvailable
     ? budget.efficiencyRating(dailyHistory, workSchedule, totalPeriodWorkingUnits, now, chartDays)
     : null;
-  // Value per token (EVOLUTION.md point 4): only when the account has local insights
+  // Value per token (docs/EVOLUTION.md point 4): only when the account has local insights
   // enabled — crosses tokens per day with this window's deltas.
   const localDaily = localInsights?.daily ?? null;
   const todayBudget = pacingAvailable && !isRollingHours
@@ -1229,7 +1229,7 @@ function registerIpcHandlers(): void {
 
   // Alternative to a hand-pasted PAT, through an OAuth App registered by the user on the
   // account's GitHub domain. Verified on a personal Free account (2026-10-01): with an
-  // OAuth token copilot_internal/user returns the quota snapshots — see RESEARCH.md §2.2.
+  // OAuth token copilot_internal/user returns the quota snapshots — see docs/RESEARCH.md §2.2.
   ipcMain.handle('accounts:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, rawId: unknown, rawPayload: unknown) => {
     const id = requireString(rawId, 'Account');
     const payloadRecord = isPlainRecord(rawPayload) ? rawPayload : {};

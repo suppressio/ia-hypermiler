@@ -256,7 +256,7 @@ function renderTodayBudget(winSnap: QuotaWindowSnapshot | undefined): void {
 
 // --- Daily chart -------------------------------------------------------------------
 
-// "Daily consumption vs budget" chart (EVOLUTION.md point 1), one slot per day from
+// "Daily consumption vs budget" chart (docs/EVOLUTION.md point 1), one slot per day from
 // winSnap.chart (budget.chartDays: the last 7 or 30 days, then 2 or 5 days to come):
 // - wide bar: the consumption of THAT day (not the cumulative % of the provider
 //   dashboard), --warning above that day's budget; faint when there is no data;
@@ -494,7 +494,7 @@ function renderEfficiencyRating(winSnap: QuotaWindowSnapshot | undefined, chartD
 
 // --- Local insights (Claude Code sessions on this machine) ---------------------------
 
-// Yield (EVOLUTION.md point 4, budget.tokenYield): tokens produced per 1% of quota
+// Yield (docs/EVOLUTION.md point 4, budget.tokenYield): tokens produced per 1% of quota
 // of the selected window, with the trend between the second and first half.
 function renderTokenYield(winSnap: QuotaWindowSnapshot | undefined): void {
   const valueEl = byId('local-insights-yield', HTMLElement);
@@ -518,7 +518,7 @@ function renderTokenYield(winSnap: QuotaWindowSnapshot | undefined): void {
     });
 }
 
-// Behavioural insights from LOCAL Claude Code sessions (opt-in, see RESEARCH.md
+// Behavioural insights from LOCAL Claude Code sessions (opt-in, see docs/RESEARCH.md
 // §5) — a sub-section inside the "Tip of the day" <details>, shown only when
 // enabled and available. Present only on the Claude account the user attributed
 // local sessions to (per-account flag in Settings).
@@ -603,7 +603,7 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
   });
 }
 
-// Quota windows of the active account (EVOLUTION.md point 1), replacing tabs that
+// Quota windows of the active account (docs/EVOLUTION.md point 1), replacing tabs that
 // only lined up the provider's metrics: one row per window with a verdict computed
 // by the app (budget.windowVerdict), the critical one first. Clicking a row shows
 // that window in the rest of the widget. Hidden when the account has one window.

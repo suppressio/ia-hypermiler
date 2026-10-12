@@ -1,5 +1,5 @@
 // main/providers.ts — provider-specific part of the account registry (issue #4,
-// EVOLUTION.md point 3). main.ts works only on generic AccountConfig values and
+// docs/EVOLUTION.md point 3). main.ts works only on generic AccountConfig values and
 // delegates here everything that depends on the provider: connection state,
 // credentials for the service, disconnection, redaction of secrets towards the
 // renderer. The services (services/claude.ts, services/copilot.ts) are unchanged: the

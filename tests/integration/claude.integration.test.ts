@@ -1,5 +1,5 @@
 // tests/integration/claude.integration.test.ts — tests against the real claude.ai
-// endpoint (RESEARCH.md v3 §1). NOT run in CI or in environments without network
+// endpoint (docs/RESEARCH.md v3 §1). NOT run in CI or in environments without network
 // access to claude.ai: they activate only when the right environment variables are set.
 //
 // How to provide the credentials (LOCALLY, never in chat, never committed):
@@ -38,7 +38,7 @@ test('fetchUsage on a real account returns valid quota windows', { skip: skipRea
   const result = await claudeService.fetchUsage({ sessionKey: sessionKey as string, organizationId: organizationId ?? null });
 
   assert.ok(Array.isArray(result.quotaWindows));
-  assert.ok(result.quotaWindows.length > 0, 'RESEARCH.md expected at least one window (five_hour/seven_day/seven_day_opus): the endpoint format may have changed');
+  assert.ok(result.quotaWindows.length > 0, 'docs/RESEARCH.md expected at least one window (five_hour/seven_day/seven_day_opus): the endpoint format may have changed');
 
   for (const win of result.quotaWindows) {
     assert.equal(win.unit, 'percentage');
