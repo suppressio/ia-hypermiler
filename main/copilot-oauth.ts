@@ -9,7 +9,7 @@
 // webview: the user authenticates on github.com in their own real browser, safer than
 // a BrowserWindow controlled by us.
 //
-// Hypothesis tested (see CLAUDE.md/RESEARCH.md §2.2): an OAuth App token might receive
+// Hypothesis tested (see CLAUDE.md, docs/RESEARCH.md §2.2): an OAuth App token might receive
 // a full quota_snapshots response from copilot_internal/user (like the VS Code Copilot
 // Chat extension), unlike what was observed with a PAT. Disproved for company seats.
 // This file only obtains the token; the response handling stays in services/copilot.ts
