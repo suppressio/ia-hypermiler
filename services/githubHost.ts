@@ -1,6 +1,6 @@
 // services/githubHost.ts — which GitHub a Copilot account lives on: github.com or a
 // GitHub Enterprise Cloud tenant with data residency (<tenant>.ghe.com), where the
-// company Copilot seat and its usage data are (RESEARCH.md §2.2 addendum 2026-10-01).
+// company Copilot seat and its usage data are (docs/RESEARCH.md §2.2 addendum 2026-10-01).
 // The account token is sent to this host, so only these two shapes are accepted.
 // Layout as in VS Code (src/vs/platform/github/common/githubEndpoints.ts): API on
 // api.<host>, OAuth on <host>/login/oauth.

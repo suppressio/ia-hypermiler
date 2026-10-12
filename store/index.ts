@@ -1,5 +1,5 @@
 // store/index.ts — electron-store wrapper
-// Schema defined in ARCHITECTURE.md §1. Secrets (sessionKey, PAT/token) stay encrypted
+// Schema defined in docs/ARCHITECTURE.md §1. Secrets (sessionKey, PAT/token) stay encrypted
 // via encryptionKey and never reach the renderer except through IPC in the main
 // process.
 //

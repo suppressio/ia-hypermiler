@@ -630,7 +630,7 @@ test('generateDailyTip picks among applicable candidates using the injected rand
 
 // ---------------------------------------------------------------------------
 // dailyDeltas / deltaStats / windowVerdict — "daily consumption vs budget" chart and
-// window list with verdicts (EVOLUTION.md point 1)
+// window list with verdicts (docs/EVOLUTION.md point 1)
 // ---------------------------------------------------------------------------
 
 test('dailyDeltas: daily consumption = difference with the previous point, with ideal share', () => {
@@ -790,7 +790,7 @@ test('scenario: heavy first day of a monthly window first read in the afternoon,
 });
 
 // ---------------------------------------------------------------------------
-// tokenYield / consumptionCause — value per token (EVOLUTION.md point 4)
+// tokenYield / consumptionCause — value per token (docs/EVOLUTION.md point 4)
 // ---------------------------------------------------------------------------
 
 function localDay(date: string, outputTokens: number, highContextOutputTokens = 0) {

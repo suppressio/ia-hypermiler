@@ -1,8 +1,8 @@
 // services/claudeLocalSessions.ts — behavioural insights from LOCAL Claude Code
-// sessions (CLI + VS Code extension, same source — see RESEARCH.md §5). Not data of
+// sessions (CLI + VS Code extension, same source — see docs/RESEARCH.md §5). Not data of
 // the claude.ai account: it reads the session transcripts on this machine through the
 // official SDK (@anthropic-ai/claude-agent-sdk) instead of parsing the internal JSONL
-// format directly — undocumented and changing between versions (see RESEARCH.md §5.1).
+// format directly — undocumented and changing between versions (see docs/RESEARCH.md §5.1).
 //
 // Content discipline: it reads ONLY structural/numeric fields (turn-level usage,
 // tool/MCP server names) — NEVER message text (content blocks of type "text"), the

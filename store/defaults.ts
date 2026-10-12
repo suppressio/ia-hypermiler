@@ -1,4 +1,4 @@
-// store/defaults.ts — default values of AppSettings (schema in ARCHITECTURE.md §1).
+// store/defaults.ts — default values of AppSettings (schema in docs/ARCHITECTURE.md §1).
 // Pure module (no electron/electron-store import): usable from tests too.
 
 import type { AppSettings, WorkSchedule } from '../types/index';

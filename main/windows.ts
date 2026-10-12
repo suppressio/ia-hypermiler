@@ -1,4 +1,4 @@
-// main/windows.ts — window creation and management (see ARCHITECTURE.md §2, §6)
+// main/windows.ts — window creation and management (see docs/ARCHITECTURE.md §2, §6)
 // Kept apart from main.ts so it is not weighed down by the skin logic.
 
 import { BrowserWindow } from 'electron';

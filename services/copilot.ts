@@ -1,9 +1,9 @@
-// services/copilot.ts — GitHub Copilot usage fetch (see RESEARCH.md v3 §2 and ARCHITECTURE.md §0)
+// services/copilot.ts — GitHub Copilot usage fetch (see docs/RESEARCH.md v3 §2 and docs/ARCHITECTURE.md §0)
 //
 // Two paths with very different reliability:
 // - PERSONAL plan: official, documented endpoint (ai_credit/usage, then
 //   premium_request/usage as fallback), via PAT. When both answer 404 (observed with a
-//   real Free account — see RESEARCH.md §2.1 addendum), a last attempt goes to the
+//   real Free account — see docs/RESEARCH.md §2.1 addendum), a last attempt goes to the
 //   internal endpoint below, shared with the company path.
 // - COMPANY seat (org-managed): no public self-service endpoint. The only data source
 //   is the undocumented internal endpoint copilot_internal/user (the same used by the
@@ -12,14 +12,14 @@
 //
 // GitHub's billing API does not expose the plan's TOTAL quota (only consumption): the
 // total stays a value configured by hand by the user (credentials.manualQuota), as
-// anticipated in ARCHITECTURE.md §0.
+// anticipated in docs/ARCHITECTURE.md §0.
 
 import { fetchJson } from './_http';
 import { extractShape, FormatDriftError } from './_shape';
 import { githubApiBase } from './githubHost';
 import type { CopilotCredentials, QuotaWindow, RawAccountUsage } from '../types/index';
 
-const USD_PER_CREDIT = 0.01; // 1 AI credit = $0.01, see RESEARCH.md §2.1
+const USD_PER_CREDIT = 0.01; // 1 AI credit = $0.01, see docs/RESEARCH.md §2.1
 
 interface GithubUserResponse {
   login?: string;
@@ -37,7 +37,7 @@ interface BillingUsageReport {
 }
 
 // Field meanings follow VS Code's own reader of this endpoint (chatEntitlementService.ts,
-// getQuotaUsage — see RESEARCH.md §2.2 addendum 2026-10-01). External data: every field
+// getQuotaUsage — see docs/RESEARCH.md §2.2 addendum 2026-10-01). External data: every field
 // is `unknown` and narrowed.
 interface CopilotInternalQuotaSnapshot {
   percent_remaining?: unknown;
@@ -100,7 +100,7 @@ export function sumCreditsUsed(report: BillingUsageReport | null): number {
   const items = report?.usageItems;
   if (!Array.isArray(items)) {
     throw new FormatDriftError(
-      'Copilot: unexpected response format on ai_credit/usage (no usageItems) — see RESEARCH.md',
+      'Copilot: unexpected response format on ai_credit/usage (no usageItems) — see docs/RESEARCH.md',
       'users/{username}/settings/billing/ai_credit/usage',
       extractShape(report),
     );
@@ -127,7 +127,7 @@ function isBillingNotApplicable(err: unknown): boolean {
 /**
  * Reads the billing report for the current month. Tries `ai_credit/usage` first
  * (current endpoint, replacing the old "premium requests" model retired on 2026-06-01 —
- * see RESEARCH.md §2.1); when the report does not apply to the account (404, or since
+ * see docs/RESEARCH.md §2.1); when the report does not apply to the account (404, or since
  * 2026-10 a 400 "Unable to get billing usage data." — see isBillingNotApplicable) it
  * falls back to `premium_request/usage`, which the REST docs describe with exactly the
  * same response shape — same parsing, no duplicated logic. Any other failure (network,
@@ -218,7 +218,7 @@ async function fetchBillingUsage({ apiBase, host, token, manualQuota, now }: { a
 
 /**
  * Undocumented internal endpoint powering the VS Code quota indicator, for any kind
- * of Copilot account (not only company seats — see RESEARCH.md §2.2). No guarantee of
+ * of Copilot account (not only company seats — see docs/RESEARCH.md §2.2). No guarantee of
  * stability or of compatibility with a standard PAT (VS Code uses a Copilot token
  * obtained through its own authentication flow, not necessarily a generic PAT). A
  * 401/403 here is expected: it means the token is not accepted by this internal
@@ -234,7 +234,7 @@ async function fetchCopilotInternalUsage(apiBase: string, token: string, context
   } catch (err) {
     throw new Error(
       `Copilot (${context}, best-effort): call failed — ${err instanceof Error ? err.message : String(err)}. ` +
-      'This endpoint is not official: it may require a Copilot token different from a standard PAT. See RESEARCH.md.',
+      'This endpoint is not official: it may require a Copilot token different from a standard PAT. See docs/RESEARCH.md.',
       { cause: err },
     );
   }
@@ -242,7 +242,7 @@ async function fetchCopilotInternalUsage(apiBase: string, token: string, context
   if (!data?.quota_snapshots) {
     if (data?.access_type_sku === ENTERPRISE_MANAGED_SKU) {
       throw new CopilotUsageUnavailableError(
-        `Copilot (${context}): GitHub exposes no usage data for enterprise-managed seats (no quota_snapshots) — see RESEARCH.md §2.2`,
+        `Copilot (${context}): GitHub exposes no usage data for enterprise-managed seats (no quota_snapshots) — see docs/RESEARCH.md §2.2`,
       );
     }
     throw new FormatDriftError(

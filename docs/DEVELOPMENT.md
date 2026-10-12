@@ -2,7 +2,7 @@
 
 # Development
 
-How to build IA Hypermiler from source, test it and package it. For what the app does and how to read it, see the [README](README.md).
+How to build IA Hypermiler from source, test it and package it. For what the app does and how to read it, see the [README](../README.md).
 
 ## Requirements
 
@@ -76,17 +76,17 @@ ia-hypermiler/
 ├── agents/                    ← Claude agent for usage advice (stub)
 ├── types/                     ← shared TypeScript types
 ├── tests/                     ← test helpers + integration tests gated by local credentials
-├── docs/screenshots/          ← README screenshots (synthetic data)
-└── *.md / *.it.md             ← documentation, English + Italian
+├── docs/                      ← documentation, English + Italian (this file too) + README screenshots (synthetic data)
+└── README.md, CLAUDE.md       ← user guide, project memory for Claude Code
 ```
 
 Further reading:
 
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — data model, windows, indicators, extensibility
-- [`RESEARCH.md`](./RESEARCH.md) — what can really be read from the Claude and Copilot APIs, and with which limits
-- [`EVOLUTION.md`](./EVOLUTION.md) — retrospective and future directions with a cost/benefit analysis
-- [`PLAN.md`](./PLAN.md) — the original day-by-day plan
-- [`CLAUDE.md`](./CLAUDE.md) — project memory for Claude Code: stack, rules, milestones
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — data model, windows, indicators, extensibility
+- [`RESEARCH.md`](RESEARCH.md) — what can really be read from the Claude and Copilot APIs, and with which limits
+- [`EVOLUTION.md`](EVOLUTION.md) — retrospective and future directions with a cost/benefit analysis
+- [`PLAN.md`](PLAN.md) — the original day-by-day plan
+- [`CLAUDE.md`](../CLAUDE.md) — project memory for Claude Code: stack, rules, milestones
 
 ## Security rules
 

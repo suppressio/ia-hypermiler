@@ -43,7 +43,7 @@ export interface WorkSchedule {
   hoursPerDay: number;
 }
 
-/** A single quota window (see ARCHITECTURE.md §0). */
+/** A single quota window (see docs/ARCHITECTURE.md §0). */
 export interface QuotaWindow {
   id: string;
   label: string;
@@ -233,7 +233,7 @@ export interface ToolUsageShare {
 
 /**
  * Behavioural insights computed from LOCAL Claude Code sessions (CLI/VS Code
- * extension, same source — see RESEARCH.md §5), not from the claude.ai account.
+ * extension, same source — see docs/RESEARCH.md §5), not from the claude.ai account.
  * Claude only: Copilot has no equivalent local source. Cross-window (not tied to a
  * specific QuotaWindow): lives on AccountSnapshot, not on QuotaWindowSnapshot. Shares
  * are weighted by token volume (output_tokens), not by turn count — consistent with

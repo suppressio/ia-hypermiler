@@ -1,4 +1,4 @@
-// services/claude.ts — Claude usage fetch (see RESEARCH.md v3 §1 and ARCHITECTURE.md §0)
+// services/claude.ts — Claude usage fetch (see docs/RESEARCH.md v3 §1 and docs/ARCHITECTURE.md §0)
 //
 // There is no official endpoint for Pro/Max/Team/Enterprise plans at the single-user
 // level: we use the internal endpoint (undocumented, stable in practice and used by
@@ -33,7 +33,7 @@ interface ClaudeUsageWindowResponse {
   limit_dollars?: number | null;
   used_dollars?: number | null;
   remaining_dollars?: number | null;
-  // `extra_usage` in its newer shape (RESEARCH.md §1 addendum 4):
+  // `extra_usage` in its newer shape (docs/RESEARCH.md §1 addendum 4):
   // the monthly extra-usage budget in minor units (`decimal_places` 2 = cents), next to
   // `daily`/`weekly` (null so far: their shape is unknown, not read).
   monthly_limit?: number | null;
@@ -42,7 +42,7 @@ interface ClaudeUsageWindowResponse {
 }
 
 // The internal endpoint is undocumented and field names are not stable: besides the
-// three historical names (five_hour/seven_day/seven_day_opus, see RESEARCH.md v3 §1), a
+// three historical names (five_hour/seven_day/seven_day_opus, see docs/RESEARCH.md v3 §1), a
 // real update observed in 2026-07 replaced them with arbitrary names different for
 // each window (e.g. "cinder_cove", "omelette_promotional" — likely intentional
 // obfuscation on Anthropic's side). A typed index signature lets us iterate over ANY
@@ -59,7 +59,7 @@ interface ClaudeMoneyAmount {
 
 // `spend` object, seen for the first time on 2026-10-01 on a company (Team/Enterprise
 // seat) account, where every window and extra_usage.utilization were null (issue #6,
-// RESEARCH.md §1 addendum). It carries the extra-usage spend against its limit.
+// docs/RESEARCH.md §1 addendum). It carries the extra-usage spend against its limit.
 interface ClaudeSpendResponse {
   enabled?: unknown;
   percent?: unknown;
@@ -209,7 +209,7 @@ export async function listOrganizations(sessionKey: string, cookieHeader?: strin
 
 /**
  * Converts the internal usage endpoint response into the QuotaWindow model shared
- * by ARCHITECTURE.md §0. The exact response format is not officially documented and
+ * by docs/ARCHITECTURE.md §0. The exact response format is not officially documented and
  * field names are not stable (see the comment on ClaudeUsageResponse above): instead
  * of reading by key name, a quota window is recognized by the SHAPE of its value —
  * any key with a numeric `utilization` is treated as a real window, whatever its
@@ -279,7 +279,7 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
   }
 
   // `spend` reports the same extra-usage money as other windows:
-  // - a monthly-credits window with the same amounts (`extra_usage`, RESEARCH.md §1
+  // - a monthly-credits window with the same amounts (`extra_usage`, docs/RESEARCH.md §1
   //   addendum 4) is the same budget twice: `spend` is kept, because it is present
   //   even when `extra_usage` is not populated (its utilization was seen null), so the
   //   window keeps the same id — the history key — from one refresh to the next. Only
@@ -296,7 +296,7 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
     }
   }
 
-  // Fallback: the `limits` array (RESEARCH.md §1 addendum 5) mirrors the named windows
+  // Fallback: the `limits` array (docs/RESEARCH.md §1 addendum 5) mirrors the named windows
   // ({ kind: "session" } = five_hour, "weekly_all" = seven_day). Read only when no
   // named window was recognized, so that their removal would not stop the app.
   if (!recognizedAny && usage && Array.isArray(usage.limits)) {
@@ -311,17 +311,17 @@ export function buildQuotaWindows(usage: ClaudeUsageResponse | null): QuotaWindo
   if (windows.length === 0 && !recognizedAny) {
     // Free plan: all window fields are null and limits is empty. member_dashboard_available=false
     // is Anthropic's own signal that the usage dashboard is not available for this account
-    // (Free tier). Known state — no drift, no issue (RESEARCH.md §1 addendum 6).
+    // (Free tier). Known state — no drift, no issue (docs/RESEARCH.md §1 addendum 6).
     if (usage && usage.member_dashboard_available === false) {
       return [];
     }
     // The whole raw response is logged to the console (terminal/main-process log, never
     // the renderer): it contains no credentials, only usage percentages — it helps
-    // understand the real format when it diverges from RESEARCH.md.
+    // understand the real format when it diverges from docs/RESEARCH.md.
     console.error('[services/claude] unrecognized usage response, raw content:', JSON.stringify(usage));
     const preview = JSON.stringify(usage).slice(0, 500);
     throw new FormatDriftError(
-      `Claude: no quota window recognized in the response — the internal endpoint format may have changed (see RESEARCH.md). Response received: ${preview}`,
+      `Claude: no quota window recognized in the response — the internal endpoint format may have changed (see docs/RESEARCH.md). Response received: ${preview}`,
       USAGE_ENDPOINT_LABEL,
       extractShape(usage),
     );
@@ -365,7 +365,7 @@ async function requestUsage(credentials: ClaudeCredentials): Promise<ClaudeUsage
 export async function fetchUsage(credentials: ClaudeCredentials): Promise<RawAccountUsage> {
   const usage = await requestUsage(credentials);
   return {
-    // Free tier: member_dashboard_available=false is the only reliable signal (RESEARCH.md §1 addendum 6).
+    // Free tier: member_dashboard_available=false is the only reliable signal (docs/RESEARCH.md §1 addendum 6).
     planTier: usage?.member_dashboard_available === false ? 'free' : null,
     // Claude does not expose the subscription billing date through this endpoint: it
     // stays a value configured by hand in Settings (account subscription).

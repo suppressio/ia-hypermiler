@@ -1,6 +1,6 @@
 // scripts/probe-copilot-shape.js — prints the STRUCTURE of the copilot_internal/user
 // response (field names + types, never values) for the token in .env.test, to check
-// whether GitHub exposes AI credits for company seats again (see RESEARCH.md §2.2
+// whether GitHub exposes AI credits for company seats again (see docs/RESEARCH.md §2.2
 // addenda). Run locally, never paste the token anywhere:
 //
 //   node --env-file=.env.test scripts/probe-copilot-shape.js [--quota-values]

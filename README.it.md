@@ -149,8 +149,8 @@ Se li attivi su un account Claude, l'app legge le sessioni di Claude Code su que
 
 ## Sviluppo
 
-Compilazione dai sorgenti, test, packaging e struttura del progetto sono in [DEVELOPMENT.it.md](DEVELOPMENT.it.md).
+Compilazione dai sorgenti, test, packaging e struttura del progetto sono in [docs/DEVELOPMENT.it.md](docs/DEVELOPMENT.it.md).
 
 ## Licenza
 
-[MIT](./LICENSE) © 2026 Daniele 'suppressio'.
+[MIT](LICENSE) © 2026 Daniele 'suppressio'.
