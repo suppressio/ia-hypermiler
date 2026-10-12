@@ -1,6 +1,6 @@
 // store/migrate.ts — account registry: per-provider defaults and migration from the
 // legacy two-slot schema `{ claude, copilot }` to the `AccountConfig[]` array (issue
-// #4, EVOLUTION.md point 3). Pure functions, no Electron dependency: tested in
+// #4, docs/EVOLUTION.md point 3). Pure functions, no Electron dependency: tested in
 // store/migrate.test.ts.
 
 import type {
@@ -54,7 +54,7 @@ export function defaultCopilotAccount(id: AccountId, label = PROVIDER_DISPLAY_NA
     credentials: { token: null, username: null },
     oauthApp: { clientId: null },
     // Copilot's billing API does not expose the plan's total quota: value configured
-    // by hand (see ARCHITECTURE.md §0 and RESEARCH.md v3 §3).
+    // by hand (see docs/ARCHITECTURE.md §0 and docs/RESEARCH.md v3 §3).
     manualQuota: 300,
     experimentalWarningAcknowledged: false,
   };

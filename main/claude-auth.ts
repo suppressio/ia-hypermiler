@@ -1,5 +1,5 @@
 // main/claude-auth.ts — Claude session capture through an embedded login window.
-// See RESEARCH.md v3 §1 and CLAUDE.md: never ask the user to paste a cookie by hand.
+// See docs/RESEARCH.md v3 §1 and CLAUDE.md: never ask the user to paste a cookie by hand.
 // Works with classic login (email/password, Google) and with company SSO: in both
 // cases, at the end of the login claude.ai sets the same session cookie
 // (`sessionKey`), which we intercept here.

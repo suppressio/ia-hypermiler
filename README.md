@@ -149,8 +149,8 @@ When enabled on one Claude account, the app reads the Claude Code sessions on th
 
 ## Development
 
-Building from source, tests, packaging and the project structure are in [DEVELOPMENT.md](DEVELOPMENT.md).
+Building from source, tests, packaging and the project structure are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 
-[MIT](./LICENSE) © 2026 Daniele 'suppressio'.
+[MIT](LICENSE) © 2026 Daniele 'suppressio'.

@@ -2,7 +2,7 @@
 
 # Sviluppo
 
-Come compilare IA Hypermiler dai sorgenti, testarlo e creare i pacchetti. Per cosa fa l'app e come leggerla, vedi il [README](README.it.md).
+Come compilare IA Hypermiler dai sorgenti, testarlo e creare i pacchetti. Per cosa fa l'app e come leggerla, vedi il [README](../README.it.md).
 
 ## Requisiti
 
@@ -76,17 +76,17 @@ ia-hypermiler/
 ├── agents/                    ← agente Claude per i consigli d'uso (stub)
 ├── types/                     ← tipi TypeScript condivisi
 ├── tests/                     ← helper dei test + test di integrazione attivati da credenziali locali
-├── docs/screenshots/          ← screenshot del README (dati sintetici)
-└── *.md / *.it.md             ← documentazione, inglese + italiano
+├── docs/                      ← documentazione, inglese + italiano (anche questo file) + screenshot del README (dati sintetici)
+└── README.md, CLAUDE.md       ← guida utente, memoria di progetto per Claude Code
 ```
 
 Approfondimenti:
 
-- [`ARCHITECTURE.it.md`](./ARCHITECTURE.it.md) — modello dati, finestre, indicatori, estensibilità
-- [`RESEARCH.it.md`](./RESEARCH.it.md) — cosa si può leggere davvero dalle API di Claude e Copilot, e con quali limiti
-- [`EVOLUTION.it.md`](./EVOLUTION.it.md) — retrospettiva e direzioni future con analisi costi/benefici
-- [`PLAN.it.md`](./PLAN.it.md) — il piano originale giorno per giorno
-- [`CLAUDE.md`](./CLAUDE.md) — memoria di progetto per Claude Code (in inglese): stack, regole, milestone
+- [`ARCHITECTURE.it.md`](ARCHITECTURE.it.md) — modello dati, finestre, indicatori, estensibilità
+- [`RESEARCH.it.md`](RESEARCH.it.md) — cosa si può leggere davvero dalle API di Claude e Copilot, e con quali limiti
+- [`EVOLUTION.it.md`](EVOLUTION.it.md) — retrospettiva e direzioni future con analisi costi/benefici
+- [`PLAN.it.md`](PLAN.it.md) — il piano originale giorno per giorno
+- [`CLAUDE.md`](../CLAUDE.md) — memoria di progetto per Claude Code (in inglese): stack, regole, milestone
 
 ## Regole di sicurezza
 

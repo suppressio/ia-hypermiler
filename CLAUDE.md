@@ -22,7 +22,7 @@ Project memory for Claude Code. Read it in full before touching the code.
 | i18n | No library: typed flat dictionaries (`renderer/i18n/`, `main/i18n/`) + `Intl` |
 | Persistence | electron-store (with encryptionKey for secrets), normalized at startup (`store/normalize.ts`) |
 | Advice agent | Anthropic SDK for Node.js (`@anthropic-ai/sdk`) — `agents/advisor.ts` is still a stub |
-| Local insights (opt-in) | `@anthropic-ai/claude-agent-sdk` — reads local Claude Code sessions via `listSessions`/`getSessionMessages`, never by parsing the internal JSONL directly (see RESEARCH.md §5) |
+| Local insights (opt-in) | `@anthropic-ai/claude-agent-sdk` — reads local Claude Code sessions via `listSessions`/`getSessionMessages`, never by parsing the internal JSONL directly (see docs/RESEARCH.md §5) |
 | Build | `tsc` (three configs: `tsconfig.json` main/preload/services/store/budget/agents/tests — CommonJS; `tsconfig.renderer.json` renderer — ES modules; `tsconfig.renderer.test.json` renderer tests only, adds Node types) + `scripts/copy-assets.js` |
 | Lint | ESLint 10 + typescript-eslint `strictTypeChecked` (`eslint.config.mjs`) |
 | Tests | `node:test` + `node:assert` (no external test library); coverage via Node's built-in `--experimental-test-coverage` |
@@ -40,11 +40,13 @@ ia-hypermiler/
 ├── CLAUDE.md                    ← this file (English only)
 ├── LICENSE                      ← MIT
 ├── README.md / README.it.md     ← user guide only: what the app does, install, how to read every indicator (EN primary, IT secondary)
-├── DEVELOPMENT.md / .it.md      ← build from source, tests, packaging, CI, project structure and status
-├── ARCHITECTURE.md / .it.md     ← app design: data model, windows, widget, tray, updates, i18n
-├── RESEARCH.md / .it.md         ← what the Claude/Copilot APIs really expose (Day 1 + addenda)
-├── EVOLUTION.md / .it.md        ← retrospective and future directions with cost/benefit analysis
-├── PLAN.md / .it.md             ← the original 3-day plan (historical)
+├── docs/                        ← every other document, EN + .it.md
+│   ├── DEVELOPMENT.md           ← build from source, tests, packaging, CI, project structure and status
+│   ├── ARCHITECTURE.md          ← app design: data model, windows, widget, tray, updates, i18n
+│   ├── RESEARCH.md              ← what the Claude/Copilot APIs really expose (Day 1 + addenda)
+│   ├── EVOLUTION.md             ← retrospective and future directions with cost/benefit analysis
+│   ├── PLAN.md                  ← the original 3-day plan (historical)
+│   └── screenshots/             ← README screenshots, synthetic data only
 ├── tsconfig.json                ← main-process TS config (CommonJS)
 ├── tsconfig.renderer.json       ← renderer TS config (ES modules, isolated, no Node types)
 ├── tsconfig.renderer.test.json  ← renderer unit tests (adds Node types; emitted as ES modules)
@@ -54,7 +56,6 @@ ia-hypermiler/
 │   ├── copy-assets.js           ← copies renderer html/css into dist/renderer/ + writes dist/renderer/package.json {type: module}
 │   └── generate-icons.js        ← one-off "gauge" icon generator (build/icon.png, build/icons/*, renderer/assets/*.png)
 ├── build/                       ← electron-builder resources (icons) — TRACKED, not an output (packages go to release/)
-├── docs/screenshots/            ← README screenshots, synthetic data only
 ├── main.ts                      ← Electron main process (lifecycle, IPC, refresh, update checks)
 ├── preload.ts                   ← contextBridge renderer ↔ main
 ├── main/
@@ -119,7 +120,7 @@ ia-hypermiler/
 - Think through every path on Windows, macOS and Linux before writing it.
 
 ### Service interface
-Every usage service (`services/claude.ts`, `services/copilot.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in ARCHITECTURE.md §0):
+Every usage service (`services/claude.ts`, `services/copilot.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
 
 ```ts
 export async function fetchUsage(credentials: ClaudeCredentials | CopilotCredentials): Promise<RawAccountUsage> { ... }
@@ -154,7 +155,7 @@ When a service receives a response whose format no longer matches the expected o
 - Main and renderer own their texts separately (separate TS projects); `resolveLocale` must stay identical in both.
 - Tips, verdicts and similar are **data** (`{ key, params }`), composed into sentences by the renderer. Technical error messages from services stay English; `friendlyErrorMessage` frames known cases in the user's language.
 - Numbers and dates via the `Intl` helpers in `renderer/i18n/index.ts`, never a hard-coded locale.
-- Documents: update both `X.md` and `X.it.md` when changing content. The README is for users only (what each indicator is, how it is computed, how to read it): update it whenever an indicator changes; developer content goes in DEVELOPMENT.md. Screenshots use synthetic data only.
+- Documents: update both `X.md` and `X.it.md` when changing content. The README is for users only (what each indicator is, how it is computed, how to read it): update it whenever an indicator changes; developer content goes in docs/DEVELOPMENT.md, every other document in `docs/`. Screenshots use synthetic data only.
 
 ### Code quality
 - `npm run lint` must stay at **zero findings** (it gates CI). Do not turn off a rule to hide a real problem; the only documented exception is the `new Function` dynamic import in `services/claudeLocalSessions.ts`.
@@ -208,7 +209,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 
 ## What NOT to do
 
-- Do not invent API endpoints not documented in `RESEARCH.md`.
+- Do not invent API endpoints not documented in `docs/RESEARCH.md`.
 - Do not add animations or effects to the UI — plain and readable is the priority.
 - Do not expose secrets or credentials in any git-tracked file.
 - Do not use `any`. If a type is really dynamic use `unknown` with explicit narrowing.
@@ -269,7 +270,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 
 | When | Version | Milestone |
 |---|---|---|
-| Day 1 | — | API research (RESEARCH.md v3), architecture (multi-window quota model), Electron skeleton with mocks |
+| Day 1 | — | API research (docs/RESEARCH.md v3), architecture (multi-window quota model), Electron skeleton with mocks |
 | Day 2 | — | Real services (Claude internal endpoint + session, Copilot official API), TypeScript migration, unit tests |
 | Day 3 | v0.1.0-beta | Notifications, robustness, format-drift diagnostics, first real-account fixes, cross-platform CI |
 | post-MVP | v0.1.x | UX rounds (frameless skins, title-bar drag, accent color, Save/Cancel), Copilot OAuth (hypothesis disproved), local Claude Code insights, instant gauge + star rating, data-driven tips, toggleable work schedule, dark skin |
@@ -307,9 +308,9 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **UTC day keys**: `toISOString().slice(0, 10)` is the UTC day, `new Date('YYYY-MM-DD')` is UTC midnight — both wrong for local working days → `localDateKey`/`parseDateKey`.
 
 ### Open items
-- Next agreed steps: a single shared IPC contract (channels + types for main/preload/renderer, replacing the manual `renderer/types.ts` copy), then extracting a testable core from `main.ts` (EVOLUTION.md 2a) and working test-first.
+- Next agreed steps: a single shared IPC contract (channels + types for main/preload/renderer, replacing the manual `renderer/types.ts` copy), then extracting a testable core from `main.ts` (docs/EVOLUTION.md 2a) and working test-first.
 - **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), architecture review and simplifications (#12, includes the IPC contract and core extraction below). **Milestone v1.0.0** (out of beta): signed Windows/macOS installers (#11).
 - `agents/advisor.ts` is a stub.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).
 - Verify with real use the pacing constants (`PACE_ALERT_RATIO` 1.5×, 2h minimum of observed work, 50/50 recent-pace blend, preliminary below 2 working units, redistribution verdict bands 0.5× / ±5%, `NEGLIGIBLE_UTILIZATION` 0.1%) and the `consumptionCause` thresholds, and with the next release the packaged icon and the update notification end to end.
-- Measure RAM/CPU in tray-only mode before considering EVOLUTION.md point 5.
+- Measure RAM/CPU in tray-only mode before considering docs/EVOLUTION.md point 5.
