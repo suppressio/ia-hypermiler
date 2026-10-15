@@ -102,4 +102,5 @@ Further reading:
 - ✅ Strict TypeScript (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), type-aware ESLint at zero findings, unit tests on every pure module
 - ✅ Cross-platform CI publishing pre-releases; local test builds
 - 🟨 Advice agent (`agents/advisor.ts`) still a stub
-- ⬜ Next: shared IPC contract, then extracting a testable core from `main.ts` to work test-first
+- ✅ Shared IPC contract between main, preload and renderer (`types/ipc.ts`)
+- ⬜ Next: extracting a testable core from `main.ts` to work test-first
