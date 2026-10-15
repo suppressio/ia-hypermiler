@@ -7,13 +7,13 @@ import type {
   AccountSnapshot,
   AppSettings,
   DailyTip,
-  HypermilerBridge,
   ProviderId,
   QuotaWindow,
   QuotaWindowSnapshot,
   UsageSnapshot,
   WindowVerdict,
-} from './types';
+} from '../types/index';
+import type { HypermilerBridge } from '../types/ipc';
 import { byId } from './dom.js';
 import { applySeverity, severityLevel, todaySeverity } from './severity.js';
 import { GAUGE_TARGET_POSITION, GAUGE_TICK_RATIOS, gaugePosition } from './gauge.js';

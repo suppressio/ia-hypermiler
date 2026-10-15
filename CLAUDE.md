@@ -51,7 +51,8 @@ ia-hypermiler/
 ├── tsconfig.renderer.json       ← renderer TS config (ES modules, isolated, no Node types)
 ├── tsconfig.renderer.test.json  ← renderer unit tests (adds Node types; emitted as ES modules)
 ├── eslint.config.mjs            ← type-aware lint, all three TS projects
-├── types/index.ts               ← shared types (AppSettings, AccountConfig, AccountSnapshot, HypermilerBridge, …)
+├── types/index.ts               ← shared types (AppSettings, AccountConfig, AccountSnapshot, …), runtime-free
+├── types/ipc.ts                 ← IPC contract: every channel with its argument/result types + HypermilerBridge (runtime-free)
 ├── scripts/
 │   ├── copy-assets.js           ← copies renderer html/css into dist/renderer/ + writes dist/renderer/package.json {type: module}
 │   └── generate-icons.js        ← one-off "gauge" icon generator (build/icon.png, build/icons/*, renderer/assets/*.png)
@@ -59,6 +60,7 @@ ia-hypermiler/
 ├── main.ts                      ← Electron main process (lifecycle, IPC, refresh, update checks)
 ├── preload.ts                   ← contextBridge renderer ↔ main
 ├── main/
+│   ├── ipc.ts                   ← typed handle/listen/sendToRenderer wrappers keyed on types/ipc.ts
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
 │   ├── claude-auth.ts           ← Claude session capture via login BrowserWindow, one Electron partition per account
@@ -73,7 +75,6 @@ ia-hypermiler/
 │   ├── schedule.ts              ← one-line summary of an account work schedule (+ test)
 │   ├── gauge.ts                 ← log-scale position of the instant pace against its target (+ test)
 │   ├── visibility.ts            ← which indicators are shown (autonomy, peak/average, streak) (+ test)
-│   ├── types.ts                 ← reduced local copy of the shared types (renderer tsconfig is isolated)
 │   └── i18n/                    ← UI strings: en.ts (reference), it.ts, index.ts (t, applyTranslations, Intl formatting) (+ test)
 ├── agents/advisor.ts            ← Claude advice agent (stub)
 ├── services/
@@ -111,6 +112,7 @@ ia-hypermiler/
 - `nodeIntegration` always `false`, `contextIsolation` always `true`.
 - The renderer never has direct access to Node.js: everything goes through `preload.ts` via `contextBridge`.
 - API keys and session cookies live only in the main process and in encrypted `electron-store` — never in the renderer, never in localStorage. `settings:get`/`settings:set` redact secrets towards the renderer (`providers.redactSecrets`) and preserve the real values on write (`providers.preserveSecrets`).
+- IPC channels and payload types are declared once in `types/ipc.ts`; main registers through `main/ipc.ts` (`handle`/`listen`/`sendToRenderer`), the preload through typed helpers on the same maps. A new channel = one entry there. The renderer tsconfig has `rootDir: "."` so it can import `types/`; those files must stay runtime-free (the renderer build re-emits them as ES modules over the CommonJS ones).
 - Every value coming from the renderer through IPC is `unknown` and is validated in the handler (`requireString`/`requireBoolean`/`requireOneOf` in `main.ts`). `settings:set` accepts only renderer-editable sections (`accounts`, `ui`, `diagnostics`, `updates`) and normalizes the patch before writing.
 - URLs opened with `shell.openExternal` come from the main process (store/constants), never from the renderer; update URLs must start with the project repository prefix.
 
@@ -308,7 +310,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **UTC day keys**: `toISOString().slice(0, 10)` is the UTC day, `new Date('YYYY-MM-DD')` is UTC midnight — both wrong for local working days → `localDateKey`/`parseDateKey`.
 
 ### Open items
-- Next agreed steps: a single shared IPC contract (channels + types for main/preload/renderer, replacing the manual `renderer/types.ts` copy), then extracting a testable core from `main.ts` (docs/EVOLUTION.md 2a) and working test-first.
+- Next agreed step (the shared IPC contract `types/ipc.ts` is done, #22): extracting a testable core from `main.ts` (docs/EVOLUTION.md 2a) and working test-first.
 - **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), architecture review and simplifications (#12, includes the IPC contract and core extraction below). **Milestone v1.0.0** (out of beta): signed Windows/macOS installers (#11).
 - `agents/advisor.ts` is a stub.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).

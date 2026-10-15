@@ -4,7 +4,15 @@
 // hand (main.ts resolvePeriodBounds). The manual field is editable only when some
 // paced window would fall back to it.
 
-import type { LastGoodUsage, QuotaWindow } from './types.js';
+import type { QuotaWindow, RawAccountUsage } from '../types/index';
+
+// What the renderer reads of an account's last good usage (AppSettings.history.lastGood).
+type LastGoodUsage = Pick<RawAccountUsage, 'subscriptionRenewsAt' | 'quotaWindows'>;
+
+// The settings come over IPC as JSON (strings), the shared type also allows a Date.
+function isoOrNull(date: Date | string | null): string | null {
+  return date instanceof Date ? date.toISOString() : date;
+}
 
 export interface RenewalSource {
   // True when the renewal day entered by hand is used (or unknown yet: no data).
@@ -22,7 +30,7 @@ function isPaced(win: QuotaWindow): boolean {
 export function renewalFromProvider(lastGood: LastGoodUsage | null | undefined): RenewalSource {
   const paced = lastGood ? lastGood.quotaWindows.filter(isPaced) : [];
   if (!lastGood || paced.length === 0) return { needsManual: true, next: null };
-  const ends = paced.map((w) => w.resetsAt ?? lastGood.subscriptionRenewsAt);
+  const ends = paced.map((w) => isoOrNull(w.resetsAt ?? lastGood.subscriptionRenewsAt));
   const known = ends.filter((d): d is string => d !== null);
   const next = known.reduce<string | null>(
     (min, d) => (min === null || new Date(d).getTime() < new Date(min).getTime() ? d : min),

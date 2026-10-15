@@ -3,7 +3,7 @@
 // 0 days is only confusing). An indicator without a meaningful value is hidden, not
 // shown as "--" or 0.
 
-import type { ChartDay } from './types.js';
+import type { ChartDay } from '../types/index';
 
 /**
  * Autonomy only when the quota would run out BEFORE the reset (same unit for both:
