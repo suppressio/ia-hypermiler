@@ -1,7 +1,8 @@
 // settings.ts — Settings window logic (no direct access to Node.js).
 // Every visible string goes through t() or data-i18n attributes (renderer/i18n).
 
-import type { AccountConfig, AccountId, AppSettings, HypermilerBridge, ProviderId, UpdateSettings } from './types';
+import type { AccountConfig, AccountId, AppSettings, ProviderId, UpdateSettings } from '../types/index';
+import type { HypermilerBridge } from '../types/ipc';
 import { byId } from './dom.js';
 import { applyTranslations, formatDate, formatDateTime, formatTime, resolveLocale, setLocale, t, type MessageKey } from './i18n/index.js';
 import { summarizeWorkSchedule } from './schedule.js';
@@ -259,14 +260,14 @@ function applyScheduleLock(account: AccountConfig, detail: HTMLElement): void {
 // stays editable when some window has no date anywhere (e.g. the Claude company spend
 // limit) or before the first successful sync.
 function applyRenewalLock(account: AccountConfig, detail: HTMLElement): void {
-  const source = renewalFromProvider(settings?.history?.lastGood?.[account.id]);
+  const source = renewalFromProvider(settings?.history.lastGood?.[account.id]);
   const input = detail.querySelector<HTMLInputElement>('[data-account-field="subscription.renewalRule.day"]');
   if (input) input.disabled = !source.needsManual;
   // The explanation is an info tooltip next to the label, shown only when there is one.
   const hint = detail.querySelector<HTMLElement>('[data-role="renewal-hint"]');
   const hintText = detail.querySelector<HTMLElement>('[data-role="renewal-hint-text"]');
   if (!hint || !hintText) return;
-  const hasData = settings?.history?.lastGood?.[account.id] !== undefined;
+  const hasData = settings?.history.lastGood?.[account.id] !== undefined;
   if (!source.needsManual && source.next) {
     hintText.textContent = t('settings.account.renewalFromProvider', { date: `${formatDate(source.next)} ${formatTime(source.next)}` });
     hint.hidden = false;
@@ -333,7 +334,7 @@ async function reloadAfterAccountAction(actedOn: AccountId | null): Promise<void
     const draftAccounts = new Map(accounts().map((a) => [a.id, a]));
     fresh.accounts = fresh.accounts.map((a) => (a.id !== actedOn ? draftAccounts.get(a.id) ?? a : a));
     for (const [key, value] of Object.entries(draft)) {
-      if (key !== 'accounts') (fresh as PlainRecord)[key] = value;
+      if (key !== 'accounts') (fresh as unknown as PlainRecord)[key] = value;
     }
   }
   settings = fresh;
@@ -417,7 +418,7 @@ function captureDraftFromForm(): Set<string> {
   const touchedKeys = new Set<string>();
   fieldElements().forEach((el) => {
     const field = el.dataset.field as string;
-    setPath(settings as PlainRecord, field, readFieldValue(el));
+    setPath(settings as unknown as PlainRecord, field, readFieldValue(el));
     touchedKeys.add(topLevelKey(field));
   });
   return touchedKeys;
@@ -495,7 +496,7 @@ function guarded(handler: () => Promise<void>): () => void {
 }
 
 async function persist(key: string): Promise<void> {
-  await window.hypermiler.setSettings({ [key]: (settings as PlainRecord)[key] });
+  await window.hypermiler.setSettings({ [key]: (settings as unknown as PlainRecord)[key] });
 }
 
 // --- Events ----------------------------------------------------------------------------
@@ -508,7 +509,7 @@ function bindEvents(): void {
     if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement) || !el.dataset.field) return;
     const field = el.dataset.field;
     const value = readFieldValue(el);
-    setPath(settings as PlainRecord, field, value);
+    setPath(settings as unknown as PlainRecord, field, value);
     const accountMatch = /^accounts\.(\d+)\.(.+)$/.exec(field);
     if (accountMatch) {
       const index = Number(accountMatch[1]);
@@ -656,8 +657,8 @@ async function init(): Promise<void> {
   // Only the updates state (owned by the main process): the rest of the form stays
   // a draft, a full repopulation would discard unsaved changes.
   window.hypermiler.onSettingsUpdate((updated) => {
-    if (settings && updated.updates) {
-      settings.updates = { ...updated.updates, autoCheck: settings.updates?.autoCheck ?? updated.updates.autoCheck };
+    if (settings) {
+      settings.updates = { ...updated.updates, autoCheck: settings.updates.autoCheck };
     }
     renderUpdatesCard(updated.updates);
   });

@@ -2,7 +2,7 @@
 // collapsed schedule section of the account detail ("Mon–Thu, half day: Fri").
 
 import { formatWeekdayShort, t } from './i18n/index.js';
-import type { AccountConfig } from './types.js';
+import type { AccountConfig } from '../types/index';
 
 type WorkSchedule = AccountConfig['workSchedule'];
 type DayKey = keyof WorkSchedule['days'];

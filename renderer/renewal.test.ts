@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renewalFromProvider } from './renewal.js';
-import type { QuotaWindow } from './types.js';
+import type { QuotaWindow } from '../types/index';
 
 function win(overrides: Partial<QuotaWindow>): QuotaWindow {
   return { id: 'w', label: 'W', periodType: 'billing-cycle', periodLength: 1, unit: 'percentage', used: 10, total: null, resetsAt: null, ...overrides };

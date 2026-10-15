@@ -1,6 +1,9 @@
 // types/index.ts — types shared by the main process (Node) and the renderer (browser).
 // Type declarations only: no runtime code, so it is safe to import (with
-// `import type`) from both contexts without any real coupling.
+// `import type`) from both contexts without any real coupling. The renderer build
+// (tsconfig.renderer.json) compiles this file too, so it must stay runtime-free: its
+// emitted ES module would overwrite the CommonJS one of the main build.
+// IPC channels and the preload bridge live in ./ipc.ts.
 
 // Id of an account INSTANCE (e.g. 'claude', 'copilot' for accounts migrated from
 // the two-slot schema, a generated id for those added later) — no longer the provider
@@ -460,34 +463,4 @@ export interface CopilotCredentials {
    * to fall back to github.com silently, sending a tenant token there (v0.4.4/0.4.5).
    */
   host: string;
-}
-
-/** API exposed by the preload to the renderer (`window.hypermiler`). */
-export interface HypermilerBridge {
-  getSettings(): Promise<AppSettings>;
-  setSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
-  onUsageUpdate(callback: (snapshot: UsageSnapshot) => void): () => void;
-  onSettingsUpdate(callback: (settings: AppSettings) => void): () => void;
-  onWindowHoverChanged(callback: (isHovering: boolean) => void): () => void;
-  requestUsageRefresh(): void;
-  openSettingsWindow(): void;
-  setAlwaysOnTop(value: boolean): Promise<boolean>;
-  setWindowStyle(style: WindowStyle): Promise<WindowStyle>;
-  minimizeWindow(): void;
-  closeWindow(): void;
-  addAccount(provider: ProviderId): Promise<AccountId>;
-  removeAccount(id: AccountId): Promise<void>;
-  connectClaude(id: AccountId): Promise<{ organizationId: string | null }>;
-  connectCopilot(id: AccountId, token: string, host: string): Promise<{ username: string }>;
-  connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string, host: string): Promise<{ username: string }>;
-  disconnectAccount(id: AccountId): Promise<void>;
-  // Diagnostic report: after a confirmation, saves the report file in Downloads and opens
-  // a GitHub issue draft; `created` false when the user cancelled.
-  createDiagnosticReport(): Promise<{ created: boolean; fileName: string | null }>;
-  getAppVersion(): Promise<string>;
-  checkForUpdates(): Promise<UpdateSettings>;
-  downloadUpdate(): Promise<void>;
-  openReleaseNotes(): Promise<void>;
-  // Opens the user guide (README on GitHub) in the browser; the URL is fixed in main.
-  openGuide(): Promise<void>;
 }

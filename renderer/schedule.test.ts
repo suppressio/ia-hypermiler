@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeWorkSchedule } from './schedule.js';
 import { setLocale } from './i18n/index.js';
-import type { AccountConfig } from './types.js';
+import type { AccountConfig } from '../types/index';
 
 type Schedule = AccountConfig['workSchedule'];
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { completedDaysWithData, showAutonomy, showPeakAvg, showStreak } from './visibility.js';
-import type { ChartDay } from './types.js';
+import type { ChartDay } from '../types/index';
 
 const day = (date: string, delta: number | null, upcoming = false): ChartDay => ({
   date, delta, fullShare: 5, dayUnit: 1, budget: 5, upcoming, overBudget: false,

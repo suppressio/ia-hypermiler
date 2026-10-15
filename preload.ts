@@ -1,58 +1,64 @@
 // preload.ts — secure renderer <-> main bridge via contextBridge
 // nodeIntegration: false and contextIsolation: true are mandatory (see CLAUDE.md).
 // Exposes only the needed IPC channels, no direct Node/Electron access in the renderer.
+// Channel names and payload types come from the shared contract (types/ipc.ts).
 
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppSettings, HypermilerBridge, UsageSnapshot } from './types/index';
+import type { HypermilerBridge, IpcEventChannels, IpcInvokeChannels, IpcSendChannels } from './types/ipc';
+
+function invoke<C extends keyof IpcInvokeChannels>(channel: C, ...args: IpcInvokeChannels[C]['args']): Promise<IpcInvokeChannels[C]['result']> {
+  return ipcRenderer.invoke(channel, ...args) as Promise<IpcInvokeChannels[C]['result']>;
+}
+
+function send<C extends keyof IpcSendChannels>(channel: C, ...args: IpcSendChannels[C]): void {
+  ipcRenderer.send(channel, ...args);
+}
+
+function subscribe<C extends keyof IpcEventChannels>(channel: C, callback: (...args: IpcEventChannels[C]) => void): () => void {
+  const listener = (_event: unknown, ...args: unknown[]) => { callback(...(args as IpcEventChannels[C])); };
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
 
 const bridge: HypermilerBridge = {
-  getSettings: () => ipcRenderer.invoke('settings:get'),
-  setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  getSettings: () => invoke('settings:get'),
+  setSettings: (patch) => invoke('settings:set', patch),
 
-  onUsageUpdate: (callback: (snapshot: UsageSnapshot) => void) => {
-    const listener = (_event: unknown, snapshot: UsageSnapshot) => { callback(snapshot); };
-    ipcRenderer.on('usage:update', listener);
-    return () => ipcRenderer.removeListener('usage:update', listener);
-  },
+  onUsageUpdate: (callback) => subscribe('usage:update', callback),
   // Notifies the widget when Settings change (e.g. accent color, language) while it
   // is open: without it, a field with no dedicated IPC (unlike
   // ui.windowStyle/ui.alwaysOnTop) applied only after the next restart.
-  onSettingsUpdate: (callback: (settings: AppSettings) => void) => {
-    const listener = (_event: unknown, settings: AppSettings) => { callback(settings); };
-    ipcRenderer.on('settings:update', listener);
-    return () => ipcRenderer.removeListener('settings:update', listener);
-  },
+  onSettingsUpdate: (callback) => subscribe('settings:update', callback),
   // Window hover state computed in the main process (screen.getCursorScreenPoint), not
   // from DOM mouse events: see main.ts (startWindowHoverPolling) for why.
-  onWindowHoverChanged: (callback: (isHovering: boolean) => void) => {
-    const listener = (_event: unknown, isHovering: boolean) => { callback(isHovering); };
-    ipcRenderer.on('window:hoverChanged', listener);
-    return () => ipcRenderer.removeListener('window:hoverChanged', listener);
-  },
-  requestUsageRefresh: () => { ipcRenderer.send('usage:refreshRequest'); },
+  onWindowHoverChanged: (callback) => subscribe('window:hoverChanged', callback),
+  requestUsageRefresh: () => { send('usage:refreshRequest'); },
 
-  openSettingsWindow: () => { ipcRenderer.send('window:openSettings'); },
-  setAlwaysOnTop: (value) => ipcRenderer.invoke('window:setAlwaysOnTop', value),
-  setWindowStyle: (style) => ipcRenderer.invoke('window:setStyle', style),
+  openSettingsWindow: () => { send('window:openSettings'); },
+  setAlwaysOnTop: (value) => invoke('window:setAlwaysOnTop', value),
+  setWindowStyle: (style) => invoke('window:setStyle', style),
 
-  minimizeWindow: () => { ipcRenderer.send('window:minimize'); },
-  closeWindow: () => { ipcRenderer.send('window:close'); },
+  minimizeWindow: () => { send('window:minimize'); },
+  closeWindow: () => { send('window:close'); },
 
   // Account registry (issue #4): every operation is per account id, not per provider.
-  addAccount: (provider) => ipcRenderer.invoke('accounts:add', provider),
-  removeAccount: (id) => ipcRenderer.invoke('accounts:remove', id),
-  connectClaude: (id) => ipcRenderer.invoke('accounts:connectClaude', id),
-  connectCopilot: (id, token, host) => ipcRenderer.invoke('accounts:connectCopilot', id, token, host),
-  connectCopilotOAuth: (id, clientId, clientSecret, host) => ipcRenderer.invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret, host }),
-  disconnectAccount: (id) => ipcRenderer.invoke('accounts:disconnect', id),
-  createDiagnosticReport: () => ipcRenderer.invoke('diagnostics:createReport'),
+  addAccount: (provider) => invoke('accounts:add', provider),
+  removeAccount: (id) => invoke('accounts:remove', id),
+  connectClaude: (id) => invoke('accounts:connectClaude', id),
+  connectCopilot: (id, token, host) => invoke('accounts:connectCopilot', id, token, host),
+  connectCopilotOAuth: (id, clientId, clientSecret, host) => invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret, host }),
+  disconnectAccount: (id) => invoke('accounts:disconnect', id),
+  // Diagnostic report: after a confirmation, saves the report file in Downloads and opens
+  // a GitHub issue draft; `created` false when the user cancelled.
+  createDiagnosticReport: () => invoke('diagnostics:createReport'),
 
   // Updates (issue #5): the URL to open is decided by the main process, never by the renderer.
-  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
-  checkForUpdates: () => ipcRenderer.invoke('updates:check'),
-  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
-  openReleaseNotes: () => ipcRenderer.invoke('updates:openReleaseNotes'),
-  openGuide: () => ipcRenderer.invoke('app:openGuide'),
+  getAppVersion: () => invoke('app:getVersion'),
+  checkForUpdates: () => invoke('updates:check'),
+  downloadUpdate: () => invoke('updates:download'),
+  openReleaseNotes: () => invoke('updates:openReleaseNotes'),
+  // Opens the user guide (README on GitHub) in the browser; the URL is fixed in main.
+  openGuide: () => invoke('app:openGuide'),
 };
 
 contextBridge.exposeInMainWorld('hypermiler', bridge);
