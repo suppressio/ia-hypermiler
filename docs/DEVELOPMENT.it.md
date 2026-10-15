@@ -102,4 +102,5 @@ Approfondimenti:
 - ✅ TypeScript severo (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), ESLint con controllo dei tipi a zero segnalazioni, test unitari su tutti i moduli puri
 - ✅ CI multipiattaforma che pubblica le pre-release; build di prova locali
 - 🟨 Agente consigli (`agents/advisor.ts`) ancora uno stub
-- ⬜ Prossimi passi: contratto IPC condiviso, poi estrazione da `main.ts` di un nucleo testabile per lavorare test-first
+- ✅ Contratto IPC condiviso tra main, preload e renderer (`types/ipc.ts`)
+- ⬜ Prossimi passi: estrazione da `main.ts` di un nucleo testabile per lavorare test-first
