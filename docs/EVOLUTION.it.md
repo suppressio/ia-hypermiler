@@ -86,3 +86,18 @@ Scelta dell'utente: evolvere l'app "man mano con l'uso", **senza stravolgerne l'
 ## Aggiornamento (2026-10-01): 2a diventa il prossimo passo
 
 La richiesta successiva dell'utente — rendere l'app più robusta e passare a uno sviluppo test-driven — ha cambiato la priorità del **2a**: senza estrarre da `main.ts` un nucleo puro (con lo store iniettato), la logica di orchestrazione non si può testare senza avviare Electron, quindi non si può lavorare test-first. Fatto nel frattempo: TypeScript più severo, ESLint con controllo dei tipi a zero segnalazioni e bloccante in CI, normalizzazione dello store, validazione dell'input IPC. Ordine concordato: prima un contratto IPC unico (canali + tipi condivisi tra main, preload e renderer), poi l'estrazione del nucleo (2a), con test scritti prima per fissare il comportamento attuale. 2b resta "quasi gratis" una volta fatto 2a.
+
+## Aggiornamento (2026-10-16): misura del punto 5 — strumento pronto, numeri da raccogliere
+
+`scripts/measure-resources.js` carica l'app compilata in un profilo usa e getta (nessun account, nessuna rete) e campiona `app.getAppMetrics()` prima con il widget aperto, poi dopo averlo chiuso (solo tray), stampando un CSV e un riepilogo di media/massimo di RAM (working set) e CPU totali su tutti i processi dell'app. È multipiattaforma: la stessa esecuzione vale su Linux, Windows e macOS:
+
+```
+npm run build
+env -u ELECTRON_RUN_AS_NODE npx electron scripts/measure-resources.js 5 240 30   # minuti aperta, minuti solo-tray, secondi tra i campioni
+```
+
+**Risultato: non ancora misurato.** L'ambiente in cui è stato preparato non riesce ad avviare Electron (mancano le librerie GTK), quindi qui non si dichiara nessun valore. Da fare su macchine reali (Linux, Windows): lanciare il comando per qualche ora, aggiungere in questa sezione le righe di riepilogo e confrontare con un'app simile sempre residente nel tray misurata allo stesso modo (es. un client di chat o di sincronizzazione: "Memoria (working set privato attivo)" di Task Manager / RSS di `ps` sommato sull'albero dei processi).
+
+Regola di decisione proposta, da confermare con i numeri: totale solo-tray sotto ~250 MB e CPU media sotto ~0,5% → **niente** (punto 5 chiuso); sensibilmente sopra ma dominato da un solo processo (GPU/renderer tenuto vivo) → prima **tuning** (es. distruggere la finestra invece di nasconderla, `app.disableHardwareAcceleration()`); solo se il tuning non basta → punto 5 (dopo 2a).
+
+Osservazione dalla lettura del codice: il polling del cursore ogni 120 ms (`startWindowHoverPolling`) continua anche in modalità solo-tray quando `mainWindow` è nascosta e non distrutta; è il primo candidato se la CPU non risulta a riposo.

@@ -86,3 +86,18 @@ The user's choice: evolve the app "along with my usage", **without upending its 
 ## Update (2026-10-01): 2a becomes the next step
 
 The user's next request — making the app more robust and moving to test-driven development — changed the priority of **2a**: without extracting from `main.ts` a pure core (with the store injected), the orchestration logic cannot be tested without starting Electron, so test-first work is not possible. Done meanwhile: stricter TypeScript, type-aware ESLint at zero findings and gating in CI, store normalization, IPC input validation. Agreed order: first a single IPC contract (channels + types shared by main, preload and renderer), then the core extraction (2a), with tests written first to pin the current behaviour. 2b stays "almost free" once 2a is done.
+
+## Update (2026-10-16): measuring point 5 — tool ready, numbers pending
+
+`scripts/measure-resources.js` loads the built app in a throw-away profile (no accounts, no network) and samples `app.getAppMetrics()` first with the widget open, then after closing it (tray-only), printing a CSV and an average/maximum summary of total RAM (working set) and CPU over all app processes. It is cross-platform, so the same run works on Linux, Windows and macOS:
+
+```
+npm run build
+env -u ELECTRON_RUN_AS_NODE npx electron scripts/measure-resources.js 5 240 30   # minutes open, minutes tray-only, seconds between samples
+```
+
+**Result: not measured yet.** The environment where this was prepared cannot start Electron (no GTK libraries), so no figure is claimed here. To do on real machines (Linux, Windows): run the command above for a few hours, add the summary lines to this section, and compare with a similar always-on tray app measured the same way (e.g. a chat client or a sync tool: Task Manager "Memory (active private working set)" / `ps` RSS summed over the process tree).
+
+Decision rule proposed, to be confirmed with the figures: tray-only total below ~250 MB and average CPU below ~0.5% → **nothing** (point 5 closed); noticeably above, but dominated by one process (GPU/renderer kept alive) → **tuning** first (e.g. destroy the window instead of hiding it, `app.disableHardwareAcceleration()`); only if tuning is not enough → point 5 (after 2a).
+
+Observation from reading the code: the 120 ms cursor poll (`startWindowHoverPolling`) keeps running in tray-only mode whenever `mainWindow` is hidden rather than destroyed; it is the first candidate if CPU turns out not to be idle.
