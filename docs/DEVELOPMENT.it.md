@@ -50,6 +50,7 @@ npm run package:test  # build di prova locale: lint + test, poi pacchetti .deb e
 
 - `npm run package`: build + `electron-builder` → `.dmg` su macOS, `.exe`/NSIS su Windows, `.AppImage` e `.deb` su Linux, in `release/`.
 - `npm run package:test`: versione `<versione>.dev.<timestamp>`, mai pubblicata. L'`.exe` NSIS per Windows richiede Wine (o Windows); senza, uno `.zip` pronto da avviare. È il modo consigliato per provare una modifica su una macchina reale.
+- Linux: i centri software leggono i metadati AppStream, non il file `control` del `.deb`. `build/linux/com.suppressio.ia-hypermiler.metainfo.xml` (licenza, autore, descrizione EN + IT, release) viene installato in `/usr/share/metainfo/` dalla configurazione `deb.fpm` in `package.json`; la voce `.desktop` ha `Name=IA Hypermiler`. Aggiornare le `<release>` del file a ogni versione e validarlo con `appstreamcli validate`.
 
 ### Build multipiattaforma (GitHub Actions)
 

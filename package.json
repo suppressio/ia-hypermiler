@@ -59,6 +59,17 @@
       "target": [
         "AppImage",
         "deb"
+      ],
+      "desktop": {
+        "entry": {
+          "Name": "IA Hypermiler"
+        }
+      },
+      "category": "Utility"
+    },
+    "deb": {
+      "fpm": [
+        "build/linux/com.suppressio.ia-hypermiler.metainfo.xml=/usr/share/metainfo/com.suppressio.ia-hypermiler.metainfo.xml"
       ]
     }
   }
