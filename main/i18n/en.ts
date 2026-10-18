@@ -4,6 +4,7 @@
 // process owns its own texts (two separate TypeScript projects).
 
 export const en = {
+  'tray.staleUsage': '{usage} (stale)',
   'tray.toggle': 'Show/Hide',
   'tray.settings': 'Settings…',
   'tray.refresh': 'Refresh now',
