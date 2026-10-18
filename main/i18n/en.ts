@@ -19,6 +19,7 @@ export const en = {
 
   'startup.failedTitle': 'IA Hypermiler could not start',
   'login.claudeWindowTitle': 'Sign in to Claude',
+  'login.codexWindowTitle': 'Sign in to ChatGPT (Codex)',
 
   'oauth.successTitle': 'GitHub sign-in complete',
   'oauth.successMessage': 'Authentication succeeded.',
