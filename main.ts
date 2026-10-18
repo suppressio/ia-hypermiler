@@ -3,7 +3,7 @@
 // of the Day 1 mock. When a fetch fails, the last known data is shown with its
 // timestamp (never a blank screen, see CLAUDE.md).
 
-import { app, dialog, ipcMain, BrowserWindow, Notification, shell, Menu, screen, utilityProcess } from 'electron';
+import { app, dialog, BrowserWindow, Notification, shell, Menu, screen, utilityProcess } from 'electron';
 import store, { DEFAULTS } from './store/index';
 import { normalizeSettings } from './store/normalize';
 import { isPlainRecord } from './store/merge';
@@ -16,6 +16,8 @@ import * as refreshPolicy from './main/refreshPolicy';
 import type { AccountFetchState, RefreshMode } from './main/refreshPolicy';
 import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts } from './store/migrate';
 import * as budget from './budget';
+import { captureCodexSession } from './main/codex-auth';
+import { CodexSignInRequiredError } from './services/codex';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
 import path from 'path';
@@ -31,7 +33,7 @@ import os from 'os';
 import { writeFile } from 'fs/promises';
 import { formatNumber, getLocale, resolveLocale, setLocale, t } from './main/i18n/index';
 import { randomUUID } from 'crypto';
-import type { IpcMainInvokeEvent } from 'electron';
+import { handle, listen, sendToRenderer } from './main/ipc';
 import type {
   AccountConfig,
   AccountId,
@@ -118,7 +120,7 @@ function startWindowHoverPolling(): void {
       cursor.y >= bounds.y && cursor.y < bounds.y + bounds.height;
     if (isOver !== lastHoverState) {
       lastHoverState = isOver;
-      mainWindow.webContents.send('window:hoverChanged', isOver);
+      sendToRenderer(mainWindow, 'window:hoverChanged', isOver);
     }
   }, 120);
 }
@@ -561,7 +563,7 @@ type StampedUsage = RawAccountUsage & { accountId: AccountId; lastUpdatedAt: str
 // progress log, session about the account_session_invalid error.
 function friendlyErrorMessage(err: unknown): string {
   const error = err as Error & { status?: number };
-  if (error.status === 401 || error.status === 403) {
+  if (err instanceof CodexSignInRequiredError || error.status === 401 || error.status === 403) {
     return t('error.sessionExpired', { detail: error.message });
   }
   if (err instanceof copilotService.CopilotUsageUnavailableError) {
@@ -576,6 +578,7 @@ function friendlyErrorMessage(err: unknown): string {
 function applyMainLocale(): void {
   setLocale(resolveLocale(store.get('ui').language, app.getLocale()));
   trayHandle?.refreshMenu();
+  if (lastSnapshot) trayHandle?.updateUsage(lastSnapshot);
 }
 
 // Per-account fetch attempts, in memory (main/refreshPolicy.ts): the backoff of a
@@ -740,6 +743,7 @@ function reportConfig(cfg: AccountConfig): Record<string, unknown> {
     workSchedule: cfg.workSchedule,
   };
   switch (cfg.provider) {
+    case 'codex': return common;
     case 'claude':
       return { ...common, authMethod: cfg.authMethod, localInsights: cfg.localInsights };
     case 'copilot':
@@ -945,10 +949,11 @@ async function refreshOnce(mode: RefreshMode): Promise<void> {
   scheduleNextRefresh(refreshPolicy.nextRefreshDelayMs(lastConsumptionRose, configuredRefreshIntervalMs()));
   timings.lastRefresh = { at: new Date().toISOString(), ms: Date.now() - startedAt };
   lastSnapshot = snapshot;
+  trayHandle?.updateUsage(snapshot);
   maybeNotifyThreshold(snapshot);
   maybeNotifyPace(snapshot);
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('usage:update', snapshot);
+    sendToRenderer(mainWindow, 'usage:update', snapshot);
   }
 }
 
@@ -987,7 +992,7 @@ function requireBoolean(value: unknown, what: string): boolean {
   return value;
 }
 
-const PROVIDER_IDS: readonly ProviderId[] = ['claude', 'copilot'];
+const PROVIDER_IDS: readonly ProviderId[] = ['claude', 'copilot', 'codex'];
 const WINDOW_STYLES: readonly WindowStyle[] = ['filled', 'filled-dark', 'transparent-digital'];
 
 function requireOneOf<T extends string>(value: unknown, allowed: readonly T[], what: string): T {
@@ -1104,14 +1109,14 @@ function startUpdateChecks(): void {
 function broadcastSettings(): void {
   const redacted = redactSecretsForRenderer(store.store);
   for (const win of [mainWindow, settingsWindow]) {
-    if (win && !win.isDestroyed()) win.webContents.send('settings:update', redacted);
+    if (win && !win.isDestroyed()) sendToRenderer(win, 'settings:update', redacted);
   }
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle('settings:get', () => redactSecretsForRenderer(store.store));
+  handle('settings:get', () => redactSecretsForRenderer(store.store));
 
-  ipcMain.handle('settings:set', (_event: IpcMainInvokeEvent, patch: unknown) => {
+  handle('settings:set', (_event, patch: unknown) => {
     if (!isPlainRecord(patch)) throw new Error('Settings: invalid patch');
     let next: AppSettings = store.store;
     for (const [key, value] of Object.entries(patch)) {
@@ -1128,18 +1133,18 @@ function registerIpcHandlers(): void {
     // no dedicated IPC like ui.windowStyle/ui.alwaysOnTop and would otherwise apply only
     // after the next window restart (user feedback).
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('settings:update', redacted);
+      sendToRenderer(mainWindow, 'settings:update', redacted);
     }
     return redacted;
   });
 
-  ipcMain.on('usage:refreshRequest', () => { runDetached('refresh usage', refreshAndBroadcast('manual')); });
+  listen('usage:refreshRequest', () => { runDetached('refresh usage', refreshAndBroadcast('manual')); });
 
-  ipcMain.on('window:openSettings', () => {
+  listen('window:openSettings', () => {
     settingsWindow = createSettingsWindow(settingsWindow);
   });
 
-  ipcMain.handle('window:setAlwaysOnTop', (_event: IpcMainInvokeEvent, rawValue: unknown) => {
+  handle('window:setAlwaysOnTop', (_event, rawValue: unknown) => {
     const value = requireBoolean(rawValue, 'Always on top');
     store.set('ui.alwaysOnTop', value);
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(value, 'floating');
@@ -1147,12 +1152,12 @@ function registerIpcHandlers(): void {
     // widget title bar): same logic as settings:set above, so that the "Always on top"
     // checkbox does not drift.
     if (settingsWindow && !settingsWindow.isDestroyed()) {
-      settingsWindow.webContents.send('settings:update', redactSecretsForRenderer(store.store));
+      sendToRenderer(settingsWindow, 'settings:update', redactSecretsForRenderer(store.store));
     }
     return value;
   });
 
-  ipcMain.handle('window:setStyle', (_event: IpcMainInvokeEvent, rawStyle: unknown) => {
+  handle('window:setStyle', (_event, rawStyle: unknown) => {
     const style = requireOneOf(rawStyle, WINDOW_STYLES, 'Window style');
     store.set('ui.windowStyle', style);
     const wasVisible = mainWindow ? mainWindow.isVisible() : true;
@@ -1163,15 +1168,15 @@ function registerIpcHandlers(): void {
     return style;
   });
 
-  ipcMain.on('window:minimize', () => {
+  listen('window:minimize', () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
   });
 
-  ipcMain.on('window:close', () => {
+  listen('window:close', () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
   });
 
-  ipcMain.handle('accounts:add', (_event: IpcMainInvokeEvent, rawProvider: unknown) => {
+  handle('accounts:add', (_event, rawProvider: unknown) => {
     const provider = requireOneOf(rawProvider, PROVIDER_IDS, 'Provider');
     const accounts = getAccounts();
     const id = `${provider}-${randomUUID().slice(0, 8)}`;
@@ -1181,7 +1186,7 @@ function registerIpcHandlers(): void {
     return id;
   });
 
-  ipcMain.handle('accounts:remove', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
+  handle('accounts:remove', async (_event, rawId: unknown) => {
     const id = requireString(rawId, 'Account');
     const cfg = findAccount(id);
     if (!cfg) return;
@@ -1193,7 +1198,17 @@ function registerIpcHandlers(): void {
     runDetached('refresh usage', refreshAndBroadcast('forced'));
   });
 
-  ipcMain.handle('accounts:connectClaude', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
+  handle('accounts:connectCodex', async (_event, rawId: unknown) => {
+    const id = requireString(rawId, 'Account');
+    const cfg = findAccount(id);
+    if (!cfg || cfg.provider !== 'codex') throw new Error(`Codex account not found: ${id}`);
+    const { capturedAt } = await captureCodexSession(cfg.partition);
+    updateAccount(id, (a) => a.provider === 'codex' ? { ...a, enabled: true, session: { capturedAt } } : a);
+    broadcastSettings();
+    runDetached('refresh usage', refreshAndBroadcast('forced'));
+  });
+
+  handle('accounts:connectClaude', async (_event, rawId: unknown) => {
     const id = requireString(rawId, 'Account');
     const cfg = findAccount(id);
     if (!cfg || cfg.provider !== 'claude') throw new Error(`Claude account not found: ${id}`);
@@ -1214,7 +1229,7 @@ function registerIpcHandlers(): void {
     return { organizationId };
   });
 
-  ipcMain.handle('accounts:connectCopilot', async (_event: IpcMainInvokeEvent, rawId: unknown, rawToken: unknown, rawHost: unknown) => {
+  handle('accounts:connectCopilot', async (_event, rawId: unknown, rawToken: unknown, rawHost: unknown) => {
     const id = requireString(rawId, 'Account');
     const token = requireString(rawToken, 'Token').trim();
     const host = requireGithubHost(rawHost);
@@ -1230,7 +1245,7 @@ function registerIpcHandlers(): void {
   // Alternative to a hand-pasted PAT, through an OAuth App registered by the user on the
   // account's GitHub domain. Verified on a personal Free account (2026-10-01): with an
   // OAuth token copilot_internal/user returns the quota snapshots — see docs/RESEARCH.md §2.2.
-  ipcMain.handle('accounts:connectCopilotOAuth', async (_event: IpcMainInvokeEvent, rawId: unknown, rawPayload: unknown) => {
+  handle('accounts:connectCopilotOAuth', async (_event, rawId: unknown, rawPayload: unknown) => {
     const id = requireString(rawId, 'Account');
     const payloadRecord = isPlainRecord(rawPayload) ? rawPayload : {};
     const payload = {
@@ -1248,9 +1263,9 @@ function registerIpcHandlers(): void {
     return { username };
   });
 
-  ipcMain.handle('app:getVersion', () => app.getVersion());
+  handle('app:getVersion', () => app.getVersion());
 
-  ipcMain.handle('updates:check', () => checkForUpdates('manual'));
+  handle('updates:check', () => checkForUpdates('manual'));
 
   // The URL to open comes from the store (written only by checkForUpdates), never
   // from the renderer, and is restricted to the project repository anyway.
@@ -1260,10 +1275,10 @@ function registerIpcHandlers(): void {
     if (!url || !url.startsWith(TRUSTED_DOWNLOAD_PREFIX)) throw new Error('No update available');
     await shell.openExternal(url);
   };
-  ipcMain.handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
-  ipcMain.handle('updates:openReleaseNotes', () => openTrustedUpdateUrl((a) => a.releaseUrl));
+  handle('updates:download', () => openTrustedUpdateUrl((a) => a.downloadUrl));
+  handle('updates:openReleaseNotes', () => openTrustedUpdateUrl((a) => a.releaseUrl));
   // The user guide (README on GitHub) in the interface language; fixed URL.
-  ipcMain.handle('app:openGuide', () => shell.openExternal(guideUrl(getLocale())));
+  handle('app:openGuide', () => shell.openExternal(guideUrl(getLocale())));
 
   // Manual diagnostic report (Settings → Diagnostics, diagnostics/report.ts): after an
   // explicit confirmation listing what goes in, one text file in Downloads with the
@@ -1271,7 +1286,7 @@ function registerIpcHandlers(): void {
   // history and log of every connected account; the folder is shown and a short
   // GitHub issue draft opens, to which the user may attach it. Nothing is sent by the
   // app. The URL is built here with the fixed repository prefix.
-  ipcMain.handle('diagnostics:createReport', async (): Promise<{ created: boolean; fileName: string | null }> => {
+  handle('diagnostics:createReport', async () => {
     const connected = getAccounts().filter((cfg) => providers.isConnected(cfg));
     if (connected.length === 0) throw new Error(t('error.reportNoAccounts'));
     const confirmOptions = {
@@ -1337,7 +1352,7 @@ function registerIpcHandlers(): void {
     return { created: true, fileName };
   });
 
-  ipcMain.handle('accounts:disconnect', async (_event: IpcMainInvokeEvent, rawId: unknown) => {
+  handle('accounts:disconnect', async (_event, rawId: unknown) => {
     const id = requireString(rawId, 'Account');
     const cfg = findAccount(id);
     if (!cfg) return;

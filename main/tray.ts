@@ -3,7 +3,8 @@
 import { Tray, Menu, nativeImage, app, BrowserWindow, MenuItem } from 'electron';
 import path from 'path';
 import type Store from 'electron-store';
-import type { AppSettings } from '../types/index';
+import { trayTooltip } from './traySummary';
+import type { AppSettings, UsageSnapshot } from '../types/index';
 import { t } from './i18n/index';
 
 const ICON_PATH = path.join(__dirname, '..', 'renderer', 'assets', 'tray-icon.png');
@@ -21,6 +22,7 @@ export interface TrayHandle {
   // Rebuilds the menu (e.g. after an update check or a language change): Electron
   // does not refresh a context menu that is already set.
   refreshMenu: () => void;
+  updateUsage: (snapshot: UsageSnapshot) => void;
 }
 
 export function createTray({ getMainWindow, openSettings, refreshNow, store }: CreateTrayDeps): TrayHandle {
@@ -78,5 +80,9 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
   // on every platform.
   tray.on('click', toggleMainWindow);
 
-  return { tray, refreshMenu: () => { tray.setContextMenu(buildMenu()); } };
+  return {
+    tray,
+    refreshMenu: () => { tray.setContextMenu(buildMenu()); },
+    updateUsage: (snapshot) => { tray.setToolTip(trayTooltip(snapshot.accounts)); },
+  };
 }

@@ -3,6 +3,7 @@
 import type { MainMessageKey } from './en';
 
 export const it: Record<MainMessageKey, string> = {
+  'tray.staleUsage': '{usage} (dati non aggiornati)',
   'tray.toggle': 'Mostra/Nascondi',
   'tray.settings': 'Impostazioni…',
   'tray.refresh': 'Aggiorna ora',
@@ -17,6 +18,7 @@ export const it: Record<MainMessageKey, string> = {
 
   'startup.failedTitle': 'IA Hypermiler non è riuscita ad avviarsi',
   'login.claudeWindowTitle': 'Accedi a Claude',
+  'login.codexWindowTitle': 'Accedi a ChatGPT (Codex)',
 
   'oauth.successTitle': 'Accesso GitHub completato',
   'oauth.successMessage': 'Autenticazione riuscita.',

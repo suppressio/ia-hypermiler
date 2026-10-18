@@ -31,13 +31,15 @@ npm run coverage   # tests with Node's built-in coverage
 ```
 
 - **Unit tests** always run and never touch the network (`fetch` and the SDK are mocked). Test data is synthetic only.
-- **Integration tests** (`tests/integration/`) call the real Claude and GitHub APIs and **skip themselves** when credentials are missing. To enable them locally, **never pasting credentials in chat or commits**:
+- **Integration tests** (`tests/integration/`) call the real Claude, Codex and GitHub APIs and **skip themselves** when credentials are missing. To enable them locally, **never pasting credentials in chat or commits**:
 
 ```bash
 cp .env.test.example .env.test
 # fill .env.test with your credentials (see the comments in the file)
 npm test
 ```
+
+Codex requires both `HYPERMILER_TEST_CODEX_COOKIE_HEADER` and `HYPERMILER_TEST_CODEX_USER_AGENT` from the same account partition (see `.env.test.example`).
 
 `.env.test` is already in `.gitignore` and is loaded automatically by Node (`--env-file-if-exists`), with no extra dependency.
 
@@ -50,6 +52,7 @@ npm run package:test  # local test build: lint + tests, then .deb and Windows pa
 
 - `npm run package`: build + `electron-builder` → `.dmg` on macOS, `.exe`/NSIS on Windows, `.AppImage` and `.deb` on Linux, in `release/`.
 - `npm run package:test`: version `<version>.dev.<timestamp>`, never published. The Windows NSIS `.exe` needs Wine (or Windows); without it, a ready-to-run `.zip`. This is the preferred way to try a change on a real machine.
+- Linux: software centers read AppStream metadata, not the `.deb` control file. `build/linux/com.suppressio.ia-hypermiler.metainfo.xml` (license, author, EN + IT description, releases) is installed to `/usr/share/metainfo/` by the `deb.fpm` config in `package.json`; the `.desktop` entry has `Name=IA Hypermiler`. Update the file's `<release>` on every version and validate it with `appstreamcli validate`.
 
 ### Cross-platform build (GitHub Actions)
 
@@ -67,9 +70,9 @@ Packages are not signed: macOS Gatekeeper and Windows SmartScreen show a warning
 ```
 ia-hypermiler/
 ├── main.ts, preload.ts        ← Electron main process + secure bridge to the renderer
-├── main/                      ← windows, tray, Claude login, OAuth, per-provider logic, refresh pace, main-process i18n
+├── main/                      ← windows, tray, Claude/Codex login, OAuth, per-provider logic, refresh pace, main-process i18n
 ├── renderer/                  ← widget and Settings window (vanilla HTML/CSS/TS) + UI i18n
-├── services/                  ← Claude/Copilot usage fetch, local sessions, update check (+ tests)
+├── services/                  ← Claude/Copilot/Codex usage fetch, local sessions, update check (+ tests)
 ├── diagnostics/               ← format-drift report and diagnostic report file
 ├── store/                     ← local persistence (encrypted electron-store), defaults, normalization, migration
 ├── budget.ts                  ← budget/efficiency/projection/chart logic (+ budget.test.ts)
@@ -83,7 +86,7 @@ ia-hypermiler/
 Further reading:
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — data model, windows, indicators, extensibility
-- [`RESEARCH.md`](RESEARCH.md) — what can really be read from the Claude and Copilot APIs, and with which limits
+- [`RESEARCH.md`](RESEARCH.md) — what can really be read from the Claude, Copilot and Codex APIs, and with which limits
 - [`EVOLUTION.md`](EVOLUTION.md) — retrospective and future directions with a cost/benefit analysis
 - [`PLAN.md`](PLAN.md) — the original day-by-day plan
 - [`CLAUDE.md`](../CLAUDE.md) — project memory for Claude Code: stack, rules, milestones
@@ -91,15 +94,17 @@ Further reading:
 ## Security rules
 
 - `nodeIntegration: false` and `contextIsolation: true` always: the renderer never has direct access to Node.js; every value coming from it through IPC is validated.
-- Secrets (Claude session, Copilot token) live only in the main process and in the encrypted store: they are redacted before reaching the renderer and never logged.
+- Secrets stay in the main process: Claude sessions and Copilot tokens use the encrypted store; Codex cookies stay in the account partition and its access token is never stored. They never reach the renderer or logs.
 - URLs opened in the browser are built in the main process from fixed prefixes, never taken from the renderer.
 
 ## Project status
 
 - ✅ Real data from Claude (internal endpoint + session) and Copilot (personal plans, and company seats on a `.ghe.com` tenant; a github.com seat managed by an enterprise exposes no data, see `RESEARCH.md`)
+- ✅ Codex usage through a ChatGPT web session, with rolling quota windows (see `RESEARCH.md` §6 for verification limits)
 - ✅ Several accounts, English/Italian UI, update check, format-drift diagnostics, diagnostic report
 - ✅ Own visualizations: daily consumption vs moving budget, window verdicts, instant gauge, rating, value per token
 - ✅ Strict TypeScript (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), type-aware ESLint at zero findings, unit tests on every pure module
 - ✅ Cross-platform CI publishing pre-releases; local test builds
 - 🟨 Advice agent (`agents/advisor.ts`) still a stub
-- ⬜ Next: shared IPC contract, then extracting a testable core from `main.ts` to work test-first
+- ✅ Shared IPC contract between main, preload and renderer (`types/ipc.ts`)
+- ⬜ Next: extracting a testable core from `main.ts` to work test-first

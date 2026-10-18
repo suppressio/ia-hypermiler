@@ -12,6 +12,7 @@
 |---|---|---|
 | **Claude** | **Yes**, with both a personal plan and a Team/Enterprise company seat | Internal endpoint `claude.ai/api/organizations/{orgId}/usage` with their own session cookie, or local reading when using Claude Code |
 | **GitHub Copilot** | **Yes with a personal plan** · **Only with an unofficial workaround if the seat is assigned by the company** | Personal plan: official `premium_request/usage` endpoint. Company seat: no public self-service endpoint; the only real source is the undocumented internal endpoint `copilot_internal/user` (the same used by the VS Code quota indicator) |
+| **OpenAI / Codex** | **Yes**, for the ChatGPT account (Plus verified) | Internal endpoint `chatgpt.com/backend-api/wham/usage` with the access token of the user's own chatgpt.com web session (embedded login, Google included). No Codex CLI needed |
 
 Details and sources below.
 
@@ -169,6 +170,51 @@ Prompt: an "Account & Usage" panel in VS Code (Claude Code extension) shows, bes
 
 ---
 
+## 6. OpenAI / Codex — ChatGPT subscription quota without the Codex CLI (Addendum 2026-10-18, #82)
+
+**Verdict: GO.** The usage of a ChatGPT/Codex subscription is readable with the same model as Claude: embedded login in a per-account Electron partition, then HTTP calls from the main process. Neither the Codex CLI nor an IDE extension is needed. Verified on 2026-10-18 with a real Plus account (Google login); only statuses and response structure were recorded.
+
+### 6.1 Where the data comes from
+The Codex CLI app-server method `account/rateLimits/read` (the first attempt in #17) is only a proxy: the CLI binary calls `GET https://chatgpt.com/backend-api/wham/usage` with the ChatGPT OAuth token of its own login. The same endpoint answers to the access token of an ordinary chatgpt.com **web session**.
+
+### 6.2 Flow (verified)
+1. Login window on `https://chatgpt.com/auth/login` in a dedicated partition, **stock Electron User-Agent**. Google login works. Rewriting the User-Agent (removing `Electron/x`) makes Google refuse it ("This browser or app may not be secure"): a User-Agent that contradicts the client hints is exactly what Google flags. Never touch it.
+   After login chatgpt.com lands on the chat: the window must close on the first navigation back to `chatgpt.com` where the session check succeeds (as `main/claude-auth.ts` does), not on a timer.
+2. Login done when `GET https://chatgpt.com/api/auth/session` returns JSON with `accessToken` (a JWT). The session itself lives in the `__Secure-next-auth.session-token.*` cookies (about 90 days); the access token lasts about 10 days, so it is read again from `/api/auth/session` on each refresh and never stored.
+3. `GET https://chatgpt.com/backend-api/wham/usage` with `Authorization: Bearer <accessToken>` → 200 JSON.
+
+Results of the probe (one variable at a time):
+
+| Request | Result |
+|---|---|
+| From the page, Bearer + `ChatGPT-Account-Id` | 200 |
+| From the page, Bearer only | 200 |
+| From the page, cookies only, no Bearer | 401 `{detail}` |
+| From the main process (`session.fetch` on the partition, no window open), `/api/auth/session` then `wham/usage` | 200 and 200 |
+| From the main process with Node `fetch` (second probe, #86): `/api/auth/session` with the partition's Cookie header + its User-Agent | 200, `accessToken` present, no `cf-mitigated` |
+| Node `fetch`, `wham/usage` with Bearer (partition User-Agent, with or without cookies; also Node's default User-Agent) | 200 |
+
+So cookies alone are not enough, the Bearer is. `ChatGPT-Account-Id` is not needed on a personal account; it is probably needed to pick the workspace on Team/Enterprise (the JWT carries `chatgpt_account_id` under `https://api.openai.com/auth`). Cloudflare cookies (`cf_clearance`, `__cf_bm`) are set by the login and the partition's `session.fetch` sends them: no challenge seen.
+
+**Implementation choice (#86):** the same path as Claude works: Node `fetch` through `services/_http.ts`, with the Cookie header rebuilt from the partition and the partition's User-Agent for `/api/auth/session`, then the Bearer alone for `wham/usage`. `session.fetch` stays the fallback should Cloudflare start refusing Node requests.
+
+The token belongs to the chatgpt.com web client (its own `client_id`): no other client is impersonated. Token-sharing tokens from *Sign in with ChatGPT* are refused by this endpoint (401 `rejected_by_access_enforcement`, openai/codex#54219), which is irrelevant here.
+
+### 6.3 Response structure (Plus, 2026-10-18)
+Top level: `user_id`, `account_id`, `email`, `plan_type`, `rate_limit`, `code_review_rate_limit`, `additional_rate_limits`, `model_usage`, `credits`, `spend_control`, `rate_limit_reached_type`, `promo`, `rate_limit_reset_credits`.
+
+- `rate_limit`: `allowed`, `limit_reached`, `primary_window`, `secondary_window`; each window has `used_percent` (consumed, 0-100), `limit_window_seconds`, `reset_after_seconds`, `reset_at` (Unix seconds). Observed: primary 18000 s (5 h), secondary 604800 s (7 days). Third parties report a weekly-only `primary_window` with `secondary_window: null`: the window is identified by `limit_window_seconds`, never by its field name.
+- `additional_rate_limits` and `code_review_rate_limit`: `null` here; other plans/models may fill them (shape not observed yet → drift-safe handling).
+- `credits`: `has_credits`, `unlimited`, `overage_limit_reached`, `balance` (**string**), `approx_local_messages`, `approx_cloud_messages` (arrays of two numbers).
+- `model_usage`: keyed by model name, `available`, `available_at`, `credits_would_enable`.
+- `/api/auth/session` also returns `user`, `account` (`planType`, `structure`, …), `sessionToken` and a `WARNING_BANNER` field: none of it may ever be logged or sent to the renderer.
+
+### 6.4 Not verified yet
+Free, Pro, Team/Enterprise (workspace selection, `ChatGPT-Account-Id`), company SSO, `additional_rate_limits` filled, behaviour when the session cookie expires (expected: `/api/auth/session` without `accessToken` → "sign in again").
+
+### 6.5 Risks
+Undocumented internal endpoint, like Claude's: it can change without notice → `FormatDriftError` and the drift report, as for the other providers. Reading one's own usage with one's own session is the same pattern as Claude; no automation of the chat itself.
+
 ## Sources
 
 **Claude / Anthropic**
@@ -197,3 +243,9 @@ Prompt: an "Account & Usage" panel in VS Code (Claude Code extension) shows, bes
 - [navikt/copilot issue #111](https://github.com/navikt/copilot/issues/111)
 - [GitHub Community Discussion #178117 — copilot_internal/user](https://github.com/orgs/community/discussions/178117)
 - [Fail-Safe/CopilotPremiumUsageMonitor](https://github.com/Fail-Safe/CopilotPremiumUsageMonitor)
+
+**OpenAI / Codex (Addendum 2026-10-18, §6)**
+- [openai/codex#54219 — token sharing cannot read plan usage](https://github.com/openai/codex/issues/54219)
+- [steipete/CodexBar — codex.md](https://github.com/steipete/CodexBar/blob/main/docs/codex.md)
+- [ajhochy/Rhythm#1568 — wham/usage response](https://github.com/ajhochy/Rhythm/issues/1568)
+- [openai/codex#10869 — wham/usage polling](https://github.com/openai/codex/issues/10869)

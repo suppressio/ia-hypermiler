@@ -4,6 +4,7 @@
 // process owns its own texts (two separate TypeScript projects).
 
 export const en = {
+  'tray.staleUsage': '{usage} (stale)',
   'tray.toggle': 'Show/Hide',
   'tray.settings': 'Settings…',
   'tray.refresh': 'Refresh now',
@@ -18,6 +19,7 @@ export const en = {
 
   'startup.failedTitle': 'IA Hypermiler could not start',
   'login.claudeWindowTitle': 'Sign in to Claude',
+  'login.codexWindowTitle': 'Sign in to ChatGPT (Codex)',
 
   'oauth.successTitle': 'GitHub sign-in complete',
   'oauth.successMessage': 'Authentication succeeded.',

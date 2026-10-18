@@ -6,7 +6,7 @@ Project memory for Claude Code. Read it in full before touching the code.
 
 ## What this project is
 
-**IA Hypermiler** is an Electron desktop app that monitors AI token usage (Claude and GitHub Copilot) and computes an optimal daily budget so the quota lasts until renewal. It shows an always-visible widget with daily consumption against the ideal budget, end-of-period projection, efficiency metrics and tips derived from real data. UI in English and Italian.
+**IA Hypermiler** is an Electron desktop app that monitors AI token usage (Claude, GitHub Copilot and Codex) and computes an optimal daily budget so the quota lasts until renewal. It shows an always-visible widget with daily consumption against the ideal budget, end-of-period projection, efficiency metrics and tips derived from real data. UI in English and Italian.
 
 **Languages:** the conversation with the user is in **Italian**. All **code** (identifiers, comments, test names, logs, internal error messages) is in **English**. Human-facing **documents** exist in English (`X.md`, primary) and Italian (`X.it.md`, secondary) with a language switcher at the top; this file is English only.
 
@@ -51,7 +51,8 @@ ia-hypermiler/
 ├── tsconfig.renderer.json       ← renderer TS config (ES modules, isolated, no Node types)
 ├── tsconfig.renderer.test.json  ← renderer unit tests (adds Node types; emitted as ES modules)
 ├── eslint.config.mjs            ← type-aware lint, all three TS projects
-├── types/index.ts               ← shared types (AppSettings, AccountConfig, AccountSnapshot, HypermilerBridge, …)
+├── types/index.ts               ← shared types (AppSettings, AccountConfig, AccountSnapshot, …), runtime-free
+├── types/ipc.ts                 ← IPC contract: every channel with its argument/result types + HypermilerBridge (runtime-free)
 ├── scripts/
 │   ├── copy-assets.js           ← copies renderer html/css into dist/renderer/ + writes dist/renderer/package.json {type: module}
 │   └── generate-icons.js        ← one-off "gauge" icon generator (build/icon.png, build/icons/*, renderer/assets/*.png)
@@ -59,9 +60,12 @@ ia-hypermiler/
 ├── main.ts                      ← Electron main process (lifecycle, IPC, refresh, update checks)
 ├── preload.ts                   ← contextBridge renderer ↔ main
 ├── main/
+│   ├── ipc.ts                   ← typed handle/listen/sendToRenderer wrappers keyed on types/ipc.ts
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
 │   ├── claude-auth.ts           ← Claude session capture via login BrowserWindow, one Electron partition per account
+│   ├── codex-auth.ts            ← ChatGPT login in a per-account partition, stock User-Agent
+│   ├── codex-session-cookie.ts  ← recognizes ChatGPT session cookies, including chunks (+ test)
 │   ├── providers.ts             ← provider-specific part of the account registry (connection, fetch, disconnect, secret redaction)
 │   ├── refreshPolicy.ts         ← adaptive refresh pace, per-account backoff, manual-refresh cache (+ test)
 │   ├── copilot-oauth.ts         ← GitHub OAuth App login (loopback PKCE), experimental alternative to the PAT (+ test)
@@ -71,15 +75,16 @@ ia-hypermiler/
 │   ├── settings.html, settings.css, settings.ts ← Settings window (accounts table, language, updates, …)
 │   ├── dom.ts                   ← byId(id, ElementType): typed, checked element access
 │   ├── schedule.ts              ← one-line summary of an account work schedule (+ test)
+│   ├── windowLabel.ts           ← localized quota-window labels, including Codex limits (+ test)
 │   ├── gauge.ts                 ← log-scale position of the instant pace against its target (+ test)
 │   ├── visibility.ts            ← which indicators are shown (autonomy, peak/average, streak) (+ test)
-│   ├── types.ts                 ← reduced local copy of the shared types (renderer tsconfig is isolated)
 │   └── i18n/                    ← UI strings: en.ts (reference), it.ts, index.ts (t, applyTranslations, Intl formatting) (+ test)
 ├── agents/advisor.ts            ← Claude advice agent (stub)
 ├── services/
 │   ├── _http.ts                 ← shared fetch helper (10s timeout, explicit errors)
 │   ├── _shape.ts                ← response → structure only (never values), FormatDriftError (+ test)
 │   ├── claude.ts                ← Claude usage fetch (+ test)
+│   ├── codex.ts                 ← ChatGPT session → ephemeral Bearer → Codex usage (+ test)
 │   ├── copilot.ts               ← Copilot usage fetch (+ test)
 │   ├── claudeLocalSessions.ts   ← insights from LOCAL Claude Code sessions, opt-in (+ test)
 │   ├── claudeLocalSessions.worker.ts ← utility-process entry: the scan runs off the main process
@@ -111,6 +116,7 @@ ia-hypermiler/
 - `nodeIntegration` always `false`, `contextIsolation` always `true`.
 - The renderer never has direct access to Node.js: everything goes through `preload.ts` via `contextBridge`.
 - API keys and session cookies live only in the main process and in encrypted `electron-store` — never in the renderer, never in localStorage. `settings:get`/`settings:set` redact secrets towards the renderer (`providers.redactSecrets`) and preserve the real values on write (`providers.preserveSecrets`).
+- IPC channels and payload types are declared once in `types/ipc.ts`; main registers through `main/ipc.ts` (`handle`/`listen`/`sendToRenderer`), the preload through typed helpers on the same maps. A new channel = one entry there. The renderer tsconfig has `rootDir: "."` so it can import `types/`; those files must stay runtime-free (the renderer build re-emits them as ES modules over the CommonJS ones).
 - Every value coming from the renderer through IPC is `unknown` and is validated in the handler (`requireString`/`requireBoolean`/`requireOneOf` in `main.ts`). `settings:set` accepts only renderer-editable sections (`accounts`, `ui`, `diagnostics`, `updates`) and normalizes the patch before writing.
 - URLs opened with `shell.openExternal` come from the main process (store/constants), never from the renderer; update URLs must start with the project repository prefix.
 
@@ -120,16 +126,16 @@ ia-hypermiler/
 - Think through every path on Windows, macOS and Linux before writing it.
 
 ### Service interface
-Every usage service (`services/claude.ts`, `services/copilot.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
+Every usage service (`services/claude.ts`, `services/copilot.ts`, `services/codex.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
 
 ```ts
-export async function fetchUsage(credentials: ClaudeCredentials | CopilotCredentials): Promise<RawAccountUsage> { ... }
+export async function fetchUsage(credentials: ClaudeCredentials | CopilotCredentials | CodexCredentials): Promise<RawAccountUsage> { ... }
 
 // RawAccountUsage = { planTier, subscriptionRenewsAt, quotaWindows: QuotaWindow[] }
 // QuotaWindow    = { id, label, periodType, periodLength, unit: 'percentage'|'count', used, total, resetsAt }
 ```
 
-When a service cannot get the data it **throws an explicit error** with a readable message — never returns `null`/`undefined` silently. No `dailyHistory` from services: neither Claude nor Copilot exposes it, the daily history is built locally by `main.ts` in `store.history.dailyUsage` on every successful refresh. Adding a provider = a service with `fetchUsage` + a branch in every function of `main/providers.ts` (exhaustive switches make tsc fail if one is forgotten) + a detail template in `settings.html` + dictionary keys.
+When a service cannot get the data it **throws an explicit error** with a readable message — never returns `null`/`undefined` silently. No `dailyHistory` from services: none of these providers exposes it, the daily history is built locally by `main.ts` in `store.history.dailyUsage` on every successful refresh. Adding a provider = a service with `fetchUsage` + a branch in every function of `main/providers.ts` (exhaustive switches make tsc fail if one is forgotten) + a detail template in `settings.html` + dictionary keys.
 
 ### Error handling
 - Every network call has an explicit timeout (max 10 seconds) — use `services/_http.ts`.
@@ -260,7 +266,7 @@ Same model as every repo managed by agent-ops (full rules: agent-ops `docs/BRANC
 - `package.json` `author` must carry an email (Debian "Maintainer"): the GitHub noreply address is used, never a real one.
 
 ### Integration tests (real credentials)
-`tests/integration/*.integration.test.ts` call the real Claude/Copilot APIs but **skip themselves** without credentials. To enable them **locally**: copy `.env.test.example` to `.env.test` (gitignored), fill the variables, run `npm test`. **Never provide these credentials in chat**: the assisted environment does not need them.
+`tests/integration/*.integration.test.ts` call the real Claude/Copilot/Codex APIs but **skip themselves** without credentials. To enable them **locally**: copy `.env.test.example` to `.env.test` (gitignored), fill the variables, run `npm test`. **Never provide these credentials in chat**: the assisted environment does not need them.
 
 ---
 
@@ -292,8 +298,11 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-02 | v0.4.12-beta | Diagnostic report: `system` section (time zone, screens, app memory/CPU, timings), only reset/timing dates kept; Copilot manual quota only for the personal scope, consumption rounded; local test builds (`npm run package:test`) and CI test builds without releases. First release marked as GitHub "latest" |
 | 2026-10-07 | v0.4.13-beta | Absolute value under the percentage for count windows with a total (Copilot AI credits, Claude extra credit in USD; #14, #18, #21); configurable refresh interval (#15); dependencies updated, Electron 31 → 44 (#19); packages without the Claude Agent SDK native binaries, .deb 196 → 97 MB (#34). From here on, work lands through PRs with Claude/Copilot cross-review |
 | 2026-10-09 | v0.4.14-beta | Reactive pacing overhaul: adaptive refresh (5 min after a rise), 1h instant pace, moving budget on the chart, leaner widget layout, user-only README (#38, #39, #40, #41); consistent streak/bar colours with the budget (#42); chart: highlight today's slot, thinner share bars (#43); fix: Free tier response no longer triggers a drift report, widget shows "Free plan" label (#44, #45) |
+| 2026-10-18 | v0.4.15-beta | Codex provider: ChatGPT login in a per-account partition, usage from the web session (5-hour and weekly windows), Settings, widget labels, diagnostics (#82, #83, #86-#90); tray tooltip with every account's usage (#33); AppStream metadata and readable name for the Linux .deb (#10); shared IPC contract (#22); tray-only footprint measured on Linux (#27) |
 
 ### Lessons learned (still relevant)
+- **Codex login User-Agent**: Google refuses embedded login when a rewritten User-Agent contradicts the client hints. Never change the UA of the Codex login window or its partition.
+- **ChatGPT usage authentication**: cookies alone get 401 on `wham/usage`; the Bearer from `/api/auth/session` is required. Node `fetch` works with the partition cookies + UA (probe #86, docs/RESEARCH.md §6); `session.fetch` is the fallback.
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
 - **ESM-only SDK in a CommonJS main process**: `require()` and even a TS-compiled `import()` fail with ERR_REQUIRE_ESM inside Electron → `new Function('s', 'return import(s)')` in `services/claudeLocalSessions.ts`.
 - **claude.ai behind Cloudflare**: `sessionKey` alone gets a 403 challenge; the full cookie header (incl. `cf_clearance`) + a browser User-Agent are needed. Usage field names are obfuscated and rotate → windows are recognized by value shape.
@@ -308,9 +317,9 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **UTC day keys**: `toISOString().slice(0, 10)` is the UTC day, `new Date('YYYY-MM-DD')` is UTC midnight — both wrong for local working days → `localDateKey`/`parseDateKey`.
 
 ### Open items
-- Next agreed steps: a single shared IPC contract (channels + types for main/preload/renderer, replacing the manual `renderer/types.ts` copy), then extracting a testable core from `main.ts` (docs/EVOLUTION.md 2a) and working test-first.
+- Next agreed step (the shared IPC contract `types/ipc.ts` is done, #22): extracting a testable core from `main.ts` (docs/EVOLUTION.md 2a) and working test-first.
 - **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), architecture review and simplifications (#12, includes the IPC contract and core extraction below). **Milestone v1.0.0** (out of beta): signed Windows/macOS installers (#11).
 - `agents/advisor.ts` is a stub.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).
 - Verify with real use the pacing constants (`PACE_ALERT_RATIO` 1.5×, 2h minimum of observed work, 50/50 recent-pace blend, preliminary below 2 working units, redistribution verdict bands 0.5× / ±5%, `NEGLIGIBLE_UTILIZATION` 0.1%) and the `consumptionCause` thresholds, and with the next release the packaged icon and the update notification end to end.
-- Measure RAM/CPU in tray-only mode before considering docs/EVOLUTION.md point 5.
+- Tray-only footprint measured on Linux (~351 MB PSS with the widget hidden, idle CPU, GPU process the largest share; docs/EVOLUTION.md): tuning first (#99), point 5 or a system-webview shell only if it is not enough (#12); Windows still to measure (#98).

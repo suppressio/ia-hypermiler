@@ -12,6 +12,7 @@
 |---|---|---|
 | **Claude** | **Sì**, sia con piano personale sia con seat aziendale Team/Enterprise | Endpoint interno `claude.ai/api/organizations/{orgId}/usage` con il proprio cookie di sessione, oppure lettura locale se usa Claude Code |
 | **GitHub Copilot** | **Sì con piano personale** · **Solo con workaround non ufficiale se il seat è assegnato dall'azienda** | Piano personale: endpoint ufficiale `premium_request/usage`. Seat aziendale: nessun endpoint pubblico self-service; unica fonte reale è l'endpoint interno non documentato `copilot_internal/user` (stesso usato dall'indicatore quota in VS Code) |
+| **OpenAI / Codex** | **Sì**, per l'account ChatGPT (verificato con Plus) | Endpoint interno `chatgpt.com/backend-api/wham/usage` con l'access token della propria sessione web chatgpt.com (login integrato, Google compreso). Codex CLI non necessaria |
 
 Dettagli e fonti sotto.
 
@@ -169,6 +170,51 @@ Spunto: un pannello "Account & Usage" di VS Code (estensione Claude Code) mostra
 
 ---
 
+## 6. OpenAI / Codex — quota dell'abbonamento ChatGPT senza Codex CLI (Addendum 2026-10-18, #82)
+
+**Esito: GO.** L'uso di un abbonamento ChatGPT/Codex si legge con lo stesso modello di Claude: login integrato in una partition Electron per account, poi chiamate HTTP dal main process. Non servono né la Codex CLI né un'estensione IDE. Verificato il 2026-10-18 con un account Plus reale (login Google); sono stati registrati solo stati e struttura delle risposte.
+
+### 6.1 Da dove vengono i dati
+Il metodo `account/rateLimits/read` dell'app-server della Codex CLI (il primo tentativo in #17) è solo un proxy: il binario della CLI chiama `GET https://chatgpt.com/backend-api/wham/usage` con il token OAuth ChatGPT del proprio login. Lo stesso endpoint risponde all'access token di una normale **sessione web** chatgpt.com.
+
+### 6.2 Flusso (verificato)
+1. Finestra di login su `https://chatgpt.com/auth/login` in una partition dedicata, **User-Agent di Electron invariato**. Il login Google funziona. Riscrivere lo User-Agent (togliendo `Electron/x`) fa rifiutare il login a Google ("This browser or app may not be secure"): uno User-Agent in contraddizione con i client hints è proprio ciò che Google segnala. Non va mai toccato.
+   Dopo il login chatgpt.com atterra sulla chat: la finestra va chiusa alla prima navigazione di ritorno su `chatgpt.com` in cui il controllo della sessione riesce (come fa `main/claude-auth.ts`), non a intervalli.
+2. Login concluso quando `GET https://chatgpt.com/api/auth/session` restituisce un JSON con `accessToken` (un JWT). La sessione vive nei cookie `__Secure-next-auth.session-token.*` (circa 90 giorni); l'access token dura circa 10 giorni, quindi si rilegge da `/api/auth/session` a ogni refresh e non si salva mai.
+3. `GET https://chatgpt.com/backend-api/wham/usage` con `Authorization: Bearer <accessToken>` → 200 JSON.
+
+Risultati della sonda (una variabile alla volta):
+
+| Richiesta | Risultato |
+|---|---|
+| Dalla pagina, Bearer + `ChatGPT-Account-Id` | 200 |
+| Dalla pagina, solo Bearer | 200 |
+| Dalla pagina, solo cookie, senza Bearer | 401 `{detail}` |
+| Dal main process (`session.fetch` sulla partition, nessuna finestra aperta), `/api/auth/session` poi `wham/usage` | 200 e 200 |
+| Dal main process con il `fetch` di Node (seconda prova, #86): `/api/auth/session` con l'header Cookie della partition + la sua User-Agent | 200, `accessToken` presente, nessun `cf-mitigated` |
+| `fetch` di Node, `wham/usage` con Bearer (User-Agent della partition, con o senza cookie; anche la User-Agent di default di Node) | 200 |
+
+Quindi i cookie da soli non bastano, il Bearer sì. `ChatGPT-Account-Id` non serve su un account personale; probabilmente serve a scegliere il workspace su Team/Enterprise (il JWT contiene `chatgpt_account_id` sotto `https://api.openai.com/auth`). I cookie Cloudflare (`cf_clearance`, `__cf_bm`) li imposta il login e `session.fetch` della partition li invia: nessuna challenge osservata.
+
+**Scelta implementativa (#86):** funziona la stessa strada di Claude: `fetch` di Node tramite `services/_http.ts`, con l'header Cookie ricostruito dalla partition e la User-Agent della partition per `/api/auth/session`, poi il solo Bearer per `wham/usage`. `session.fetch` resta il fallback se Cloudflare iniziasse a rifiutare le richieste da Node.
+
+Il token appartiene al client web di chatgpt.com (il suo `client_id`): nessun altro client viene impersonato. I token token-sharing di *Sign in with ChatGPT* sono rifiutati da questo endpoint (401 `rejected_by_access_enforcement`, openai/codex#54219), cosa che qui non conta.
+
+### 6.3 Struttura della risposta (Plus, 2026-10-18)
+Primo livello: `user_id`, `account_id`, `email`, `plan_type`, `rate_limit`, `code_review_rate_limit`, `additional_rate_limits`, `model_usage`, `credits`, `spend_control`, `rate_limit_reached_type`, `promo`, `rate_limit_reset_credits`.
+
+- `rate_limit`: `allowed`, `limit_reached`, `primary_window`, `secondary_window`; ogni finestra ha `used_percent` (consumato, 0-100), `limit_window_seconds`, `reset_after_seconds`, `reset_at` (secondi Unix). Osservato: primaria 18000 s (5 h), secondaria 604800 s (7 giorni). Terze parti riportano una `primary_window` solo settimanale con `secondary_window: null`: la finestra si identifica da `limit_window_seconds`, mai dal nome del campo.
+- `additional_rate_limits` e `code_review_rate_limit`: `null` qui; altri piani/modelli possono valorizzarli (forma non ancora osservata → gestione a prova di drift).
+- `credits`: `has_credits`, `unlimited`, `overage_limit_reached`, `balance` (**stringa**), `approx_local_messages`, `approx_cloud_messages` (array di due numeri).
+- `model_usage`: chiavi per nome del modello, `available`, `available_at`, `credits_would_enable`.
+- `/api/auth/session` restituisce anche `user`, `account` (`planType`, `structure`, …), `sessionToken` e un campo `WARNING_BANNER`: niente di tutto ciò va mai nei log o al renderer.
+
+### 6.4 Non ancora verificato
+Free, Pro, Team/Enterprise (scelta del workspace, `ChatGPT-Account-Id`), SSO aziendale, `additional_rate_limits` valorizzato, comportamento alla scadenza del cookie di sessione (atteso: `/api/auth/session` senza `accessToken` → "accedi di nuovo").
+
+### 6.5 Rischi
+Endpoint interno non documentato, come quello di Claude: può cambiare senza preavviso → `FormatDriftError` e report di drift, come per gli altri provider. Leggere il proprio uso con la propria sessione è lo stesso schema di Claude; nessuna automazione della chat.
+
 ## Fonti
 
 **Claude / Anthropic**
@@ -197,3 +243,9 @@ Spunto: un pannello "Account & Usage" di VS Code (estensione Claude Code) mostra
 - [navikt/copilot issue #111](https://github.com/navikt/copilot/issues/111)
 - [GitHub Community Discussion #178117 — copilot_internal/user](https://github.com/orgs/community/discussions/178117)
 - [Fail-Safe/CopilotPremiumUsageMonitor](https://github.com/Fail-Safe/CopilotPremiumUsageMonitor)
+
+**OpenAI / Codex (Addendum 2026-10-18, §6)**
+- [openai/codex#54219 — token sharing cannot read plan usage](https://github.com/openai/codex/issues/54219)
+- [steipete/CodexBar — codex.md](https://github.com/steipete/CodexBar/blob/main/docs/codex.md)
+- [ajhochy/Rhythm#1568 — wham/usage response](https://github.com/ajhochy/Rhythm/issues/1568)
+- [openai/codex#10869 — wham/usage polling](https://github.com/openai/codex/issues/10869)

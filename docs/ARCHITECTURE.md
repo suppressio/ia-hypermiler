@@ -12,9 +12,10 @@
 The original concept in `CLAUDE.md` (`{ used, total, resetDate }`) assumes **a single counter per service**. Research shows that is not enough:
 
 - **Claude**: 2-3 concurrent, independent quota windows — `five_hour` (rolling 5h), `seven_day` (rolling 7 days, all models), `seven_day_opus` (rolling 7 days, Opus only). Each has its own `utilization` (%) and its own `resets_at`. There is no "monthly token total" to read from the account: the monthly renewal exists only as the **subscription billing date**, unrelated to the usage windows.
+- **Codex (ChatGPT)**: percentages over rolling 5-hour and 7-day windows, identified by `limit_window_seconds`, never by primary/secondary position. Reported code-review or additional limits stay separate; `renderer/windowLabel.ts` translates their labels.
 - **Copilot**: a discrete counter (`premium_requests` + `ai_credit`) tied to the monthly billing cycle — here the original "used/total/resetDate" model works as is.
 
-**Proposal (adopted):** generalize the service interface from a single counter to a **list of "quota windows"** (`quotaWindows`) per account, each with its own period type (`rolling-hours`, `rolling-days`, `billing-cycle`) and unit (`percentage` for Claude, `count` for Copilot). The requested "tokens/day" indicator is therefore redefined as **"% of quota used per working day"** for Claude, and "premium requests used per working day" for Copilot — still normalizing everything to a percentage for visual comparison in the widget when a single aggregated number must be shown.
+**Proposal (adopted):** generalize the service interface from a single counter to a **list of "quota windows"** (`quotaWindows`) per account, each with its own period type (`rolling-hours`, `rolling-days`, `billing-cycle`) and unit (`percentage` for Claude and Codex, `count` for Copilot). The requested "tokens/day" indicator is therefore redefined as **"% of quota used per working day"** for Claude, and "premium requests used per working day" for Copilot — still normalizing everything to a percentage for visual comparison in the widget when a single aggregated number must be shown.
 
 This had to be confirmed explicitly because it changes the `fetchUsage()` interface written in `CLAUDE.md`:
 
@@ -43,7 +44,9 @@ A reduced scope (only the most relevant window per service, e.g. only `seven_day
 
 ## 1. Settings — data schema
 
-Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the file on disk in `store/normalize.ts`). Everything secret (session cookie, PAT, token) stays encrypted through `electron-store`'s `encryptionKey` and never reaches the renderer except through IPC towards the main process.
+Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the file on disk in `store/normalize.ts`). Claude sessions and Copilot tokens stay encrypted through `electron-store`'s `encryptionKey`; Codex cookies stay in the account partition. Secrets never reach the renderer.
+
+**Codex:** `main/providers.ts` connects the registry to `main/codex-auth.ts` (login) and `services/codex.ts` (usage). Login uses a persistent per-account partition and the stock Electron User-Agent; `main/codex-session-cookie.ts` recognizes the session cookie. Disconnect, removal and a new login clear cookies and storage. On each refresh, Node `fetch` through `services/_http.ts` calls `https://chatgpt.com/api/auth/session` with the partition cookies and its User-Agent, then `https://chatgpt.com/backend-api/wham/usage` with the returned Bearer. The access token is never stored or sent to the renderer; only `capturedAt` is kept in the store. `session.fetch` is the planned fallback if Cloudflare refuses Node (see `RESEARCH.md` §6).
 
 ```js
 {
@@ -55,7 +58,7 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
   accounts: Array<{
     // --- common ---
     id: string,                // 'claude'/'copilot' if migrated, otherwise '<provider>-<uuid8>'
-    provider: 'claude' | 'copilot',
+    provider: 'claude' | 'copilot' | 'codex',
     label: string,             // name shown in the table and the widget tabs ("Claude", "Claude 2"…)
     enabled: boolean,
     subscription: {
@@ -90,6 +93,9 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
       partition: string,         // 'persist:account-<id>': claude.ai cookies isolated per account,
                                  // cleared by Disconnect/Remove and before every login (issue #4)
       localInsights: boolean,    // local Claude Code sessions attributed to this account (max 1)
+    } | { // --- provider: 'codex' ---
+      partition: string,         // persist:account-<id>
+      session: { capturedAt: string | null },
     } | { // --- provider: 'copilot' ---
       authMethod: 'pat' | 'oauth',  // chooses which connection panel to show; updated from the last successful connection
       accountScope: 'personal' | 'organization', // chooses the endpoints read (personal plan vs company seat)

@@ -2,13 +2,13 @@
 
 # IA Hypermiler
 
-A small always-on-top widget for Windows, macOS and Linux that tells you how fast you are using your **Claude** and **GitHub Copilot** quotas, and how much you can still use today so the quota lasts until it renews.
+A small always-on-top widget for Windows, macOS and Linux that tells you how fast you are using your **Claude**, **GitHub Copilot** and **Codex** (ChatGPT subscription) quotas, and how much you can still use today so the quota lasts until it renews.
 
 <p align="center"><img src="docs/screenshots/widget-en.png" alt="The IA Hypermiler widget with example data" width="406"></p>
 
 <sub>Example data, not a real account.</sub>
 
-- **Several accounts**, any mix of Claude and Copilot (e.g. a personal Claude account and a company Copilot seat), each with its own session.
+- **Several accounts**, any mix of Claude, Copilot and Codex (e.g. a personal Claude account and a company Copilot seat), each with its own session.
 - **Your working days**: each account can follow its own schedule (full, half or day off per day of the week), so weekends do not count as time you could have spent the quota.
 - **A budget for today**, recomputed every morning from what is left.
 - **Notifications** when a quota passes your alert threshold, or when today's use goes well over today's budget.
@@ -28,6 +28,7 @@ The packages are not signed: Windows SmartScreen and macOS Gatekeeper show a war
 
 1. Open **Settings** (⚙ in the widget, or from the tray icon) → **Add account**.
 2. **Claude**: *Connect…* opens the claude.ai login (email/password or company SSO) in a window of its own. The app never asks you to paste a cookie.
+   **Codex (ChatGPT)**: add an account with this provider, click *Connect…* and sign in in the chatgpt.com window, which closes by itself. No Codex CLI or IDE extension is needed; only usage is read. *Disconnect* clears the session.
    **GitHub Copilot**: paste a Personal Access Token (fine-grained, *Plan* read-only, or classic with no scope), or sign in with a GitHub OAuth App. For a company seat on a `<name>.ghe.com` tenant, set the GitHub domain first.
 3. Optional, per account: the **work schedule** (last section of the account) and, only when the provider does not report it, the **renewal day**.
 
@@ -38,6 +39,8 @@ The widget stays in the tray when you close it; *Quit* is in the tray menu.
 ## Reading the widget
 
 All the values below are about the quota window shown, usually the one needing attention most. With several accounts there is one tab per account; with several quota windows (e.g. Claude's 5-hour and weekly limits) a list above the main value shows each one with a short verdict. Click a row to see that window.
+
+Codex shows the **5-hour limit** and **Weekly limit**, both rolling. As with the other rolling windows, the 5-hour limit reads in hours: time to reset, projection at reset and autonomy at the current pace, with daily indicators hidden. The weekly limit reads per working day. Other windows, such as code review, appear with their own label only if ChatGPT reports them.
 
 ### The verdict on each window
 
@@ -140,10 +143,10 @@ When enabled on one Claude account, the app reads the Claude Code sessions on th
 
 ## Privacy and security
 
-- Sessions and tokens are stored only on your computer, encrypted, and are never shown to the interface or written to logs.
-- The app talks only to the providers (claude.ai, the GitHub API of your domain) and to GitHub Releases for the update check. Nothing is sent anywhere else.
+- Sessions and tokens are stored only on your computer, encrypted, and are never shown to the interface or written to logs. Codex session cookies stay in its isolated account session; its access token is never saved.
+- The app talks only to the providers (claude.ai, chatgpt.com, the GitHub API of your domain) and to GitHub Releases for the update check. Nothing is sent anywhere else.
 - **Reporting a problem**: Settings → Diagnostics → *Create diagnostic report (GitHub)* saves a text file in Downloads and opens a GitHub issue draft. The file **does** contain your usage values (percentages, amounts, reset dates) but no names, ids or credentials. Issues on this repository are **public**: read the file before attaching it, or describe the problem without it.
-- If a provider changes its response format, a pre-filled issue draft opens with the structure only (field names and types, never values). You can turn this off in Settings.
+- Claude and Codex use undocumented internal endpoints that may change without notice. If a provider changes its response format, a pre-filled issue draft opens with the structure only (field names and types, never values). You can turn this off in Settings.
 
 ---
 

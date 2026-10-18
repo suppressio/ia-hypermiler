@@ -1,7 +1,7 @@
 {
   "name": "ia-hypermiler",
-  "version": "0.4.14-beta",
-  "description": "Desktop widget that monitors AI token usage (Claude and GitHub Copilot) and computes an optimal daily budget.",
+  "version": "0.4.15-beta",
+  "description": "Desktop widget that monitors AI token usage (Claude, GitHub Copilot and Codex) and computes an optimal daily budget.",
   "main": "dist/main.js",
   "type": "commonjs",
   "scripts": {
@@ -59,6 +59,17 @@
       "target": [
         "AppImage",
         "deb"
+      ],
+      "desktop": {
+        "entry": {
+          "Name": "IA Hypermiler"
+        }
+      },
+      "category": "Utility"
+    },
+    "deb": {
+      "fpm": [
+        "build/linux/com.suppressio.ia-hypermiler.metainfo.xml=/usr/share/metainfo/com.suppressio.ia-hypermiler.metainfo.xml"
       ]
     }
   }
