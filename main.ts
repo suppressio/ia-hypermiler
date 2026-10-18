@@ -576,6 +576,7 @@ function friendlyErrorMessage(err: unknown): string {
 function applyMainLocale(): void {
   setLocale(resolveLocale(store.get('ui').language, app.getLocale()));
   trayHandle?.refreshMenu();
+  if (lastSnapshot) trayHandle?.updateUsage(lastSnapshot);
 }
 
 // Per-account fetch attempts, in memory (main/refreshPolicy.ts): the backoff of a
@@ -945,6 +946,7 @@ async function refreshOnce(mode: RefreshMode): Promise<void> {
   scheduleNextRefresh(refreshPolicy.nextRefreshDelayMs(lastConsumptionRose, configuredRefreshIntervalMs()));
   timings.lastRefresh = { at: new Date().toISOString(), ms: Date.now() - startedAt };
   lastSnapshot = snapshot;
+  trayHandle?.updateUsage(snapshot);
   maybeNotifyThreshold(snapshot);
   maybeNotifyPace(snapshot);
   if (mainWindow && !mainWindow.isDestroyed()) {

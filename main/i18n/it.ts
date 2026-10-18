@@ -3,6 +3,7 @@
 import type { MainMessageKey } from './en';
 
 export const it: Record<MainMessageKey, string> = {
+  'tray.staleUsage': '{usage} (dati non aggiornati)',
   'tray.toggle': 'Mostra/Nascondi',
   'tray.settings': 'Impostazioni…',
   'tray.refresh': 'Aggiorna ora',
