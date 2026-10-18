@@ -14,6 +14,7 @@ import type {
   WindowVerdict,
 } from '../types/index';
 import type { HypermilerBridge } from '../types/ipc';
+import { windowLabel } from './windowLabel.js';
 import { byId } from './dom.js';
 import { applySeverity, severityLevel, todaySeverity } from './severity.js';
 import { GAUGE_TARGET_POSITION, GAUGE_TICK_RATIOS, gaugePosition } from './gauge.js';
@@ -25,7 +26,6 @@ import {
   formatDateTime,
   formatNumber,
   formatTime,
-  isMessageKey,
   resolveLocale,
   setLocale,
   t,
@@ -165,19 +165,6 @@ function formatResetMoment(resetsAt: Date | string): string {
 function formatRate(value: number | null | undefined): string {
   if (value === null || value === undefined) return '--';
   return t('unit.ratePerHour', { n: formatNumber(value, 2) });
-}
-
-// Quota window label in the active language. Known window ids have their own
-// key; generic windows are labelled from data the snapshot already carries,
-// mirroring services/claude.ts (a Claude window with dollar amounts is modelled
-// as unit 'count' = extra credit).
-function windowLabel(win: QuotaWindow, provider: ProviderId): string {
-  const key = `windows.${win.id}`;
-  if (isMessageKey(key)) return t(key);
-  if (provider === 'claude') {
-    return t(win.unit === 'count' ? 'windows.claudeExtraCredit' : 'windows.claudeUndocumented', { name: win.id });
-  }
-  return t('windows.copilotSnapshot', { name: win.id });
 }
 
 // Tip of the day: budget.generateDailyTip returns a key + numbers, the sentence

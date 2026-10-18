@@ -44,6 +44,7 @@ const bridge: HypermilerBridge = {
   // Account registry (issue #4): every operation is per account id, not per provider.
   addAccount: (provider) => invoke('accounts:add', provider),
   removeAccount: (id) => invoke('accounts:remove', id),
+  connectCodex: (id) => invoke('accounts:connectCodex', id),
   connectClaude: (id) => invoke('accounts:connectClaude', id),
   connectCopilot: (id, token, host) => invoke('accounts:connectCopilot', id, token, host),
   connectCopilotOAuth: (id, clientId, clientSecret, host) => invoke('accounts:connectCopilotOAuth', id, { clientId, clientSecret, host }),

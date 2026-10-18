@@ -116,6 +116,13 @@ export const en = {
   'windows.premium_interactions': 'Copilot AI credits',
   'windows.chat': 'Copilot chat',
   'windows.completions': 'Copilot code completions',
+  'windows.codex-5h': '5-hour limit',
+  'windows.codex-7d': 'Weekly limit',
+  'windows.codexHours': '{n}-hour limit',
+  'windows.codexDays': '{n}-day limit',
+  'windows.codexReview': 'Code review: {limit}',
+  'windows.codexAdditional': 'Additional #{i}',
+  'windows.codexNamed': '{name}: {limit}',
   'windows.copilotSnapshot': 'Copilot — {name}',
 
   // --- Units -----------------------------------------------------------------
@@ -146,6 +153,7 @@ export const en = {
   'settings.accounts.hint': 'You can connect several accounts, even of the same provider (e.g. two Claude accounts): each one has its own session, isolated from the others. "Disconnect" really deletes the saved session — the next login starts from scratch.',
   'settings.accounts.configure': 'Configure',
   'settings.accounts.close': 'Close',
+  'settings.accounts.reconnect': 'Reconnect',
   'settings.accounts.connect': 'Connect…',
   'settings.accounts.disconnect': 'Disconnect',
   'settings.accounts.remove': 'Remove',
@@ -184,6 +192,7 @@ export const en = {
   'settings.claude.loginHint': 'Login opens in a claude.ai window dedicated to this account (works with company SSO too): no cookie to paste by hand.',
 
   // --- Settings: Copilot detail -------------------------------------------------
+  'settings.codex.loginHint': 'Login opens a chatgpt.com window. Only usage is read.',
   'settings.copilot.orgWarning': 'Company seat: usage is read from the unofficial endpoint VS Code uses, and it may change without notice. If your company has its own GitHub domain (<name>.ghe.com), set it below and connect with an account of that domain: a github.com account linked to an enterprise has no usage data.',
   'settings.copilot.host': 'GitHub domain',
   'settings.copilot.hostHint': 'github.com, or your company domain (e.g. acme.ghe.com) if you sign in to GitHub on a different address.',

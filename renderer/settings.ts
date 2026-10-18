@@ -31,7 +31,7 @@ let expandedAccountId: AccountId | null = null;
 let newAccountId: AccountId | null = null;
 
 // Provider names are proper names: not translated.
-const PROVIDER_LABELS: Record<ProviderId, string> = { claude: 'Claude', copilot: 'GitHub Copilot' };
+const PROVIDER_LABELS: Record<ProviderId, string> = { claude: 'Claude', copilot: 'GitHub Copilot', codex: 'Codex (ChatGPT)' };
 
 type PlainRecord = Record<string, unknown>;
 
@@ -128,6 +128,7 @@ function accounts(): AccountConfig[] {
 }
 
 function isAccountConnected(account: AccountConfig): boolean {
+  if (account.provider === 'codex') return account.session.capturedAt !== null;
   return account.provider === 'claude' ? !!account.session.sessionKey : !!account.credentials.username;
 }
 
@@ -189,8 +190,8 @@ function renderAccountsTable(): void {
     actionsCell.appendChild(actionButton(isExpanded ? 'settings.accounts.close' : 'settings.accounts.configure', 'toggle-detail', account.id));
     if (isAccountConnected(account)) {
       actionsCell.appendChild(actionButton('settings.accounts.disconnect', 'disconnect', account.id));
-    } else if (account.provider === 'claude') {
-      actionsCell.appendChild(actionButton('settings.accounts.connect', 'connect-claude', account.id));
+    } else if (account.provider === 'claude' || account.provider === 'codex') {
+      actionsCell.appendChild(actionButton('settings.accounts.connect', `connect-${account.provider}`, account.id));
     }
     actionsCell.appendChild(actionButton('settings.accounts.remove', 'remove', account.id));
 
@@ -300,6 +301,14 @@ function applyAccountDetailState(index: number): void {
   if (!detail) return;
   applyScheduleLock(account, detail);
   applyRenewalLock(account, detail);
+  if (account.provider === 'codex') {
+    const status = detail.querySelector<HTMLElement>('[data-role="detail-status"]');
+    if (status) status.textContent = connectionLabel(account);
+    const connect = detail.querySelector<HTMLButtonElement>('[data-action="connect-codex"]');
+    if (connect) connect.textContent = t(isAccountConnected(account) ? 'settings.accounts.reconnect' : 'settings.accounts.connect');
+    const disconnect = detail.querySelector<HTMLButtonElement>('[data-action="disconnect"]');
+    if (disconnect) disconnect.hidden = !isAccountConnected(account);
+  }
   if (account.provider !== 'copilot') return;
   const isOrg = account.accountScope === 'organization';
   (detail.querySelector('[data-role="org-warning"]') as HTMLElement).hidden = !isOrg;
@@ -363,7 +372,12 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
 
   button.disabled = true;
   try {
-    if (action === 'connect-claude') {
+    if (action === 'connect-codex') {
+      setDetailStatus(id, t('settings.accounts.loginInProgress'));
+      await window.hypermiler.connectCodex(id);
+      await reloadAfterAccountAction(id);
+      showSaveStatus(t('settings.accounts.connected', { name }));
+    } else if (action === 'connect-claude') {
       setDetailStatus(id, t('settings.accounts.loginInProgress'));
       const result = await window.hypermiler.connectClaude(id);
       await reloadAfterAccountAction(id);

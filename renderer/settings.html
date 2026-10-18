@@ -37,6 +37,7 @@
       <div class="field-row add-account-row">
         <select id="add-account-provider" aria-label="Provider of the new account" data-i18n-aria-label="settings.accounts.providerAria">
           <option value="claude">Claude</option>
+          <option value="codex">Codex (ChatGPT)</option>
           <option value="copilot">GitHub Copilot</option>
         </select>
         <button type="button" class="btn-secondary" id="btn-add-account" data-i18n="settings.accounts.add" disabled>Add account</button>
@@ -90,6 +91,26 @@
           <span data-i18n="settings.claude.localInsights">Attribute this machine’s Claude Code sessions to this account</span>
           <button type="button" class="info-icon" aria-label="More information" data-i18n-aria-label="settings.infoAria">ⓘ<span class="tooltip" role="tooltip" data-i18n="settings.claude.localInsightsHint"></span></button>
         </label>
+        <div data-role="schedule-slot"></div>
+      </div>
+    </template>
+
+    <template id="tpl-detail-codex">
+      <div class="account-detail">
+        <div class="field-row">
+          <label><span data-i18n="settings.account.name">Account name</span>
+            <input type="text" data-account-field="label" />
+          </label>
+        </div>
+        <label><span class="label-row"><span data-i18n="settings.account.renewalDay">Renewal day (of the month)</span> <button type="button" class="info-icon" data-role="renewal-hint" aria-label="More information" data-i18n-aria-label="settings.infoAria" hidden>ⓘ<span class="tooltip" role="tooltip" data-role="renewal-hint-text"></span></button></span>
+          <input type="number" min="1" max="31" data-account-field="subscription.renewalRule.day" />
+        </label>
+        <p data-i18n="settings.codex.loginHint">Login opens a chatgpt.com window. Only usage is read.</p>
+        <div class="account-actions">
+          <button type="button" class="btn-secondary" data-action="connect-codex" data-i18n="settings.accounts.connect">Connect</button>
+          <button type="button" class="btn-secondary" data-action="disconnect" data-i18n="settings.accounts.disconnect">Disconnect</button>
+        </div>
+        <p class="connection-status" data-role="detail-status"></p>
         <div data-role="schedule-slot"></div>
       </div>
     </template>

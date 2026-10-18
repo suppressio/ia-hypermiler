@@ -36,7 +36,7 @@ export interface ReportInput {
 // Labels/ids not worth hiding, and too generic to replace safely in free text:
 // a provider name ("Claude", also the legacy account id "claude") appears in endpoint
 // labels and messages.
-const GENERIC_TOKENS = new Set(['claude', 'copilot', 'github copilot']);
+const GENERIC_TOKENS = new Set(['claude', 'copilot', 'github copilot', 'codex', 'codex (chatgpt)']);
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
