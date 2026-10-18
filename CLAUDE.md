@@ -321,4 +321,4 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - `agents/advisor.ts` is a stub.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).
 - Verify with real use the pacing constants (`PACE_ALERT_RATIO` 1.5×, 2h minimum of observed work, 50/50 recent-pace blend, preliminary below 2 working units, redistribution verdict bands 0.5× / ±5%, `NEGLIGIBLE_UTILIZATION` 0.1%) and the `consumptionCause` thresholds, and with the next release the packaged icon and the update notification end to end.
-- Measure RAM/CPU in tray-only mode before considering docs/EVOLUTION.md point 5.
+- Tray-only footprint measured on Linux (~351 MB PSS with the widget hidden, idle CPU, GPU process the largest share; docs/EVOLUTION.md): tuning first (#99), point 5 or a system-webview shell only if it is not enough (#12); Windows still to measure (#98).
