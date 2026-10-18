@@ -191,8 +191,12 @@ Results of the probe (one variable at a time):
 | From the page, Bearer only | 200 |
 | From the page, cookies only, no Bearer | 401 `{detail}` |
 | From the main process (`session.fetch` on the partition, no window open), `/api/auth/session` then `wham/usage` | 200 and 200 |
+| From the main process with Node `fetch` (second probe, #86): `/api/auth/session` with the partition's Cookie header + its User-Agent | 200, `accessToken` present, no `cf-mitigated` |
+| Node `fetch`, `wham/usage` with Bearer (partition User-Agent, with or without cookies; also Node's default User-Agent) | 200 |
 
 So cookies alone are not enough, the Bearer is. `ChatGPT-Account-Id` is not needed on a personal account; it is probably needed to pick the workspace on Team/Enterprise (the JWT carries `chatgpt_account_id` under `https://api.openai.com/auth`). Cloudflare cookies (`cf_clearance`, `__cf_bm`) are set by the login and the partition's `session.fetch` sends them: no challenge seen.
+
+**Implementation choice (#86):** the same path as Claude works: Node `fetch` through `services/_http.ts`, with the Cookie header rebuilt from the partition and the partition's User-Agent for `/api/auth/session`, then the Bearer alone for `wham/usage`. `session.fetch` stays the fallback should Cloudflare start refusing Node requests.
 
 The token belongs to the chatgpt.com web client (its own `client_id`): no other client is impersonated. Token-sharing tokens from *Sign in with ChatGPT* are refused by this endpoint (401 `rejected_by_access_enforcement`, openai/codex#54219), which is irrelevant here.
 
