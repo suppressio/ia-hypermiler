@@ -4,12 +4,12 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>IA Hypermiler</name>
-  <summary>Widget that paces your AI token usage (Claude and GitHub Copilot)</summary>
-  <summary xml:lang="it">Widget che dosa il consumo di token IA (Claude e GitHub Copilot)</summary>
+  <summary>Widget that paces your AI token usage (Claude, GitHub Copilot and Codex)</summary>
+  <summary xml:lang="it">Widget che dosa il consumo di token IA (Claude, GitHub Copilot e Codex)</summary>
   <description>
-    <p>IA Hypermiler monitors your AI token usage on Claude and GitHub Copilot and computes a daily budget so that your quota lasts until it renews.</p>
+    <p>IA Hypermiler monitors your AI token usage on Claude, GitHub Copilot and Codex and computes a daily budget so that your quota lasts until it renews.</p>
     <p>An always-visible widget shows today's consumption against the ideal budget, the end-of-period projection, efficiency metrics and tips derived from your real data.</p>
-    <p xml:lang="it">IA Hypermiler monitora il consumo di token IA su Claude e GitHub Copilot e calcola un budget giornaliero in modo che la quota duri fino al rinnovo.</p>
+    <p xml:lang="it">IA Hypermiler monitora il consumo di token IA su Claude, GitHub Copilot e Codex e calcola un budget giornaliero in modo che la quota duri fino al rinnovo.</p>
     <p xml:lang="it">Un widget sempre visibile mostra il consumo di oggi rispetto al budget ideale, la proiezione a fine periodo, le metriche di efficienza e consigli ricavati dai tuoi dati reali.</p>
   </description>
   <developer id="com.suppressio">

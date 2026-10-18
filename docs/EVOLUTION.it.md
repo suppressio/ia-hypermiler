@@ -101,3 +101,16 @@ env -u ELECTRON_RUN_AS_NODE npx electron scripts/measure-resources.js 5 240 30  
 Regola di decisione proposta, da confermare con i numeri: totale solo-tray sotto ~250 MB e CPU media sotto ~0,5% → **niente** (punto 5 chiuso); sensibilmente sopra ma dominato da un solo processo (GPU/renderer tenuto vivo) → prima **tuning** (es. distruggere la finestra invece di nasconderla, `app.disableHardwareAcceleration()`); solo se il tuning non basta → punto 5 (dopo 2a).
 
 Osservazione dalla lettura del codice: il polling del cursore ogni 120 ms (`startWindowHoverPolling`) continua anche in modalità solo-tray quando `mainWindow` è nascosta e non distrutta; è il primo candidato se la CPU non risulta a riposo.
+
+## Aggiornamento (2026-10-18): punto 5 misurato su Linux
+
+Linux (Debian, KDE Plasma su X11, driver NVIDIA, 24 core, 62 GB di RAM), build da `next` dopo la v0.4.14-beta, `measure-resources.js 5 60 30` sul desktop vero (profilo usa e getta, nessun account). Lo script nasconde la finestra come il pulsante di chiusura del widget (`window:close` in `main.ts`), quindi il renderer e il polling del cursore ogni 120 ms restano vivi come nell'uso reale:
+
+```
+SUMMARY open: processes=4 avgMB=712 maxMB=712 avgCPU=0.02% maxCPU=0.0% samples=6
+SUMMARY tray: processes=4 avgMB=711 maxMB=712 avgCPU=0.01% maxCPU=0.0% samples=117
+```
+
+Il working set sommato conta le pagine condivise tra i processi (librerie di Chromium, mappature del driver) una volta per processo, quindi sovrastima l'occupazione reale. La PSS (`/proc/<pid>/smaps_rollup`, pagine condivise divise tra chi le usa) dell'intero albero di processi, letta in modalità solo tray, era **~351 MB**: processo GPU 136 MB, browser 86 MB, renderer 55 MB, servizio di rete 26 MB, zygote e broker il resto. Una prima esecuzione che distruggeva la finestra invece di nasconderla dava ~320 MB: il renderer non c'era più, il processo GPU sì.
+
+Lettura secondo la regola sopra: CPU a riposo (0,01% di media, il polling del cursore non si vede), memoria sopra ~250 MB e il processo GPU è la quota maggiore → prima **tuning** (#99): `app.disableHardwareAcceleration()` (il widget è HTML/SVG semplice, senza animazioni), poi distruggere la finestra alla chiusura (~30-55 MB). Ipotesi, da verificare dopo #99: il tuning potrebbe portarla a circa 180-220 MB, sotto la soglia di ~250 MB della regola. Se non ci arriva, o se un'app nativa da tray misurata allo stesso modo è molto più leggera, il punto 5 o una shell con la webview di sistema passano alla revisione architetturale (#12) con questi numeri. Non fatto: il confronto con un'altra app da tray, e Windows (#98).

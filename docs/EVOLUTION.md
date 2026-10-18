@@ -101,3 +101,16 @@ env -u ELECTRON_RUN_AS_NODE npx electron scripts/measure-resources.js 5 240 30  
 Decision rule proposed, to be confirmed with the figures: tray-only total below ~250 MB and average CPU below ~0.5% → **nothing** (point 5 closed); noticeably above, but dominated by one process (GPU/renderer kept alive) → **tuning** first (e.g. destroy the window instead of hiding it, `app.disableHardwareAcceleration()`); only if tuning is not enough → point 5 (after 2a).
 
 Observation from reading the code: the 120 ms cursor poll (`startWindowHoverPolling`) keeps running in tray-only mode whenever `mainWindow` is hidden rather than destroyed; it is the first candidate if CPU turns out not to be idle.
+
+## Update (2026-10-18): point 5 measured on Linux
+
+Linux (Debian, KDE Plasma on X11, NVIDIA driver, 24 cores, 62 GB RAM), build from `next` after v0.4.14-beta, `measure-resources.js 5 60 30` on the real desktop (throw-away profile, no accounts). The script hides the window like the widget close button (`window:close` in `main.ts`), so the renderer and the 120 ms cursor poll stay alive as in real use:
+
+```
+SUMMARY open: processes=4 avgMB=712 maxMB=712 avgCPU=0.02% maxCPU=0.0% samples=6
+SUMMARY tray: processes=4 avgMB=711 maxMB=712 avgCPU=0.01% maxCPU=0.0% samples=117
+```
+
+The summed working set counts the pages shared between processes (Chromium libraries, driver mappings) once per process, so it overstates the real footprint. The PSS (`/proc/<pid>/smaps_rollup`, shared pages split among their users) of the whole process tree, read in tray-only mode, was **~351 MB**: GPU process 136 MB, browser 86 MB, renderer 55 MB, network service 26 MB, zygotes and broker the rest. A first run that destroyed the window instead of hiding it gave ~320 MB: the renderer was gone, the GPU process was not.
+
+Reading against the rule above: CPU is idle (0.01% average, the cursor poll does not show), memory is above ~250 MB and the GPU process is the largest share → **tuning** first (#99): `app.disableHardwareAcceleration()` (the widget is plain HTML/SVG, no animations), then destroying the window on close (~30-55 MB). Hypothesis, to be checked after #99: tuning may bring it to ~180-220 MB, below the ~250 MB rule. If it does not, or if a native tray app measured the same way is far lighter, point 5 or a system-webview shell goes to the architecture review (#12) with these figures. Not done: the comparison with another tray app, and Windows (#98).

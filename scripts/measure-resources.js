@@ -47,8 +47,9 @@ app.whenReady().then(() => {
     summary('open');
     phase = 'tray';
     phaseStart = Date.now();
-    for (const w of BrowserWindow.getAllWindows()) w.close();
-    console.log(`# window closed, windows left: ${BrowserWindow.getAllWindows().length}`);
+    // Hide, like the widget close button (window:close in main.ts): the renderer stays alive.
+    for (const w of BrowserWindow.getAllWindows()) w.hide();
+    console.log(`# window hidden, windows visible: ${BrowserWindow.getAllWindows().filter((w) => w.isVisible()).length}`);
     setTimeout(() => {
       clearInterval(timer);
       summary('tray');
