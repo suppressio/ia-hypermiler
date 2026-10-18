@@ -16,6 +16,8 @@ import * as refreshPolicy from './main/refreshPolicy';
 import type { AccountFetchState, RefreshMode } from './main/refreshPolicy';
 import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts } from './store/migrate';
 import * as budget from './budget';
+import { captureCodexSession } from './main/codex-auth';
+import { CodexSignInRequiredError } from './services/codex';
 import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
 import path from 'path';
@@ -561,7 +563,7 @@ type StampedUsage = RawAccountUsage & { accountId: AccountId; lastUpdatedAt: str
 // progress log, session about the account_session_invalid error.
 function friendlyErrorMessage(err: unknown): string {
   const error = err as Error & { status?: number };
-  if (error.status === 401 || error.status === 403) {
+  if (err instanceof CodexSignInRequiredError || error.status === 401 || error.status === 403) {
     return t('error.sessionExpired', { detail: error.message });
   }
   if (err instanceof copilotService.CopilotUsageUnavailableError) {
@@ -741,6 +743,7 @@ function reportConfig(cfg: AccountConfig): Record<string, unknown> {
     workSchedule: cfg.workSchedule,
   };
   switch (cfg.provider) {
+    case 'codex': return common;
     case 'claude':
       return { ...common, authMethod: cfg.authMethod, localInsights: cfg.localInsights };
     case 'copilot':
@@ -989,7 +992,7 @@ function requireBoolean(value: unknown, what: string): boolean {
   return value;
 }
 
-const PROVIDER_IDS: readonly ProviderId[] = ['claude', 'copilot'];
+const PROVIDER_IDS: readonly ProviderId[] = ['claude', 'copilot', 'codex'];
 const WINDOW_STYLES: readonly WindowStyle[] = ['filled', 'filled-dark', 'transparent-digital'];
 
 function requireOneOf<T extends string>(value: unknown, allowed: readonly T[], what: string): T {
@@ -1191,6 +1194,16 @@ function registerIpcHandlers(): void {
     // otherwise the cookies would stay on disk with no owner.
     await providers.disconnect(cfg);
     store.set('accounts', getAccounts().filter((a) => a.id !== id));
+    broadcastSettings();
+    runDetached('refresh usage', refreshAndBroadcast('forced'));
+  });
+
+  handle('accounts:connectCodex', async (_event, rawId: unknown) => {
+    const id = requireString(rawId, 'Account');
+    const cfg = findAccount(id);
+    if (!cfg || cfg.provider !== 'codex') throw new Error(`Codex account not found: ${id}`);
+    const { capturedAt } = await captureCodexSession(cfg.partition);
+    updateAccount(id, (a) => a.provider === 'codex' ? { ...a, enabled: true, session: { capturedAt } } : a);
     broadcastSettings();
     runDetached('refresh usage', refreshAndBroadcast('forced'));
   });

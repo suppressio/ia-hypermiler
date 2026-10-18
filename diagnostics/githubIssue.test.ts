@@ -123,3 +123,10 @@ test('buildReportIssueUrl: short draft naming the file to attach and the neutral
   assert.equal(params.get('labels'), 'response-report');
   assert.ok(url.length < 2000);
 });
+
+test('redactResponse removes Codex wham usage identity fields', () => {
+  assert.deepEqual(redactResponse({ email: 'synthetic@example.invalid', user_id: 'synthetic-user', account_id: 12345, rate_limit: { primary_window: { used_percent: 25, reset_at: 1792320000 } } }), {
+    email: '<string, 25 chars>', user_id: '<id>', account_id: '<id>',
+    rate_limit: { primary_window: { used_percent: 25, reset_at: 1792320000 } },
+  });
+});

@@ -7,11 +7,13 @@
 // providers. Adding a provider = a new branch in each function below (the exhaustive
 // `switch` on `provider` makes tsc fail when one is forgotten).
 
+import * as codexService from '../services/codex';
+import { buildCodexCookieHeader, codexUserAgent, clearCodexPartition } from './codex-auth';
 import * as claudeService from '../services/claude';
 import * as copilotService from '../services/copilot';
 import { buildClaudeCookieHeader, clearClaudePartition } from './claude-auth';
 import { PROVIDER_DISPLAY_NAMES } from '../store/migrate';
-import type { AccountConfig, ProviderId, RawAccountUsage } from '../types/index';
+import type { AccountConfig, CodexAccountSettings, CodexCredentials, ProviderId, RawAccountUsage } from '../types/index';
 
 const SECRET_PLACEHOLDER = '••••••••';
 
@@ -21,14 +23,24 @@ export function providerDisplayName(provider: ProviderId): string {
 
 export function isConnected(cfg: AccountConfig): boolean {
   switch (cfg.provider) {
+    case 'codex': return cfg.session.capturedAt !== null;
     case 'claude': return !!cfg.session.sessionKey;
     case 'copilot': return !!cfg.credentials.token;
   }
 }
 
+async function codexCredentials(cfg: CodexAccountSettings): Promise<CodexCredentials> {
+  return {
+    cookieHeader: await buildCodexCookieHeader(cfg.partition),
+    userAgent: codexUserAgent(cfg.partition),
+  };
+}
+
 /** Calls the provider service's fetchUsage with the account credentials. */
 export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
   switch (cfg.provider) {
+    case 'codex':
+      return codexService.fetchUsage(await codexCredentials(cfg));
     case 'claude':
       return claudeService.fetchUsage({
         sessionKey: cfg.session.sessionKey as string,
@@ -53,6 +65,11 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
  */
 export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLabel: string; response: unknown }> {
   switch (cfg.provider) {
+    case 'codex':
+      return {
+        endpointLabel: codexService.USAGE_ENDPOINT_LABEL,
+        response: await codexService.fetchUsageResponse(await codexCredentials(cfg)),
+      };
     case 'claude':
       return {
         endpointLabel: claudeService.USAGE_ENDPOINT_LABEL,
@@ -82,6 +99,9 @@ export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLa
  */
 export async function disconnect(cfg: AccountConfig): Promise<AccountConfig> {
   switch (cfg.provider) {
+    case 'codex':
+      await clearCodexPartition(cfg.partition);
+      return { ...cfg, enabled: false, session: { capturedAt: null } };
     case 'claude':
       await clearClaudePartition(cfg.partition);
       return { ...cfg, enabled: false, session: { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null } };
@@ -94,6 +114,7 @@ export async function disconnect(cfg: AccountConfig): Promise<AccountConfig> {
 /** Replaces secrets with a placeholder before crossing the IPC boundary towards the renderer. */
 export function redactSecrets(cfg: AccountConfig): AccountConfig {
   switch (cfg.provider) {
+    case 'codex': return cfg;
     case 'claude':
       return { ...cfg, session: { ...cfg.session, sessionKey: cfg.session.sessionKey ? SECRET_PLACEHOLDER : null } };
     case 'copilot':
@@ -112,6 +133,10 @@ export function redactSecrets(cfg: AccountConfig): AccountConfig {
 export function preserveSecrets(incoming: AccountConfig, current: AccountConfig | undefined): AccountConfig | null {
   if (!current || current.provider !== incoming.provider) return null;
   switch (incoming.provider) {
+    case 'codex': {
+      const cur = current as typeof incoming;
+      return { ...incoming, partition: cur.partition, session: { ...cur.session } };
+    }
     case 'claude': {
       const cur = current as typeof incoming;
       return { ...incoming, partition: cur.partition, session: { ...cur.session } };

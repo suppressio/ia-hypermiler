@@ -20,7 +20,7 @@ export interface FormatDriftIssueParams {
 }
 
 export function buildFormatDriftIssueUrl({ provider, endpointLabel, shape }: FormatDriftIssueParams): string {
-  const serviceName = provider === 'claude' ? 'Claude' : 'Copilot';
+  const serviceName = { claude: 'Claude', copilot: 'Copilot', codex: 'Codex' }[provider];
   const title = `Response format changed: ${serviceName} (${endpointLabel})`;
 
   const body = [

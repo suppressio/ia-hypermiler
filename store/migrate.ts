@@ -7,6 +7,7 @@ import type {
   AccountConfig,
   AccountId,
   ClaudeAccountSettings,
+  CodexAccountSettings,
   CopilotAccountSettings,
   DayStatus,
   ProviderId,
@@ -18,6 +19,7 @@ import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from '../services/githubHost
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   claude: 'Claude',
+  codex: 'Codex (ChatGPT)',
   copilot: 'GitHub Copilot',
 };
 
@@ -37,6 +39,19 @@ export function defaultClaudeAccount(id: AccountId, label = PROVIDER_DISPLAY_NAM
     session: { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null },
     partition: claudePartitionFor(id),
     localInsights: false,
+  };
+}
+
+export function defaultCodexAccount(id: AccountId, label = PROVIDER_DISPLAY_NAMES.codex): CodexAccountSettings {
+  return {
+    id,
+    provider: 'codex',
+    label,
+    enabled: false,
+    subscription: { renewalRule: { type: 'dayOfMonth', day: 1 } },
+    workSchedule: structuredClone(DEFAULT_WORK_SCHEDULE),
+    partition: claudePartitionFor(id),
+    session: { capturedAt: null },
   };
 }
 
@@ -84,7 +99,11 @@ function scheduleFor(raw: Record<string, unknown>, inheritedSchedule: unknown): 
 }
 
 export function defaultAccountFor(provider: ProviderId, id: AccountId, label?: string): AccountConfig {
-  return provider === 'claude' ? defaultClaudeAccount(id, label) : defaultCopilotAccount(id, label);
+  switch (provider) {
+    case 'claude': return defaultClaudeAccount(id, label);
+    case 'copilot': return defaultCopilotAccount(id, label);
+    case 'codex': return defaultCodexAccount(id, label);
+  }
 }
 
 /** Display name of a new account: "Claude", then "Claude 2", "Claude 3"… */
@@ -183,6 +202,16 @@ export function normalizeAccounts(rawAccounts: unknown[], inheritedSchedule?: un
     if (raw.provider === 'claude') {
       const cfg = withoutObsoleteFields(mergeWithDefaults(defaultClaudeAccount(id), raw), CLAUDE_OBSOLETE_FIELDS) as ClaudeAccountSettings;
       result.push({ ...cfg, id, provider: 'claude', partition: claudePartitionFor(id), workSchedule: scheduleFor(raw, inheritedSchedule) });
+    } else if (raw.provider === 'codex') {
+      const cfg = mergeWithDefaults(defaultCodexAccount(id), raw) as CodexAccountSettings;
+      result.push({
+        ...cfg,
+        id,
+        provider: 'codex',
+        partition: claudePartitionFor(id),
+        session: { capturedAt: typeof cfg.session.capturedAt === 'string' ? cfg.session.capturedAt : null },
+        workSchedule: scheduleFor(raw, inheritedSchedule),
+      });
     } else if (raw.provider === 'copilot') {
       const cfg = withoutObsoleteFields(mergeWithDefaults(defaultCopilotAccount(id), raw), COPILOT_OBSOLETE_FIELDS) as CopilotAccountSettings;
       // An unsupported host falls back to github.com: the token is never sent elsewhere.

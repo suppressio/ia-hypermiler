@@ -137,3 +137,19 @@ test('normalizeSettings: accounts do not share the same schedule object', () => 
   assert.equal(at(result.accounts, 1).workSchedule.days.mon, 'full');
   assert.equal(DEFAULT_WORK_SCHEDULE.days.mon, 'full');
 });
+
+test('normalizeSettings: Codex preserves capture time and repairs malformed settings', () => {
+  const capturedAt = '2026-10-18T10:00:00Z';
+  const valid = normalizeSettings({ accounts: [{ id: 'cx', provider: 'codex', session: { capturedAt }, partition: 'wrong' }] }, DEFAULTS);
+  const account = at(valid.accounts, 0);
+  assert.equal(account.provider, 'codex');
+  assert.deepEqual(account.session, { capturedAt });
+  assert.equal(account.partition, 'persist:account-cx');
+  assert.deepEqual(normalizeSettings(valid, DEFAULTS), valid);
+  const malformed = normalizeSettings({ accounts: [{ id: 'cx', provider: 'codex', enabled: 'yes', session: { capturedAt: 42 }, workSchedule: false }] }, DEFAULTS);
+  const repaired = at(malformed.accounts, 0);
+  assert.equal(repaired.enabled, false);
+  assert.deepEqual(repaired.workSchedule, DEFAULT_WORK_SCHEDULE);
+  if (repaired.provider !== 'codex') throw new Error('Expected Codex');
+  assert.deepEqual(repaired.session, { capturedAt: null });
+});

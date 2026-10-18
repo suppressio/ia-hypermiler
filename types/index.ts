@@ -9,7 +9,7 @@
 // the two-slot schema, a generated id for those added later) — no longer the provider
 // name: with N accounts (issue #4) two Claude accounts have different ids.
 export type AccountId = string;
-export type ProviderId = 'claude' | 'copilot';
+export type ProviderId = 'claude' | 'copilot' | 'codex';
 export type AccountScope = 'personal' | 'organization';
 export type DayStatus = 'full' | 'half' | 'off';
 export type WindowStyle = 'filled' | 'filled-dark' | 'transparent-digital';
@@ -367,7 +367,13 @@ export interface CopilotAccountSettings extends AccountConfigBase {
   experimentalWarningAcknowledged: boolean;
 }
 
-export type AccountConfig = ClaudeAccountSettings | CopilotAccountSettings;
+export interface CodexAccountSettings extends AccountConfigBase {
+  provider: 'codex';
+  partition: string;
+  session: { capturedAt: string | null };
+}
+
+export type AccountConfig = ClaudeAccountSettings | CopilotAccountSettings | CodexAccountSettings;
 
 export interface UiSettings {
   language: LanguageSetting;
