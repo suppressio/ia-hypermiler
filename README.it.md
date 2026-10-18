@@ -2,13 +2,13 @@
 
 # IA Hypermiler
 
-Un piccolo widget sempre in primo piano, per Windows, macOS e Linux, che ti dice a che ritmo stai usando le quote di **Claude** e **GitHub Copilot** e quanto puoi ancora usare oggi perché la quota arrivi al rinnovo.
+Un piccolo widget sempre in primo piano, per Windows, macOS e Linux, che ti dice a che ritmo stai usando le quote di **Claude**, **GitHub Copilot** e **Codex** (abbonamento ChatGPT) e quanto puoi ancora usare oggi perché la quota arrivi al rinnovo.
 
 <p align="center"><img src="docs/screenshots/widget-it.png" alt="Il widget di IA Hypermiler con dati di esempio" width="406"></p>
 
 <sub>Dati di esempio, non un account reale.</sub>
 
-- **Più account**, Claude e Copilot in qualsiasi combinazione (per esempio un account Claude personale e una licenza Copilot aziendale), ognuno con la sua sessione.
+- **Più account**, Claude, Copilot e Codex in qualsiasi combinazione (per esempio un account Claude personale e una licenza Copilot aziendale), ognuno con la sua sessione.
 - **I tuoi giorni lavorativi**: ogni account può seguire un suo orario (giornata intera, mezza o libera per ogni giorno della settimana), così i weekend non contano come tempo in cui avresti potuto usare la quota.
 - **Un budget per oggi**, ricalcolato ogni mattina da quanto resta.
 - **Notifiche** quando una quota supera la tua soglia di allarme, o quando il consumo di oggi va molto oltre il budget di oggi.
@@ -28,6 +28,7 @@ I pacchetti non sono firmati: Windows SmartScreen e macOS Gatekeeper mostrano un
 
 1. Apri **Impostazioni** (⚙ nel widget, o dall'icona nel tray) → **Aggiungi account**.
 2. **Claude**: *Connetti…* apre il login di claude.ai (email e password o SSO aziendale) in una finestra dedicata. L'app non ti chiede mai di incollare un cookie.
+   **Codex (ChatGPT)**: aggiungi un account con questo provider, clicca *Connetti…* e accedi nella finestra chatgpt.com, che si chiude da sola. Non servono Codex CLI né un'estensione IDE; viene letto solo l'utilizzo. *Disconnetti* cancella la sessione.
    **GitHub Copilot**: incolla un Personal Access Token (fine-grained con *Plan* in sola lettura, o classic senza scope), oppure accedi con una GitHub OAuth App. Per una licenza aziendale su un tenant `<nome>.ghe.com`, imposta prima il dominio GitHub.
 3. Facoltativo, per ogni account: il **calendario di lavoro** (ultima sezione dell'account) e, solo se il provider non lo comunica, il **giorno di rinnovo**.
 
@@ -38,6 +39,8 @@ Chiudendo il widget l'app resta nel tray; *Esci* è nel menu del tray.
 ## Come leggere il widget
 
 Tutti i valori qui sotto riguardano la finestra di quota mostrata, di solito quella che richiede più attenzione. Con più account c'è una scheda per account; con più finestre di quota (per esempio il limite di 5 ore e quello settimanale di Claude) una lista sopra il valore principale le mostra tutte con un breve verdetto. Clicca una riga per vedere quella finestra.
+
+Codex mostra il **Limite 5 ore** e il **Limite settimanale**, entrambi rolling. Come per le altre finestre rolling, il limite di 5 ore si legge in ore: tempo al reset, previsionale al reset e autonomia al ritmo attuale, con gli indicatori giornalieri nascosti. Il limite settimanale si legge per giorno lavorativo. Altre finestre, come la revisione codice, compaiono con la propria etichetta solo se ChatGPT le comunica.
 
 ### Il verdetto di ogni finestra
 
@@ -140,10 +143,10 @@ Se li attivi su un account Claude, l'app legge le sessioni di Claude Code su que
 
 ## Privacy e sicurezza
 
-- Sessioni e token sono salvati solo sul tuo computer, cifrati, e non vengono mai mostrati all'interfaccia né scritti nei log.
-- L'app parla solo con i provider (claude.ai, l'API GitHub del tuo dominio) e con GitHub Releases per il controllo aggiornamenti. Nient'altro viene inviato altrove.
+- Sessioni e token sono salvati solo sul tuo computer, cifrati, e non vengono mai mostrati all'interfaccia né scritti nei log. I cookie Codex restano nella sessione isolata dell'account; il suo access token non viene mai salvato.
+- L'app parla solo con i provider (claude.ai, chatgpt.com, l'API GitHub del tuo dominio) e con GitHub Releases per il controllo aggiornamenti. Nient'altro viene inviato altrove.
 - **Segnalare un problema**: Impostazioni → Diagnostica → *Crea report di diagnosi* salva un file di testo in Download e apre una bozza di issue su GitHub. Il file **contiene** i tuoi valori di consumo (percentuali, importi, date di reset) ma nessun nome, id o credenziale. Le issue di questo repository sono **pubbliche**: leggi il file prima di allegarlo, oppure descrivi il problema senza.
-- Se un provider cambia il formato delle risposte, si apre una bozza di issue precompilata con la sola struttura (nomi e tipi dei campi, mai i valori). Puoi disattivarla nelle Impostazioni.
+- Claude e Codex usano endpoint interni non documentati che possono cambiare senza preavviso. Se un provider cambia il formato delle risposte, si apre una bozza di issue precompilata con la sola struttura (nomi e tipi dei campi, mai i valori). Puoi disattivarla nelle Impostazioni.
 
 ---
 

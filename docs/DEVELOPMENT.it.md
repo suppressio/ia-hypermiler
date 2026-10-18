@@ -31,13 +31,15 @@ npm run coverage   # test con la coverage integrata di Node
 ```
 
 - I **test unitari** girano sempre e non toccano mai la rete (`fetch` e l'SDK sono simulati). I dati di test sono solo sintetici.
-- I **test di integrazione** (`tests/integration/`) chiamano le vere API di Claude e GitHub e **si saltano da soli** se mancano le credenziali. Per attivarli in locale, **senza mai incollare credenziali in chat o nei commit**:
+- I **test di integrazione** (`tests/integration/`) chiamano le vere API di Claude, Codex e GitHub e **si saltano da soli** se mancano le credenziali. Per attivarli in locale, **senza mai incollare credenziali in chat o nei commit**:
 
 ```bash
 cp .env.test.example .env.test
 # compila .env.test con le tue credenziali (vedi i commenti nel file)
 npm test
 ```
+
+Codex richiede sia `HYPERMILER_TEST_CODEX_COOKIE_HEADER` sia `HYPERMILER_TEST_CODEX_USER_AGENT` della stessa partition dell’account (vedi `.env.test.example`).
 
 `.env.test` è già in `.gitignore` e viene caricato automaticamente da Node (`--env-file-if-exists`), senza dipendenze aggiuntive.
 
@@ -68,9 +70,9 @@ I pacchetti non sono firmati: macOS Gatekeeper e Windows SmartScreen mostrano un
 ```
 ia-hypermiler/
 ├── main.ts, preload.ts        ← processo principale Electron + bridge sicuro verso il renderer
-├── main/                      ← finestre, tray, login Claude, OAuth, logica per provider, ritmo dei refresh, i18n del main
+├── main/                      ← finestre, tray, login Claude/Codex, OAuth, logica per provider, ritmo dei refresh, i18n del main
 ├── renderer/                  ← widget e finestra Impostazioni (HTML/CSS/TS vanilla) + i18n dell'interfaccia
-├── services/                  ← fetch dell'utilizzo Claude/Copilot, sessioni locali, controllo aggiornamenti (+ test)
+├── services/                  ← fetch dell'utilizzo Claude/Copilot/Codex, sessioni locali, controllo aggiornamenti (+ test)
 ├── diagnostics/               ← segnalazione dei cambi di formato e file di report diagnostico
 ├── store/                     ← persistenza locale (electron-store cifrato), default, normalizzazione, migrazione
 ├── budget.ts                  ← calcolo budget/efficienza/previsionale/grafico (+ budget.test.ts)
@@ -84,7 +86,7 @@ ia-hypermiler/
 Approfondimenti:
 
 - [`ARCHITECTURE.it.md`](ARCHITECTURE.it.md) — modello dati, finestre, indicatori, estensibilità
-- [`RESEARCH.it.md`](RESEARCH.it.md) — cosa si può leggere davvero dalle API di Claude e Copilot, e con quali limiti
+- [`RESEARCH.it.md`](RESEARCH.it.md) — cosa si può leggere davvero dalle API di Claude, Copilot e Codex, e con quali limiti
 - [`EVOLUTION.it.md`](EVOLUTION.it.md) — retrospettiva e direzioni future con analisi costi/benefici
 - [`PLAN.it.md`](PLAN.it.md) — il piano originale giorno per giorno
 - [`CLAUDE.md`](../CLAUDE.md) — memoria di progetto per Claude Code (in inglese): stack, regole, milestone
@@ -92,12 +94,13 @@ Approfondimenti:
 ## Regole di sicurezza
 
 - `nodeIntegration: false` e `contextIsolation: true` sempre attivi: il renderer non ha mai accesso diretto a Node.js; ogni valore che arriva da lui via IPC viene validato.
-- I segreti (sessione Claude, token Copilot) vivono solo nel main process e nello store cifrato: vengono oscurati prima di arrivare al renderer e non finiscono mai nei log.
+- I segreti restano nel main process: sessioni Claude e token Copilot usano lo store cifrato; i cookie Codex restano nella partition dell’account e il suo access token non viene mai salvato. Non arrivano al renderer né ai log.
 - Gli URL aperti nel browser sono costruiti nel main process da prefissi fissi, mai presi dal renderer.
 
 ## Stato del progetto
 
 - ✅ Dati reali da Claude (endpoint interno + sessione) e Copilot (piani personali e licenze aziendali su un tenant `.ghe.com`; una licenza su github.com gestita da un'enterprise non espone dati, vedi `RESEARCH.it.md`)
+- ✅ Utilizzo Codex tramite sessione web ChatGPT, con finestre rolling (vedi `RESEARCH.it.md` §6 per i limiti delle verifiche)
 - ✅ Più account, interfaccia italiano/inglese, controllo aggiornamenti, diagnostica dei cambi di formato, report diagnostico
 - ✅ Visualizzazioni proprie: consumo giornaliero vs budget mobile, verdetti per finestra, gauge istantaneo, rating, valore per token
 - ✅ TypeScript severo (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), ESLint con controllo dei tipi a zero segnalazioni, test unitari su tutti i moduli puri
