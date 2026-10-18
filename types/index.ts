@@ -464,3 +464,8 @@ export interface CopilotCredentials {
    */
   host: string;
 }
+
+export interface CodexCredentials {
+  cookieHeader: string;
+  userAgent: string;
+}
