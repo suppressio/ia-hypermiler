@@ -6,7 +6,7 @@ Project memory for Claude Code. Read it in full before touching the code.
 
 ## What this project is
 
-**IA Hypermiler** is an Electron desktop app that monitors AI token usage (Claude and GitHub Copilot) and computes an optimal daily budget so the quota lasts until renewal. It shows an always-visible widget with daily consumption against the ideal budget, end-of-period projection, efficiency metrics and tips derived from real data. UI in English and Italian.
+**IA Hypermiler** is an Electron desktop app that monitors AI token usage (Claude, GitHub Copilot and Codex) and computes an optimal daily budget so the quota lasts until renewal. It shows an always-visible widget with daily consumption against the ideal budget, end-of-period projection, efficiency metrics and tips derived from real data. UI in English and Italian.
 
 **Languages:** the conversation with the user is in **Italian**. All **code** (identifiers, comments, test names, logs, internal error messages) is in **English**. Human-facing **documents** exist in English (`X.md`, primary) and Italian (`X.it.md`, secondary) with a language switcher at the top; this file is English only.
 
@@ -64,6 +64,8 @@ ia-hypermiler/
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
 │   ├── claude-auth.ts           ← Claude session capture via login BrowserWindow, one Electron partition per account
+│   ├── codex-auth.ts            ← ChatGPT login in a per-account partition, stock User-Agent
+│   ├── codex-session-cookie.ts  ← recognizes ChatGPT session cookies, including chunks (+ test)
 │   ├── providers.ts             ← provider-specific part of the account registry (connection, fetch, disconnect, secret redaction)
 │   ├── refreshPolicy.ts         ← adaptive refresh pace, per-account backoff, manual-refresh cache (+ test)
 │   ├── copilot-oauth.ts         ← GitHub OAuth App login (loopback PKCE), experimental alternative to the PAT (+ test)
@@ -73,6 +75,7 @@ ia-hypermiler/
 │   ├── settings.html, settings.css, settings.ts ← Settings window (accounts table, language, updates, …)
 │   ├── dom.ts                   ← byId(id, ElementType): typed, checked element access
 │   ├── schedule.ts              ← one-line summary of an account work schedule (+ test)
+│   ├── windowLabel.ts           ← localized quota-window labels, including Codex limits (+ test)
 │   ├── gauge.ts                 ← log-scale position of the instant pace against its target (+ test)
 │   ├── visibility.ts            ← which indicators are shown (autonomy, peak/average, streak) (+ test)
 │   └── i18n/                    ← UI strings: en.ts (reference), it.ts, index.ts (t, applyTranslations, Intl formatting) (+ test)
@@ -81,6 +84,7 @@ ia-hypermiler/
 │   ├── _http.ts                 ← shared fetch helper (10s timeout, explicit errors)
 │   ├── _shape.ts                ← response → structure only (never values), FormatDriftError (+ test)
 │   ├── claude.ts                ← Claude usage fetch (+ test)
+│   ├── codex.ts                 ← ChatGPT session → ephemeral Bearer → Codex usage (+ test)
 │   ├── copilot.ts               ← Copilot usage fetch (+ test)
 │   ├── claudeLocalSessions.ts   ← insights from LOCAL Claude Code sessions, opt-in (+ test)
 │   ├── claudeLocalSessions.worker.ts ← utility-process entry: the scan runs off the main process
@@ -122,16 +126,16 @@ ia-hypermiler/
 - Think through every path on Windows, macOS and Linux before writing it.
 
 ### Service interface
-Every usage service (`services/claude.ts`, `services/copilot.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
+Every usage service (`services/claude.ts`, `services/copilot.ts`, `services/codex.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
 
 ```ts
-export async function fetchUsage(credentials: ClaudeCredentials | CopilotCredentials): Promise<RawAccountUsage> { ... }
+export async function fetchUsage(credentials: ClaudeCredentials | CopilotCredentials | CodexCredentials): Promise<RawAccountUsage> { ... }
 
 // RawAccountUsage = { planTier, subscriptionRenewsAt, quotaWindows: QuotaWindow[] }
 // QuotaWindow    = { id, label, periodType, periodLength, unit: 'percentage'|'count', used, total, resetsAt }
 ```
 
-When a service cannot get the data it **throws an explicit error** with a readable message — never returns `null`/`undefined` silently. No `dailyHistory` from services: neither Claude nor Copilot exposes it, the daily history is built locally by `main.ts` in `store.history.dailyUsage` on every successful refresh. Adding a provider = a service with `fetchUsage` + a branch in every function of `main/providers.ts` (exhaustive switches make tsc fail if one is forgotten) + a detail template in `settings.html` + dictionary keys.
+When a service cannot get the data it **throws an explicit error** with a readable message — never returns `null`/`undefined` silently. No `dailyHistory` from services: none of these providers exposes it, the daily history is built locally by `main.ts` in `store.history.dailyUsage` on every successful refresh. Adding a provider = a service with `fetchUsage` + a branch in every function of `main/providers.ts` (exhaustive switches make tsc fail if one is forgotten) + a detail template in `settings.html` + dictionary keys.
 
 ### Error handling
 - Every network call has an explicit timeout (max 10 seconds) — use `services/_http.ts`.
@@ -262,7 +266,7 @@ Same model as every repo managed by agent-ops (full rules: agent-ops `docs/BRANC
 - `package.json` `author` must carry an email (Debian "Maintainer"): the GitHub noreply address is used, never a real one.
 
 ### Integration tests (real credentials)
-`tests/integration/*.integration.test.ts` call the real Claude/Copilot APIs but **skip themselves** without credentials. To enable them **locally**: copy `.env.test.example` to `.env.test` (gitignored), fill the variables, run `npm test`. **Never provide these credentials in chat**: the assisted environment does not need them.
+`tests/integration/*.integration.test.ts` call the real Claude/Copilot/Codex APIs but **skip themselves** without credentials. To enable them **locally**: copy `.env.test.example` to `.env.test` (gitignored), fill the variables, run `npm test`. **Never provide these credentials in chat**: the assisted environment does not need them.
 
 ---
 
@@ -296,6 +300,8 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-09 | v0.4.14-beta | Reactive pacing overhaul: adaptive refresh (5 min after a rise), 1h instant pace, moving budget on the chart, leaner widget layout, user-only README (#38, #39, #40, #41); consistent streak/bar colours with the budget (#42); chart: highlight today's slot, thinner share bars (#43); fix: Free tier response no longer triggers a drift report, widget shows "Free plan" label (#44, #45) |
 
 ### Lessons learned (still relevant)
+- **Codex login User-Agent**: Google refuses embedded login when a rewritten User-Agent contradicts the client hints. Never change the UA of the Codex login window or its partition.
+- **ChatGPT usage authentication**: cookies alone get 401 on `wham/usage`; the Bearer from `/api/auth/session` is required. Node `fetch` works with the partition cookies + UA (probe #86, docs/RESEARCH.md §6); `session.fetch` is the fallback.
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
 - **ESM-only SDK in a CommonJS main process**: `require()` and even a TS-compiled `import()` fail with ERR_REQUIRE_ESM inside Electron → `new Function('s', 'return import(s)')` in `services/claudeLocalSessions.ts`.
 - **claude.ai behind Cloudflare**: `sessionKey` alone gets a 403 challenge; the full cookie header (incl. `cf_clearance`) + a browser User-Agent are needed. Usage field names are obfuscated and rotate → windows are recognized by value shape.
