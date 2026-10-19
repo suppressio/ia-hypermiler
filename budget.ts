@@ -393,7 +393,9 @@ export function todayBudget(ctx: Omit<PeriodContext, 'todayElapsedUnits' | 'rece
   if (unitsFromToday <= 0) return null;
 
   const budget = (Math.max(0, 100 - dayStartUsed) / unitsFromToday) * todayUnit;
-  const usedToday = utilization >= dayStartUsed ? utilization - dayStartUsed : utilization;
+  // Match the stored baseline's precision before detecting a reset.
+  const used = round2(utilization);
+  const usedToday = used >= dayStartUsed ? used - dayStartUsed : used;
   return { budget: round2(budget), usedToday: round2(usedToday) };
 }
 
@@ -986,7 +988,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
   if (efficiencyRating !== null && efficiencyRating.stars >= 4) {
     candidates.push({
       key: 'rating',
-      params: { stars: efficiencyRating.stars, avgRatio: round2(efficiencyRating.avgRatio) },
+      params: { stars: efficiencyRating.stars, paceRatio: round2(1 / efficiencyRating.avgRatio) },
     });
   }
 
