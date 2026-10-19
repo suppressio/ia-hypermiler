@@ -295,6 +295,13 @@ test('todayBudget: live utilization uses the same precision as the stored baseli
   assert.deepEqual(budget.todayBudget({ ...ctx, window: pctWindow(67.7, { unit: 'count', total: 150 }) }, 45.07), { budget: 6.87, usedToday: 0.06 });
 });
 
+test('todayBudget: rounding and integer fallback are not resets; a larger drop is', () => {
+  const ctx = periodCtx(0, new Date(2026, 6, 15, 9));
+  assert.deepEqual(budget.todayBudget({ ...ctx, window: pctWindow(67.6, { unit: 'count', total: 150 }) }, 45.1), { budget: 6.86, usedToday: 0 });
+  assert.deepEqual(budget.todayBudget({ ...ctx, window: pctWindow(45) }, 45.07), { budget: 6.87, usedToday: 0 });
+  assert.deepEqual(budget.todayBudget({ ...ctx, window: pctWindow(2) }, 45.07), { budget: 6.87, usedToday: 2 });
+});
+
 test('redistributedQuota: what is left now over the working units from today, next to the even share', () => {
   // 10 working days in the period; Wednesday 15, 40% used, today + 7 more days = 8 units.
   assert.deepEqual(budget.redistributedQuota(periodCtx(40, new Date(2026, 6, 15, 9))), { perUnit: 7.5, idealPerUnit: 10, unitsLeft: 8 });
@@ -357,15 +364,15 @@ test('updateDailyPoint: reset since the previous point → baseline 0; no histor
   assert.equal(first.dayStartUsed, 30); // period started earlier: consumption before the first refresh is unknown
 });
 
-test('updateDailyPoint: unchanged count usage rounded by the caller keeps the previous baseline', () => {
-  const utilization = budget.normalizedUtilization(pctWindow(67.6, { unit: 'count', total: 150 }));
-  assert.ok(utilization !== null);
-  const today = budget.updateDailyPoint({
-    today: undefined, previous: point('2026-07-14', 45.07), accountId: 'acc', windowId: 'w',
-    used: Math.round(utilization * 100) / 100, periodStart: P_START, now: new Date(2026, 6, 15, 9),
-  });
-  assert.equal(today.dayStartUsed, 45.07);
-  assert.equal(today.used, 45.07);
+test('updateDailyPoint: integer fallback keeps the baseline; a larger drop resets it', () => {
+  for (const [used, baseline] of [[45, 45.07], [2, 0]] as const) {
+    const today = budget.updateDailyPoint({
+      today: undefined, previous: point('2026-07-14', 45.07), accountId: 'acc', windowId: 'w',
+      used, periodStart: P_START, now: new Date(2026, 6, 15, 9),
+    });
+    assert.equal(today.dayStartUsed, baseline);
+    assert.equal(today.used, used);
+  }
 });
 
 test('updateDailyPoint: no history on the period start day → baseline 0 (everything was used today)', () => {
@@ -620,7 +627,7 @@ test('generateDailyTip flags an estimated autonomy shorter than the time to rese
 
 test('generateDailyTip reports a high rating as room for more usage', () => {
   const tip = budget.generateDailyTip(baseTipContext({ efficiencyRating: { stars: 5, avgRatio: 1.59 } }));
-  assert.deepEqual(tip, { key: 'rating', params: { stars: 5, paceRatio: 0.63 } });
+  assert.deepEqual(tip, { key: 'rating', params: { stars: 5, avgRatio: 1.59 } });
 });
 
 test('generateDailyTip does not report a low rating (only >= 4 stars)', () => {
