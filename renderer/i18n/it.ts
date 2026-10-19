@@ -75,7 +75,7 @@ export const it: Record<MessageKey, string> = {
   'widget.insights.topTools': 'Tool più usati',
 
   'tips.autonomy': 'Al ritmo attuale {window} durerebbe circa {autonomyDays}gg lavorativi, ma mancano {daysToReset}gg al rinnovo: per arrivarci serve un ritmo circa il {reductionPercent}% più basso.',
-  'tips.rating': "Rating {stars}/5 su {window} negli ultimi giorni (in media {avgRatio}× il ritmo ideale): c'è margine per una sessione più lunga oggi.",
+  'tips.rating': "Rating {stars}/5 su {window} negli ultimi giorni (in media {paceRatio}× il ritmo ideale): c'è margine per una sessione più lunga oggi.",
   'tips.nearReset': 'Mancano {days}gg al rinnovo di {window} e sei già al {utilization}%: valuta di consolidare le richieste rimanenti prima del reset.',
   'tips.nearResetToday': 'Manca meno di un giorno al rinnovo di {window} e sei già al {utilization}%: valuta di consolidare le richieste rimanenti prima del reset.',
   'tips.cause': "Nei giorni in cui consumi più quota di {window}, il {highPercent}% dei token è prodotto a contesto oltre 150k (contro il {lowPercent}% negli altri giorni, su {days}gg): ridurre il contesto (/clear tra un task e l'altro, /compact) abbassa il costo di ogni turno.",
