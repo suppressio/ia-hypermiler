@@ -86,6 +86,7 @@ ia-hypermiler/
 Further reading:
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — data model, windows, indicators, extensibility
+- [`PACING.md`](PACING.md) — the pacing model: definitions, edge cases, invariants, state, example tables
 - [`RESEARCH.md`](RESEARCH.md) — what can really be read from the Claude, Copilot and Codex APIs, and with which limits
 - [`EVOLUTION.md`](EVOLUTION.md) — retrospective and future directions with a cost/benefit analysis
 - [`PLAN.md`](PLAN.md) — the original day-by-day plan

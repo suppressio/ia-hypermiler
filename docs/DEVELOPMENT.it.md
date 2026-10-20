@@ -86,6 +86,7 @@ ia-hypermiler/
 Approfondimenti:
 
 - [`ARCHITECTURE.it.md`](ARCHITECTURE.it.md) — modello dati, finestre, indicatori, estensibilità
+- [`PACING.it.md`](PACING.it.md) — il modello di pacing: definizioni, casi limite, invarianti, stato, tabelle di esempi
 - [`RESEARCH.it.md`](RESEARCH.it.md) — cosa si può leggere davvero dalle API di Claude, Copilot e Codex, e con quali limiti
 - [`EVOLUTION.it.md`](EVOLUTION.it.md) — retrospettiva e direzioni future con analisi costi/benefici
 - [`PLAN.it.md`](PLAN.it.md) — il piano originale giorno per giorno
