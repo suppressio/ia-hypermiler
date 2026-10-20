@@ -261,7 +261,7 @@ Proiezione e autonomia poggiano su `E` unità lavorative; sotto **2** sono segna
 
 ### 3.14 Consigli
 
-Un consiglio è un **dato** (`{ key, params }`); i candidati sono quelli la cui condizione vale, se ne sceglie uno a caso tra loro, nessuno → nessun consiglio. Un consiglio si mostra solo quando aggiunge un'azione o una causa che nessun altro numero dice.
+Un consiglio è un **dato** (`{ key, params }`); i candidati sono quelli la cui condizione vale, se ne sceglie uno a caso tra loro, nessuno → nessun consiglio. **Una quota esaurita (`x ≥ 100`) non ha alcun candidato** (I-3, D3): le condizioni sotto valgono solo con `x < 100`. Un consiglio si mostra solo quando aggiunge un'azione o una causa che nessun altro numero dice.
 
 | Chiave | Condizione | Parametri |
 |---|---|---|
@@ -280,6 +280,7 @@ Un consiglio è un **dato** (`{ key, params }`); i candidati sono quelli la cui 
 | TP-6 | x = 72, 2 giorni / 0 giorni al reset | `nearReset` / `nearResetToday` |
 | TP-7 | x = 69, 1 giorno al reset | nessun consiglio |
 | TP-8 | preliminare | nessun consiglio `autonomy` |
+| TP-9 | x = 100, 1 giorno al reset, 5 stelle, causa chiara | nessun consiglio (esaurita) |
 
 ### 3.15 Insight locali (Claude, opzionali)
 
