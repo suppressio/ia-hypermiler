@@ -46,9 +46,11 @@ Una finestra senza data di reset e senza modo di ricavarla non ha alcuna quantit
 - orario attivo: `0` finché oggi non si è vista attività; poi `min(u(oggi), max(2 h, lavorate) / hoursPerDay)` dove *lavorate* = ultimo aumento − prima attività del giorno (§3.1); `0` in un giorno libero;
 - orario disattivato: frazione del giorno di calendario trascorsa (`10:00` → 0,4167).
 
-**D-2.4 Unità trascorse** `E = W(start, oggi) + min(e, u(oggi) se oggi è nel periodo)`; `0` prima dell'inizio del periodo.
+D-2.4-D-2.6 valgono con `oggi` dentro il periodo, `start ≤ oggi < end` (giorni locali). Fuori: **prima dell'inizio** `E = 0`, `R = U = N`; **dalla fine in poi** `E = N`, `R = U = 0`.
 
-**D-2.5 Unità rimanenti** `R = max(0, u(oggi) − e) + W(oggi + 1, end)`. Invariante: `E + R = N` (I-8).
+**D-2.4 Unità trascorse** `E = W(start, oggi) + e`.
+
+**D-2.5 Unità rimanenti** `R = (u(oggi) − e) + W(oggi + 1, end)`. Invariante: `E + R = N` (I-8).
 
 **D-2.6 Unità da oggi** `U = u(oggi) + W(oggi + 1, end)` — oggi contato per intero (`R` con `e = 0`). Si usa dove serve un numero fisso per il giorno (budget di oggi, quota ridistribuita).
 
@@ -69,6 +71,7 @@ Una finestra senza data di reset e senza modo di ricavarla non ha alcuna quantit
 | T-11 | `now` prima dell'inizio del periodo | E = 0, R = N |
 | T-12 | `now` dopo la fine del periodo | E = N, R = 0 |
 | T-13 | S, venerdì 10-30 17:00, 7,9 h lavorate | e = 0,9875, R = 0,0125, H = 0,1 h |
+| T-14 | S con `now` = lunedì 11-02 09:00, nessuna attività (ciclo finito, reset nuovo non ancora letto) | E = 22, R = 0, U = 0 |
 
 ---
 
@@ -165,7 +168,7 @@ Una finestra senza data di reset e senza modo di ricavarla non ha alcuna quantit
 
 ### 3.9 Prospettiva oraria (finestre a ore mobili)
 
-**D-3.20** `hoursLeft = max(0, resetsAt − now)`; `projectedAtReset = x + v × hoursLeft` (nessun ritmo misurato vale 0); `autonomyHours = 0` se `x ≥ 100`, `(100 − x) / v` se `v > 0`, altrimenti nullo. Nulla senza istante di reset.
+**D-3.20** `hoursLeft = max(0, resetsAt − now)`; `projectedAtReset = x + v × hoursLeft` (nessun ritmo misurato vale 0); `autonomyHours = 0` se `x ≥ 100`, `(100 − x) / v` se `v > 0`, altrimenti nullo. Nulla senza istante di reset. **Reset passato** (`resetsAt ≤ now`, dati vecchi, E5): `hoursLeft = 0`, `projectedAtReset = x`, `autonomyHours` nullo qualunque siano `x` e `v`, e la finestra non ha verdetto prospettico (il passo 2 del §3.10 non si applica).
 
 | # | Input | Atteso |
 |---|---|---|
@@ -173,13 +176,14 @@ Una finestra senza data di reset e senza modo di ricavarla non ha alcuna quantit
 | H-2 | x = 67, 2 h al reset, v = 20 | proiettato 107, autonomia 1,65 h |
 | H-3 | x = 67, 2 h al reset, v = nullo | proiettato 67, autonomia nulla |
 | H-4 | x = 100, 2 h al reset | proiettato ≥ 100, autonomia 0 |
+| H-5 | reset passato: resetsAt 09:00, ora 10:00, x = 80, v = 10 | hoursLeft 0, proiettato 80, autonomia nulla, verdetto nessun pacing |
 
 ### 3.10 Verdetto
 
 Valutato in quest'ordine; vince il primo che si applica. `p` è il ritmo misto, `preliminary` è `E < 2`.
 
 1. `x ≥ 100` → **esaurita**.
-2. Ore mobili: `projectedAtReset > 100` → **a rischio** (con ore di autonomia), altrimenti **in linea**.
+2. Ore mobili con il reset ancora davanti (`resetsAt > now`): `projectedAtReset > 100` → **a rischio** (con ore di autonomia), altrimenti **in linea**. Con il reset passato si scende al passo 5 (E5).
 3. Con una ridistribuzione (`q`, `s > 0`):
    a. `p` noto, non preliminare, e `p > 1,5 × q` → **a rischio** (ritmo).
    b. `ρ < 0,5` → **a rischio**; `ρ < 0,95` → **indietro**; `ρ ≤ 1,05` → **in linea**; altrimenti **avanti**.
