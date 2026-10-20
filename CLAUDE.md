@@ -43,6 +43,7 @@ ia-hypermiler/
 ├── docs/                        ← every other document, EN + .it.md
 │   ├── DEVELOPMENT.md           ← build from source, tests, packaging, CI, project structure and status
 │   ├── ARCHITECTURE.md          ← app design: data model, windows, widget, tray, updates, i18n
+│   ├── PACING.md                ← the pacing model: definitions, edge cases, invariants, state, example tables (source of truth for budget.ts)
 │   ├── RESEARCH.md              ← what the Claude/Copilot APIs really expose (Day 1 + addenda)
 │   ├── EVOLUTION.md             ← retrospective and future directions with cost/benefit analysis
 │   ├── PLAN.md                  ← the original 3-day plan (historical)
@@ -220,6 +221,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - Do not expose secrets or credentials in any git-tracked file.
 - Do not use `any`. If a type is really dynamic use `unknown` with explicit narrowing.
 - Do not paste real credentials (sessionKey, PAT/token) in chat, commits, issues or logs — not even for tests. See "Integration tests" below.
+- Do not fix pacing numbers in isolation until the refactoring (#75) is done: a wrong value found in use becomes an issue and a case in `docs/PACING.md` (with its expected value).
 - Do not make unrequested architectural refactors: if you see a structural problem, report it before fixing it.
 - Do not write user-visible text outside the i18n dictionaries, and do not write code comments in Italian.
 
