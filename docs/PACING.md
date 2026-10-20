@@ -261,7 +261,7 @@ Projection and autonomy rest on `E` working units; below **2** they are flagged 
 
 ### 3.14 Tips
 
-A tip is **data** (`{ key, params }`); the candidates are those whose condition holds, one is picked at random among them, none → no tip. A tip is shown only when it adds an action or a cause that no other number states.
+A tip is **data** (`{ key, params }`); the candidates are those whose condition holds, one is picked at random among them, none → no tip. **An exhausted quota (`x ≥ 100`) has no candidates at all** (I-3, D3): the conditions below apply only when `x < 100`. A tip is shown only when it adds an action or a cause that no other number states.
 
 | Key | Condition | Params |
 |---|---|---|
@@ -280,6 +280,7 @@ A tip is **data** (`{ key, params }`); the candidates are those whose condition 
 | TP-6 | x = 72, 2 days / 0 days to reset | `nearReset` / `nearResetToday` |
 | TP-7 | x = 69, 1 day to reset | no tip |
 | TP-8 | preliminary | no `autonomy` tip |
+| TP-9 | x = 100, 1 day to reset, stars 5, clear cause | no tip (exhausted) |
 
 ### 3.15 Local insights (Claude, opt-in)
 
