@@ -46,9 +46,11 @@ A window without a reset date and without a way to derive it has no forward-look
 - schedule enabled: `0` while no activity was seen today; otherwise `min(u(today), max(2 h, worked) / hoursPerDay)` where *worked* = last increase − first activity of the day (§3.1); `0` on a day off;
 - schedule disabled: fraction of the calendar day elapsed (`10:00` → 0.4167).
 
-**D-2.4 Elapsed units** `E = W(start, today) + min(e, u(today) inside the period)`; `0` before the period starts.
+D-2.4 to D-2.6 hold for `today` inside the period, `start ≤ today < end` (local days). Outside it: **before the start** `E = 0`, `R = U = N`; **from the end on** `E = N`, `R = U = 0`.
 
-**D-2.5 Remaining units** `R = max(0, u(today) − e) + W(today + 1, end)`. Invariant: `E + R = N` (I-8).
+**D-2.4 Elapsed units** `E = W(start, today) + e`.
+
+**D-2.5 Remaining units** `R = (u(today) − e) + W(today + 1, end)`. Invariant: `E + R = N` (I-8).
 
 **D-2.6 Units from today** `U = u(today) + W(today + 1, end)` — today counted whole (`R` with `e = 0`). Used wherever a fixed-for-the-day number is needed (today's budget, redistributed quota).
 
@@ -69,6 +71,7 @@ A window without a reset date and without a way to derive it has no forward-look
 | T-11 | `now` before the period start | E = 0, R = N |
 | T-12 | `now` after the period end | E = N, R = 0 |
 | T-13 | S, Friday 10-30 17:00, 7.9 h worked | e = 0.9875, R = 0.0125, H = 0.1 h |
+| T-14 | S with `now` = Monday 11-02 09:00, no activity (cycle over, no fresh reset yet) | E = 22, R = 0, U = 0 |
 
 ---
 
@@ -165,7 +168,7 @@ A window without a reset date and without a way to derive it has no forward-look
 
 ### 3.9 Hourly outlook (rolling-hours windows)
 
-**D-3.20** `hoursLeft = max(0, resetsAt − now)`; `projectedAtReset = x + v × hoursLeft` (no measured pace counts as 0); `autonomyHours = 0` when `x ≥ 100`, `(100 − x) / v` when `v > 0`, otherwise null. Null without a reset moment.
+**D-3.20** `hoursLeft = max(0, resetsAt − now)`; `projectedAtReset = x + v × hoursLeft` (no measured pace counts as 0); `autonomyHours = 0` when `x ≥ 100`, `(100 − x) / v` when `v > 0`, otherwise null. Null without a reset moment. **Reset passed** (`resetsAt ≤ now`, stale data, E5): `hoursLeft = 0`, `projectedAtReset = x`, `autonomyHours` null whatever `x` and `v`, and the window has no forward-looking verdict (§3.10 step 2 does not apply).
 
 | # | Input | Expected |
 |---|---|---|
@@ -173,13 +176,14 @@ A window without a reset date and without a way to derive it has no forward-look
 | H-2 | x = 67, 2 h left, v = 20 | projected 107, autonomy 1.65 h |
 | H-3 | x = 67, 2 h left, v = null | projected 67, autonomy null |
 | H-4 | x = 100, 2 h left | projected ≥ 100, autonomy 0 |
+| H-5 | reset passed: resetsAt 09:00, now 10:00, x = 80, v = 10 | hoursLeft 0, projected 80, autonomy null, verdict no pacing |
 
 ### 3.10 Verdict
 
 Evaluated in this order; the first that applies wins. `p` is the blended pace, `preliminary` is `E < 2`.
 
 1. `x ≥ 100` → **exhausted**.
-2. Rolling hours: `projectedAtReset > 100` → **at risk** (with autonomy hours), else **on track**.
+2. Rolling hours with the reset still ahead (`resetsAt > now`): `projectedAtReset > 100` → **at risk** (with autonomy hours), else **on track**. With the reset passed it falls through to 5 (E5).
 3. With a redistribution (`q`, `s > 0`):
    a. `p` known, not preliminary, and `p > 1.5 × q` → **at risk** (pace).
    b. `ρ < 0.5` → **at risk**; `ρ < 0.95` → **behind**; `ρ ≤ 1.05` → **on track**; otherwise **ahead**.
