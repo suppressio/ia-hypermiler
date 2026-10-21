@@ -1385,6 +1385,9 @@ async function migrateLegacyClaudeCookies(): Promise<void> {
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
+// The widget is plain HTML/SVG with no animations: the GPU process was the largest
+// share of the tray-only footprint (#99, docs/EVOLUTION.md). Must run before ready.
+app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   // It is a widget, not a document app: Electron's default menu bar
   // (File/Edit/View/Window/Help) is not needed and weighed down the "filled" skin (user
