@@ -379,6 +379,7 @@ export interface UiSettings {
   language: LanguageSetting;
   windowStyle: WindowStyle;
   alwaysOnTop: boolean;
+  compact: boolean;
   accentColor: string;
   bounds: { x?: number; y?: number; width: number; height: number };
   chartRange: ChartRange;

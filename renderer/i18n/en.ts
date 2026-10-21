@@ -9,6 +9,8 @@ export const en = {
   'widget.refresh': 'Refresh now',
   'widget.settings': 'Settings',
   'widget.minimize': 'Minimize',
+  'widget.compact': 'Compact view',
+  'widget.expand': 'Full view',
   'widget.hide': 'Hide',
   'widget.counts.creditRatio': '{used} / {total} AI credits used',
   'widget.counts.extraCreditRatio': '{used} / {total} USD of extra credit used',
@@ -82,7 +84,7 @@ export const en = {
 
   // --- Tips (budget.generateDailyTip keys) -----------------------------------
   'tips.autonomy': 'At the current pace {window} would last about {autonomyDays} working days, but {daysToReset} are left until renewal: you need a pace about {reductionPercent}% lower to make it.',
-  'tips.rating': 'Rating {stars}/5 on {window} over the last days (on average {avgRatio}× the ideal pace): there is room for a longer session today.',
+  'tips.rating': 'Rating {stars}/5 on {window} over the last days (average ideal/actual ratio {avgRatio}): there is room for a longer session today.',
   'tips.nearReset': '{days} days left until {window} renews and you are already at {utilization}%: consider consolidating the remaining requests before the reset.',
   'tips.nearResetToday': 'Less than a day until {window} renews and you are already at {utilization}%: consider consolidating the remaining requests before the reset.',
   'tips.cause': 'On days when you use more {window} quota, {highPercent}% of tokens are produced with context over 150k (vs {lowPercent}% on other days, over {days} days): reducing context (/clear between tasks, /compact) lowers the cost of each turn.',

@@ -234,7 +234,7 @@ export interface PeriodContext {
   periodEnd: Date | string;
   now?: Date;
   // Part of today already worked (todayElapsedUnits). Required: a "safe" default
-  // would hide a missing wiring (see CLAUDE.md, lessons learned).
+  // would hide a missing wiring (see AGENTS.md, lessons learned).
   todayElapsedUnits: number;
   // Pace of the last completed working days (recentPacePerUnit), null when there are
   // not enough of them — projection and autonomy blend it with the period average.
@@ -374,6 +374,11 @@ export function estimatedAutonomyWorkingDays(ctx: PeriodContext): number | null 
 /** Ratio of today's consumption to today's budget above which the pace notification fires. */
 export const PACE_ALERT_RATIO = 1.5;
 
+// A drop smaller than this (percentage points) is not a reset: stored values come at
+// different precisions (older builds rounded to 0.1) and a provider can fall back to an
+// integer percent. A missed small reset costs at most this much, a false one the whole period.
+export const RESET_TOLERANCE = 1;
+
 /**
  * Today's budget: the share of the quota today can use so that the rest lasts until
  * the reset — what was left at the START of the day spread over the working units
@@ -393,7 +398,9 @@ export function todayBudget(ctx: Omit<PeriodContext, 'todayElapsedUnits' | 'rece
   if (unitsFromToday <= 0) return null;
 
   const budget = (Math.max(0, 100 - dayStartUsed) / unitsFromToday) * todayUnit;
-  const usedToday = utilization >= dayStartUsed ? utilization - dayStartUsed : utilization;
+  // Same precision as the stored baseline.
+  const used = round2(utilization);
+  const usedToday = used < dayStartUsed - RESET_TOLERANCE ? used : Math.max(0, used - dayStartUsed);
   return { budget: round2(budget), usedToday: round2(usedToday) };
 }
 
@@ -675,7 +682,7 @@ export function updateDailyPoint(args: {
   let dayStartUsed = today?.dayStartUsed;
   if (dayStartUsed === undefined) {
     if (!previous) dayStartUsed = periodStartedToday(periodStart, now) ? 0 : today?.used ?? used;
-    else if (previous.used > used || isBefore(parseDateKey(previous.date), startOfDay(new Date(periodStart)))) dayStartUsed = 0;
+    else if (previous.used > used + RESET_TOLERANCE || isBefore(parseDateKey(previous.date), startOfDay(new Date(periodStart)))) dayStartUsed = 0;
     else dayStartUsed = previous.used;
   }
   return { date: localDateKey(now), accountId, windowId, used, dayStartUsed };
@@ -752,7 +759,7 @@ export interface WindowVerdictContext {
 // spread over every working day left, so even a day at twice or three times the even
 // share moves the quota per day by only a few percent early in a monthly period — a
 // wider band would hide it until late in the period. Heuristics, like the other
-// pacing constants: to be verified with real use (CLAUDE.md, open items).
+// pacing constants: to be verified with real use (AGENTS.md, open items).
 export const REDISTRIBUTION_AT_RISK_RATIO = 0.5;
 export const REDISTRIBUTION_ON_TRACK_LOW = 0.95;
 export const REDISTRIBUTION_ON_TRACK_HIGH = 1.05;
@@ -986,7 +993,7 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
   if (efficiencyRating !== null && efficiencyRating.stars >= 4) {
     candidates.push({
       key: 'rating',
-      params: { stars: efficiencyRating.stars, avgRatio: round2(efficiencyRating.avgRatio) },
+      params: { stars: efficiencyRating.stars, avgRatio: efficiencyRating.avgRatio },
     });
   }
 

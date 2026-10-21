@@ -58,8 +58,10 @@ npm run package:test  # local test build: lint + tests, then .deb and Windows pa
 
 `.github/workflows/build.yml` builds on macOS, Windows and Linux in parallel from the same commit:
 
-- a pushed `v*` tag (e.g. `v0.4.0-beta`) → lint, tests, packages attached to the GitHub Release of the tag;
+- a pushed `v*` tag (e.g. `v0.4.0-beta`) → lint, tests, packages attached to the GitHub Release of the tag; `-rc` tags (e.g. `v0.4.14-beta-rc.1`) are skipped;
 - a manual run (`gh workflow run build.yml`, or the Actions tab) → test build: packages only as run artifacts (14 days), no release, no update notification.
+
+`.github/workflows/ci.yml` runs lint and tests on Linux for every PR to `next` and every push to it.
 
 Packages are not signed: macOS Gatekeeper and Windows SmartScreen show a warning at install time.
 
@@ -86,6 +88,7 @@ ia-hypermiler/
 Further reading:
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — data model, windows, indicators, extensibility
+- [`PACING.md`](PACING.md) — the pacing model: definitions, edge cases, invariants, state, example tables
 - [`RESEARCH.md`](RESEARCH.md) — what can really be read from the Claude, Copilot and Codex APIs, and with which limits
 - [`EVOLUTION.md`](EVOLUTION.md) — retrospective and future directions with a cost/benefit analysis
 - [`PLAN.md`](PLAN.md) — the original day-by-day plan
