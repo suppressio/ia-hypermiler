@@ -21,7 +21,7 @@ Instructions for every coding agent (Claude Code, Codex, pi, Copilot). Read it i
 | UI | Vanilla HTML + CSS + SVG — no framework, no bundler. The renderer compiles to native ES modules (`<script type="module">`) |
 | i18n | No library: typed flat dictionaries (`renderer/i18n/`, `main/i18n/`) + `Intl` |
 | Persistence | electron-store (with encryptionKey for secrets), normalized at startup (`store/normalize.ts`) |
-| Advice agent | Anthropic SDK for Node.js (`@anthropic-ai/sdk`) — `agents/advisor.ts` is still a stub |
+| Advice agent | `agents/advisor.ts` is a dormant stub, not wired. No Anthropic SDK: #29 will use plain HTTP calls through the accounts the user already connected |
 | Local insights (opt-in) | `@anthropic-ai/claude-agent-sdk` — reads local Claude Code sessions via `listSessions`/`getSessionMessages`, never by parsing the internal JSONL directly (see docs/RESEARCH.md §5) |
 | Build | `tsc` (three configs: `tsconfig.json` main/preload/services/store/budget/agents/tests — CommonJS; `tsconfig.renderer.json` renderer — ES modules; `tsconfig.renderer.test.json` renderer tests only, adds Node types) + `scripts/copy-assets.js` |
 | Lint | ESLint 10 + typescript-eslint `strictTypeChecked` (`eslint.config.mjs`) |
@@ -175,6 +175,7 @@ When a service receives a response whose format no longer matches the expected o
 - Context passed to the agent: consumption of the last 7 days, current daily budget, services used.
 - The result is cached in `electron-store` and regenerated at most once every 24 hours.
 - `model` is always `claude-sonnet-4-6`, `max_tokens: 1000`.
+- Dormant until #29; it will not use `@anthropic-ai/sdk` (removed from the dependencies in #35).
 
 ---
 
