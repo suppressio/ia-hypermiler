@@ -58,8 +58,10 @@ npm run package:test  # local test build: lint + tests, then .deb and Windows pa
 
 `.github/workflows/build.yml` builds on macOS, Windows and Linux in parallel from the same commit:
 
-- a pushed `v*` tag (e.g. `v0.4.0-beta`) → lint, tests, packages attached to the GitHub Release of the tag;
+- a pushed `v*` tag (e.g. `v0.4.0-beta`) → lint, tests, packages attached to the GitHub Release of the tag; `-rc` tags (e.g. `v0.4.14-beta-rc.1`) are skipped;
 - a manual run (`gh workflow run build.yml`, or the Actions tab) → test build: packages only as run artifacts (14 days), no release, no update notification.
+
+`.github/workflows/ci.yml` runs lint and tests on Linux for every PR to `next` and every push to it.
 
 Packages are not signed: macOS Gatekeeper and Windows SmartScreen show a warning at install time.
 
