@@ -10,6 +10,8 @@ name: Cross-platform build
   push:
     tags:
       - 'v*'
+      # A test tag (e.g. v0.4.14-beta-rc.1) must not publish a release.
+      - '!v*-rc*'
   workflow_dispatch:
 
 jobs:
