@@ -42,6 +42,10 @@ Tutti i valori qui sotto riguardano la finestra di quota mostrata, di solito que
 
 Codex mostra il **Limite 5 ore** e il **Limite settimanale**, entrambi rolling. Come per le altre finestre rolling, il limite di 5 ore si legge in ore: tempo al reset, previsionale al reset e autonomia al ritmo attuale, con gli indicatori giornalieri nascosti. Il limite settimanale si legge per giorno lavorativo. Altre finestre, come la revisione codice, compaiono con la propria etichetta solo se ChatGPT le comunica.
 
+### Vista compatta
+
+Il triangolo nella barra del titolo (tra riduci a icona e chiudi) riduce il widget alla sola percentuale e alla barra del consumo istantaneo della finestra con cui si apre; la finestra ha poi dimensione fissa. Un nuovo clic riporta alla vista completa, con la dimensione e la posizione precedenti. La scelta è ricordata tra i riavvii.
+
 ### Il verdetto di ogni finestra
 
 Si basa sulla quota che resta **adesso**, ripartita sui giorni lavorativi fino al reset, confrontata con una ripartizione uniforme di tutto il periodo:

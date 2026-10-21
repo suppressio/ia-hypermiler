@@ -90,6 +90,17 @@ function updatePinButton(active: boolean): void {
   btn.setAttribute('aria-pressed', String(active));
 }
 
+// Compact view: the triangle points right when compact, down when full (like the
+// collapsible sections); the layout switch is a body class (renderer/style.css).
+function updateCompactButton(compact: boolean): void {
+  const btn = byId('btn-compact', HTMLButtonElement);
+  const label = t(compact ? 'widget.expand' : 'widget.compact');
+  document.body.classList.toggle('compact', compact);
+  btn.setAttribute('aria-pressed', String(compact));
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+
 // Reveals buttons/drag handle while hovering the WHOLE window. DOM mouse events
 // were abandoned (mouseenter/leave, then mouseover/out): the
 // -webkit-app-region:drag strip is treated by the OS as a non-client area, so
@@ -818,6 +829,13 @@ async function togglePin(): Promise<void> {
   updatePinButton(next);
 }
 
+async function toggleCompact(): Promise<void> {
+  const next = !(state.settings?.ui.compact ?? false);
+  await window.hypermiler.setCompact(next);
+  if (state.settings) state.settings.ui.compact = next;
+  updateCompactButton(next);
+}
+
 async function init(): Promise<void> {
   const settings = await window.hypermiler.getSettings();
   state.settings = settings;
@@ -825,6 +843,7 @@ async function init(): Promise<void> {
   applyWindowStyle(settings.ui.windowStyle);
   applyAccentColor(settings.ui.accentColor);
   updatePinButton(settings.ui.alwaysOnTop);
+  updateCompactButton(settings.ui.compact);
   initHoverReveal();
 
   byId('btn-settings').addEventListener('click', () => {
@@ -836,6 +855,7 @@ async function init(): Promise<void> {
   byId('btn-close').addEventListener('click', () => {
     window.hypermiler.closeWindow();
   });
+  byId('btn-compact').addEventListener('click', () => { runGuarded(toggleCompact()); });
   byId('btn-pin').addEventListener('click', () => { runGuarded(togglePin()); });
   byId('btn-refresh').addEventListener('click', () => {
     // requestUsageRefresh() is fire-and-forget (ipcRenderer.send): the result
@@ -858,7 +878,10 @@ async function init(): Promise<void> {
     state.settings = updated;
     applyAccentColor(updated.ui.accentColor);
     updatePinButton(updated.ui.alwaysOnTop);
-    if (languageChanged) applyLanguage(updated);
+    if (languageChanged) {
+      applyLanguage(updated);
+      updateCompactButton(updated.ui.compact);
+    }
     // The warning colours follow the notification threshold (renderer/severity.ts).
     else if (thresholdChanged && state.latestSnapshot) renderSnapshot(state.latestSnapshot);
   });

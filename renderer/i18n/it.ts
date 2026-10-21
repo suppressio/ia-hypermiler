@@ -8,6 +8,8 @@ export const it: Record<MessageKey, string> = {
   'widget.refresh': 'Aggiorna ora',
   'widget.settings': 'Impostazioni',
   'widget.minimize': 'Riduci a icona',
+  'widget.compact': 'Vista compatta',
+  'widget.expand': 'Vista completa',
   'widget.hide': 'Nascondi',
   'widget.counts.creditRatio': '{used} / {total} crediti AI usati',
   'widget.counts.extraCreditRatio': '{used} / {total} USD di credito extra usati',
