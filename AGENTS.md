@@ -247,6 +247,19 @@ Same model as every repo managed by agent-ops (full rules: agent-ops `docs/BRANC
 - Agents run by the dispatcher work on the branch prepared for them (`agent/<n>-slug`) and do not push: the
   dispatcher pushes and opens the PR.
 
+### Pacing changes: spec, tests, code
+
+Any change to a quantity in `docs/PACING.md` §3 (values, verdict, tips, notification thresholds) goes in this
+order, in the same PR:
+
+1. update `PACING.md` and `PACING.it.md` (definition, edge case, invariant, example row);
+2. write the tests from the example rows and invariants, naming the ID (e.g. `D-3.20`, `I-3`);
+3. change the code until they pass.
+
+Presentation-only changes (layout, wording, colours that don't change a threshold) skip step 1. Review flags a
+PR that changes `budget.ts` or the indicators without touching `PACING.md`. Until #75 closes, a test written
+from the spec may fail on a known deviation (`PACING.md` §9): say so in the PR, don't bend the test to the code.
+
 ---
 
 ## Build and test
