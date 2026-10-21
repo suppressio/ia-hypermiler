@@ -74,7 +74,7 @@ body {
 /* "Always on top" pin: same neutral hover treatment as the other title bar buttons
    (see the per-skin rules below) both on and off — no more full --accent fill (a fully
    saturated "on" color was too intrusive, user feedback). Off: no effect. On: only a
-   static glow (no animation/pulsing, consistent with CLAUDE.md) to show the state
+   static glow (no animation/pulsing, consistent with AGENTS.md) to show the state
    without being eye-catching. */
 .titlebar-controls-left button.active {
   color: var(--accent);

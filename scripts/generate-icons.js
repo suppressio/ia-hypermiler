@@ -1,5 +1,5 @@
 // scripts/generate-icons.js — generates the app "gauge" icon (tray + window/package)
-// without adding external dependencies (see CLAUDE.md): a minimal vector rasterizer
+// without adding external dependencies (see AGENTS.md): a minimal vector rasterizer
 // with supersampling for antialiasing, wrapped in a hand-written PNG encoder (only
 // node:zlib for IDAT compression + a table-based CRC32 for the chunks).
 //

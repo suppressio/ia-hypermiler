@@ -1,7 +1,7 @@
 // scripts/copy-assets.js — copies the renderer's non-compiled assets (html, css,
 // images) into dist/renderer/, next to the JS produced by tsconfig.renderer.json.
 // Plain Node build script, no extra dependency, cross-platform (path.join, fs —
-// never OS-specific shell commands, see CLAUDE.md).
+// never OS-specific shell commands, see AGENTS.md).
 
 const fs = require('fs');
 const path = require('path');
