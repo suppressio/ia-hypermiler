@@ -1026,6 +1026,14 @@ function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
     const incoming = isPlainRecord(value) ? value : {};
     return { ...store.get('diagnostics'), autoReportFormatDrift: incoming.autoReportFormatDrift !== false };
   }
+  // Window geometry and the compact view follow the widget, not the Settings draft: a
+  // Save after moving or compacting the widget would otherwise write back the values
+  // the draft was opened with (compact flag lost, 260×132 then saved as the full size).
+  if (key === 'ui') {
+    const incoming = isPlainRecord(value) ? value : {};
+    const { bounds, compact } = store.get('ui');
+    return { ...incoming, bounds, compact };
+  }
   if (key !== 'accounts' || !Array.isArray(value)) return value;
   const current = getAccounts();
   // Validated before being touched: the renderer may send any value.

@@ -24,6 +24,10 @@ export function applyCompact(win: BrowserWindow, store: Store<AppSettings>, comp
   const full = store.get('ui').bounds;
   const { x, y } = win.getBounds();
   if (compact) {
+    // Save the full size now: a resize still waiting for the persistBounds debounce
+    // would keep the older stored size, since by then the flag already says compact.
+    // Only the full view is resizable, so an already compact window is never saved.
+    if (win.isResizable()) store.set('ui.bounds', win.getBounds());
     win.setMinimumSize(0, 0);
     win.setResizable(true);
     win.setBounds({ x, y, ...COMPACT_SIZE });
