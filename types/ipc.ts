@@ -28,6 +28,7 @@ export interface IpcInvokeChannels {
   'settings:get': { args: []; result: AppSettings };
   'settings:set': { args: [patch: Partial<AppSettings>]; result: AppSettings };
   'window:setAlwaysOnTop': { args: [value: boolean]; result: boolean };
+  'window:setCompact': { args: [value: boolean]; result: boolean };
   'window:setStyle': { args: [style: WindowStyle]; result: WindowStyle };
   'accounts:add': { args: [provider: ProviderId]; result: AccountId };
   'accounts:remove': { args: [id: AccountId]; result: NoResult };
@@ -72,6 +73,7 @@ export interface HypermilerBridge {
   requestUsageRefresh(): void;
   openSettingsWindow(): void;
   setAlwaysOnTop(value: boolean): Promise<boolean>;
+  setCompact(value: boolean): Promise<boolean>;
   setWindowStyle(style: WindowStyle): Promise<WindowStyle>;
   minimizeWindow(): void;
   closeWindow(): void;

@@ -36,6 +36,7 @@ const bridge: HypermilerBridge = {
 
   openSettingsWindow: () => { send('window:openSettings'); },
   setAlwaysOnTop: (value) => invoke('window:setAlwaysOnTop', value),
+  setCompact: (value) => invoke('window:setCompact', value),
   setWindowStyle: (style) => invoke('window:setStyle', style),
 
   minimizeWindow: () => { send('window:minimize'); },

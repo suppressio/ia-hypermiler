@@ -383,3 +383,18 @@ body.style-transparent-digital .account-tabs button.active {
 .current-count { margin-top: 2px; }
 .local-insights-tools ul { list-style: none; margin: 2px 0 0; padding: 0; font-size: 12px; }
 .local-insights-tools li { display: flex; justify-content: space-between; padding: 1px 0; }
+
+/* ---------- Compact view: percentage + instant gauge only ---------- */
+#btn-compact svg { transform: rotate(90deg); }
+body.compact #btn-compact svg { transform: none; }
+body.compact #account-tabs,
+body.compact #window-list,
+body.compact #current-count,
+body.compact #current-label,
+body.compact .gauge-header,
+body.compact .chart-section,
+body.compact .metrics-grid,
+body.compact .tips-section { display: none !important; }
+body.compact #app { padding: 0 14px; overflow: hidden; }
+body.compact .current-indicator { margin: 4px 0 10px; }
+body.compact .instant-gauge-section { margin-bottom: 0; }

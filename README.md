@@ -42,6 +42,10 @@ All the values below are about the quota window shown, usually the one needing a
 
 Codex shows the **5-hour limit** and **Weekly limit**, both rolling. As with the other rolling windows, the 5-hour limit reads in hours: time to reset, projection at reset and autonomy at the current pace, with daily indicators hidden. The weekly limit reads per working day. Other windows, such as code review, appear with their own label only if ChatGPT reports them.
 
+### Compact view
+
+The triangle in the title bar (between minimize and close) shrinks the widget to just the percentage and the instant consumption bar of the window it opens on; the window is then fixed in size. Click it again to get the full view back, at its previous size and position. The choice is remembered across restarts.
+
 ### The verdict on each window
 
 From the quota left **now**, spread over the working days until the reset, compared with an even split of the whole period:

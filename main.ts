@@ -7,7 +7,7 @@ import { app, dialog, BrowserWindow, Notification, shell, Menu, screen, utilityP
 import store, { DEFAULTS } from './store/index';
 import { normalizeSettings } from './store/normalize';
 import { isPlainRecord } from './store/merge';
-import { createMainWindow, createSettingsWindow } from './main/windows';
+import { applyCompact, createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
 import { captureClaudeSession, buildClaudeCookieHeader, migrateDefaultSessionCookies } from './main/claude-auth';
 import { captureGithubOAuthToken } from './main/copilot-oauth';
@@ -1154,6 +1154,13 @@ function registerIpcHandlers(): void {
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       sendToRenderer(settingsWindow, 'settings:update', redactSecretsForRenderer(store.store));
     }
+    return value;
+  });
+
+  handle('window:setCompact', (_event, rawValue: unknown) => {
+    const value = requireBoolean(rawValue, 'Compact view');
+    store.set('ui.compact', value);
+    if (mainWindow && !mainWindow.isDestroyed()) applyCompact(mainWindow, store, value);
     return value;
   });
 

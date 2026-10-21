@@ -9,6 +9,8 @@ export const en = {
   'widget.refresh': 'Refresh now',
   'widget.settings': 'Settings',
   'widget.minimize': 'Minimize',
+  'widget.compact': 'Compact view',
+  'widget.expand': 'Full view',
   'widget.hide': 'Hide',
   'widget.counts.creditRatio': '{used} / {total} AI credits used',
   'widget.counts.extraCreditRatio': '{used} / {total} USD of extra credit used',

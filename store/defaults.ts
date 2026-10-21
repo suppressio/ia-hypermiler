@@ -35,6 +35,8 @@ export const DEFAULTS: AppSettings = {
     language: 'auto',
     windowStyle: 'filled',
     alwaysOnTop: false,
+    // Compact view of the widget (percentage + instant gauge only).
+    compact: false,
     accentColor: '#2563eb',
     // x/y missing until the user moves the window (see main/windows.ts).
     bounds: { width: 360, height: 480 },
