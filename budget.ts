@@ -234,7 +234,7 @@ export interface PeriodContext {
   periodEnd: Date | string;
   now?: Date;
   // Part of today already worked (todayElapsedUnits). Required: a "safe" default
-  // would hide a missing wiring (see CLAUDE.md, lessons learned).
+  // would hide a missing wiring (see AGENTS.md, lessons learned).
   todayElapsedUnits: number;
   // Pace of the last completed working days (recentPacePerUnit), null when there are
   // not enough of them — projection and autonomy blend it with the period average.
@@ -759,7 +759,7 @@ export interface WindowVerdictContext {
 // spread over every working day left, so even a day at twice or three times the even
 // share moves the quota per day by only a few percent early in a monthly period — a
 // wider band would hide it until late in the period. Heuristics, like the other
-// pacing constants: to be verified with real use (CLAUDE.md, open items).
+// pacing constants: to be verified with real use (AGENTS.md, open items).
 export const REDISTRIBUTION_AT_RISK_RATIO = 0.5;
 export const REDISTRIBUTION_ON_TRACK_LOW = 0.95;
 export const REDISTRIBUTION_ON_TRACK_HIGH = 1.05;

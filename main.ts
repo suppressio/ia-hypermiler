@@ -1,7 +1,7 @@
 // main.ts — Electron main process
 // Day 2, Session 1: real data from services/claude.ts and services/copilot.ts instead
 // of the Day 1 mock. When a fetch fails, the last known data is shown with its
-// timestamp (never a blank screen, see CLAUDE.md).
+// timestamp (never a blank screen, see AGENTS.md).
 
 import { app, dialog, BrowserWindow, Notification, shell, Menu, screen, utilityProcess } from 'electron';
 import store, { DEFAULTS } from './store/index';
@@ -53,7 +53,7 @@ import type {
   WindowStyle,
 } from './types/index';
 
-const DEFAULT_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes, as per CLAUDE.md
+const DEFAULT_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes, as per AGENTS.md
 // New-version check (issue #5): at startup (with a short delay, not to overlap
 // the first usage refresh) and then every 24 hours.
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -66,7 +66,7 @@ const LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 // Promises launched "in the background" (timers, fire-and-forget IPC, after an IPC
 // reply was already sent): never an unhandled rejection, which Node would log without
-// context or, worse, would leave the app half-way with no trace (CLAUDE.md: never
+// context or, worse, would leave the app half-way with no trace (AGENTS.md: never
 // silent failures).
 function runDetached(label: string, task: Promise<unknown>): void {
   task.catch((err: unknown) => {
@@ -559,7 +559,7 @@ function updateAccount(id: AccountId, update: (cfg: AccountConfig) => AccountCon
 type StampedUsage = RawAccountUsage & { accountId: AccountId; lastUpdatedAt: string; stale: boolean; lastError?: string };
 
 // 401/403 from a service (expired or revoked sessionKey/PAT) is the only case where
-// we can give practical advice instead of the service's raw message — see CLAUDE.md,
+// we can give practical advice instead of the service's raw message — see AGENTS.md,
 // progress log, session about the account_session_invalid error.
 function friendlyErrorMessage(err: unknown): string {
   const error = err as Error & { status?: number };
@@ -621,7 +621,7 @@ async function fetchAccountOrFallback(
 // there is no previous data yet (store.history.lastGood.*): without it, the renderer
 // cannot tell "not connected" from "connected but the sync just failed", and shows the
 // wrong message ("No account connected") even when the account IS connected — see
-// CLAUDE.md, "never a blank screen or silent failure".
+// AGENTS.md, "never a blank screen or silent failure".
 // ---------------------------------------------------------------------------
 // Automatic "format drift" report (user feedback, Day 3): when a service detects that
 // an endpoint format is no longer the expected one (FormatDriftError, see
@@ -960,7 +960,7 @@ async function refreshOnce(mode: RefreshMode): Promise<void> {
 // ---------------------------------------------------------------------------
 // IPC
 // ---------------------------------------------------------------------------
-// The renderer must never receive real secrets (sessionKey, PAT) — see CLAUDE.md
+// The renderer must never receive real secrets (sessionKey, PAT) — see AGENTS.md
 // "Electron security". `store.store` holds them in clear (the main process needs them
 // to authenticate calls), so every time it crosses the IPC boundary towards the
 // renderer they are replaced with a placeholder: it keeps the "is connected?" boolean

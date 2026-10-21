@@ -1,5 +1,5 @@
 // preload.ts — secure renderer <-> main bridge via contextBridge
-// nodeIntegration: false and contextIsolation: true are mandatory (see CLAUDE.md).
+// nodeIntegration: false and contextIsolation: true are mandatory (see AGENTS.md).
 // Exposes only the needed IPC channels, no direct Node/Electron access in the renderer.
 // Channel names and payload types come from the shared contract (types/ipc.ts).
 
