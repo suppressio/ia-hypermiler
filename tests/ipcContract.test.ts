@@ -37,12 +37,24 @@ function channelKeys(source: string, name: string): string[] {
   const body = source.slice(start);
   const end = body.indexOf('\n}');
   const keys: string[] = [];
-  for (const m of body.slice(0, end).matchAll(/^ {2}'([^']+)':/gm)) {
-    if (m[1] !== undefined) keys.push(m[1]);
+  // Every top-level member line must parse as a key, so a key written another way fails
+  // here instead of silently dropping out of the checks below.
+  for (const line of body.slice(0, end).split('\n').slice(1)) {
+    // Skip deeper continuation lines, comments and the closers of a multiline member.
+    if (!/^ {2}\S/.test(line) || /^ {2}(\/\/|\/\*|\*|[}\]])/.test(line)) continue;
+    const m = /^ {2}(['"])([^'"]+)\1:/.exec(line);
+    assert.ok(m?.[2] !== undefined, `${name}: cannot parse member line: ${line}`);
+    keys.push(m[2]);
   }
   assert.ok(keys.length > 0, `${name} has no channels`);
   return keys;
 }
+
+test('channelKeys reads both quote styles and fails on a top-level member it cannot parse', () => {
+  const src = "export interface M {\n  'a:b': [];\n  \"c:d\": [];\n  // note\n  'e:f': {\n    args: [];\n  };\n}\n";
+  assert.deepEqual(channelKeys(src, 'M'), ['a:b', 'c:d', 'e:f']);
+  assert.throws(() => channelKeys("export interface M {\n  'a:b': [];\n  `c:d`: [];\n}\n", 'M'), /cannot parse/);
+});
 
 function usedChannels(code: string, fn: string): Set<string> {
   return new Set([...code.matchAll(new RegExp(`\\b${fn}\\(\\s*(?:\\w+,\\s*)?'([^']+)'`, 'g'))].map((m) => m[1] ?? ''));
