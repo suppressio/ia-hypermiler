@@ -32,7 +32,7 @@ The packages are not signed: Windows SmartScreen and macOS Gatekeeper show a war
    **GitHub Copilot**: paste a Personal Access Token (fine-grained, *Plan* read-only, or classic with no scope), or sign in with a GitHub OAuth App. For a company seat on a `<name>.ghe.com` tenant, set the GitHub domain first.
 3. Optional, per account: the **work schedule** (last section of the account) and, only when the provider does not report it, the **renewal day**.
 
-The widget stays in the tray when you close it; *Quit* is in the tray menu.
+The tray icon shows the usage of your most used account as a coloured number (green, orange, red like the widget, grey when the data is stale; on macOS it is the text next to the icon), and its tooltip lists every account. Choose another account or turn it off in Settings → Appearance. The widget stays in the tray when you close it; *Quit* is in the tray menu.
 
 ---
 

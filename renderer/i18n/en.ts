@@ -257,6 +257,9 @@ export const en = {
   'settings.appearance.refresh30': '30 minutes',
   'settings.appearance.refresh60': '60 minutes',
   'settings.appearance.alwaysOnTop': 'Always on top',
+  'settings.appearance.trayBadge': 'Tray icon shows',
+  'settings.appearance.trayBadgeCritical': 'Most used account',
+  'settings.appearance.trayBadgeOff': 'Nothing (plain icon)',
   'settings.appearance.accentColor': 'Accent color',
 
   // --- Settings: notifications ----------------------------------------------------

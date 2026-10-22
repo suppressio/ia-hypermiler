@@ -32,7 +32,7 @@ I pacchetti non sono firmati: Windows SmartScreen e macOS Gatekeeper mostrano un
    **GitHub Copilot**: incolla un Personal Access Token (fine-grained con *Plan* in sola lettura, o classic senza scope), oppure accedi con una GitHub OAuth App. Per una licenza aziendale su un tenant `<nome>.ghe.com`, imposta prima il dominio GitHub.
 3. Facoltativo, per ogni account: il **calendario di lavoro** (ultima sezione dell'account) e, solo se il provider non lo comunica, il **giorno di rinnovo**.
 
-Chiudendo il widget l'app resta nel tray; *Esci* è nel menu del tray.
+L'icona nel tray mostra l'utilizzo dell'account più usato come numero colorato (verde, arancione, rosso come nel widget, grigio se i dati non sono aggiornati; su macOS è il testo accanto all'icona) e il tooltip elenca tutti gli account. Puoi sceglierne un altro o disattivarlo in Impostazioni → Aspetto. Chiudendo il widget l'app resta nel tray; *Esci* è nel menu del tray.
 
 ---
 

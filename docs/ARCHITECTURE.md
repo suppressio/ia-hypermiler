@@ -191,7 +191,8 @@ Metrics panel:
 Native Electron `Tray` with a per-platform icon (`.ico`/`.png`/`.icns` assets handled by `electron-builder`). Uniform behaviour:
 - Left click → show/hide the main window (on macOS a left click usually opens the menu: show/hide is therefore also an explicit menu entry, for consistency on every platform).
 - Right click (or click on macOS) → context menu: Show/Hide, Settings, Refresh now, Always on top (quick toggle), Quit; plus "Update available (X)…" when a new version exists.
-- Icon tooltip: quick summary (e.g. "Claude 62% · Copilot 40%").
+- Icon tooltip: every account's critical-window percentage (e.g. "Claude 62% · Copilot 40%"), stale data marked (`main/traySummary.ts`).
+- Usage badge (`main/trayBadge.ts`, `ui.trayBadge`: `critical` default = highest account across accounts, `off`, or one account id; Settings → Appearance): **Windows/Linux** replace the icon with a 32 px bitmap drawn in code (rounded square, white digits, no asset or dependency) coloured like the widget (green / orange / red from the notification threshold, grey when stale); **macOS** keeps the icon and sets the menu-bar title (`62%`, `*` when stale). Windows' taskbar overlay is not used: it belongs to windows, and the app is tray-only. Linux relies on the StatusNotifier icon pixmap; some shells (e.g. GNOME without the AppIndicator extension) show no tray at all. The bitmap is re-rendered only when the shown number or tone changes, on a refresh — nothing runs between refreshes.
 
 ---
 

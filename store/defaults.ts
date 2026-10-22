@@ -43,6 +43,7 @@ export const DEFAULTS: AppSettings = {
     chartRange: 'week',
     refreshIntervalMinutes: 30,
     notificationThresholdPercent: 80,
+    trayBadge: 'critical',
   },
 
   history: {

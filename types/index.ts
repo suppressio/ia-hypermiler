@@ -385,6 +385,8 @@ export interface UiSettings {
   chartRange: ChartRange;
   refreshIntervalMinutes: number;
   notificationThresholdPercent: number;
+  // Tray icon badge: 'off', 'critical' (highest account) or an account id.
+  trayBadge: string;
 }
 
 export interface HistorySettings {

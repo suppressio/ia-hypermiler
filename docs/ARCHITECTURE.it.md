@@ -191,7 +191,8 @@ Riquadro metriche:
 `Tray` nativo Electron con icona per piattaforma (asset `.ico`/`.png`/`.icns` gestiti da `electron-builder`). Comportamento uniforme proposto:
 - Click sinistro → toggle mostra/nascondi finestra principale (su macOS il click sinistro apre di norma il menu: gestiamo quindi mostra/nascondi anche da un voce di menu esplicita, per coerenza su tutte le piattaforme).
 - Click destro (o click su macOS) → menu contestuale: Mostra/Nascondi, Impostazioni, Aggiorna ora, Always-on-top (toggle rapido), Esci; più "Aggiornamento disponibile (X)…" quando c'è una nuova versione.
-- Tooltip icona: sintesi rapida (es. "Claude 62% · Copilot 40%").
+- Tooltip icona: percentuale della finestra critica di ogni account (es. "Claude 62% · Copilot 40%"), dati non aggiornati segnalati (`main/traySummary.ts`).
+- Badge di utilizzo (`main/trayBadge.ts`, `ui.trayBadge`: `critical` predefinito = l'account più usato, `off`, oppure l'id di un account; Impostazioni → Aspetto): **Windows/Linux** sostituiscono l'icona con una bitmap 32 px disegnata nel codice (quadrato arrotondato, cifre bianche, nessun asset né dipendenza) colorata come il widget (verde / arancione / rosso dalla soglia di notifica, grigia se non aggiornata); **macOS** tiene l'icona e imposta il titolo nella barra dei menu (`62%`, `*` se non aggiornato). L'overlay della barra delle applicazioni di Windows non è usato: appartiene alle finestre e l'app vive nel tray. Linux usa il pixmap StatusNotifier; alcune shell (es. GNOME senza l'estensione AppIndicator) non mostrano il tray. La bitmap è ridisegnata solo quando cambia il numero o il tono mostrato, durante un aggiornamento: tra un aggiornamento e l'altro non gira nulla.
 
 ---
 
