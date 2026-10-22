@@ -8,7 +8,7 @@ import type { TrayViewState, UsageView } from '../types/index';
 
 // Exercise the actual panel selection wiring without a browser or Electron.
 const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'app.js'), 'utf8');
-const functions = ['panelView', 'applyView', 'selectAccount', 'selectWindowSnapshot'].map(name => {
+const functions = ['panelView', 'applyView', 'choosePanelView', 'selectAccount', 'selectWindowSnapshot'].map(name => {
   const body = source.match(new RegExp(`function ${name}\\([^]*?\\n\\}`))?.[0];
   assert.ok(body, `${name} must exist in the built renderer`);
   return body;
@@ -45,4 +45,19 @@ test('an account tab uses that account critical window instead of another accoun
   const select = new Script(`${functions}\nselectWindowSnapshot`).runInNewContext({ state }) as (account: typeof a) => (typeof a.windows)[number];
   assert.equal(select(a).window.id, '5h');
   assert.equal(select(b).window.id, 'weekly');
+});
+
+test('a panel click with the badge Off browses locally and leaves the badge Off', () => {
+  const off: TrayViewState = { selection: { view: { mode: 'off' }, critical: true }, shown: null, entries: [] };
+  const sent: unknown[] = [];
+  const state = { view: off, localView: null as UsageView | null, latestSnapshot: { accounts: [a, b] } };
+  const context = { state, renderSnapshot: () => undefined, runGuarded: () => undefined,
+    window: { hypermiler: { setView: (choice: unknown) => { sent.push(choice); } } } };
+  const choose = new Script(`${functions}\nchoosePanelView`).runInNewContext(context) as (view: UsageView) => void;
+  choose({ accountId: 'b', windowId: '5h' });
+  assert.deepEqual(sent, []);
+  assert.deepEqual({ ...state.localView }, { accountId: 'b', windowId: '5h' });
+  state.view = { ...off, selection: { view: { mode: 'auto' }, critical: true } };
+  choose({ accountId: 'a', windowId: 'weekly' });
+  assert.deepEqual(sent.map(c => ({ ...(c as object) })), [{ mode: 'manual', accountId: 'a', windowId: 'weekly' }]);
 });

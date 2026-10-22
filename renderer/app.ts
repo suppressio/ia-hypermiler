@@ -683,6 +683,17 @@ function applyView(updated: TrayViewState): void {
   if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
 }
 
+// A panel click selects that view as Manual, except with the badge Off: the user turned
+// the badge off, so the panel only browses locally.
+function choosePanelView(view: UsageView): void {
+  if (state.view?.selection.view.mode === 'off') {
+    state.localView = view;
+    if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+    return;
+  }
+  runGuarded(window.hypermiler.setView({ mode: 'manual', ...view }));
+}
+
 function selectAccount(snapshot: UsageSnapshot): AccountSnapshot | undefined {
   const accounts = snapshot.accounts;
   const view = panelView();
@@ -709,7 +720,7 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
     btn.className = id === activeId ? 'active' : '';
     btn.addEventListener('click', () => {
       const win = selectWindowSnapshot(account);
-      if (win) runGuarded(window.hypermiler.setView({ mode: 'manual', accountId: id, windowId: win.window.id }));
+      if (win) choosePanelView({ accountId: id, windowId: win.window.id });
     });
     nav.appendChild(btn);
   });
@@ -772,7 +783,7 @@ function renderWindowList(account: AccountSnapshot): void {
 
     row.append(dot, label, bar, pct, verdict);
     row.addEventListener('click', () => {
-      runGuarded(window.hypermiler.setView({ mode: 'manual', accountId: account.accountId, windowId: winSnap.window.id }));
+      choosePanelView({ accountId: account.accountId, windowId: winSnap.window.id });
     });
     list.appendChild(row);
   });
