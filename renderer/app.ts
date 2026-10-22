@@ -89,7 +89,7 @@ function syncMotion(): void {
   document.body.classList.toggle('motion-effects', motion.effects);
   document.body.classList.toggle('motion-hidden', document.hidden);
   document.body.classList.toggle('motion-disabled', state.settings?.ui.animations === false);
-  // Compact view: the account name carries the alarm, the window rows are hidden (style.css).
+  // Compact or single-window view: the label carries the alarm, no window rows (style.css).
   document.body.classList.toggle('alarm', alarmed);
   document.body.classList.toggle('refresh-border-active', refreshing && motion.effects);
   document.body.classList.toggle('refresh-rotate', refreshing && motion.rotateRefresh);
@@ -709,6 +709,8 @@ function renderWindowList(account: AccountSnapshot): void {
   // Always emptied, even when hidden: no row of another account may stay in the
   // DOM (see [hidden] in style.css, 0.2.0 bug).
   list.innerHTML = '';
+  // Without rows, the label under the value is the only place for the alarm (style.css).
+  document.body.classList.toggle('single-window', account.windows.length <= 1);
   if (account.windows.length <= 1) {
     list.hidden = true;
     return;
