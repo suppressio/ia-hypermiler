@@ -23,7 +23,7 @@ Instructions for every coding agent (Claude Code, Codex, pi, Copilot). Read it i
 | Persistence | electron-store (with encryptionKey for secrets), normalized at startup (`store/normalize.ts`) |
 | Advice agent | `agents/advisor.ts` is a dormant stub, not wired. No Anthropic SDK: #29 will use plain HTTP calls through the accounts the user already connected |
 | Local insights (opt-in) | `@anthropic-ai/claude-agent-sdk` — reads local Claude Code sessions via `listSessions`/`getSessionMessages`, never by parsing the internal JSONL directly (see docs/RESEARCH.md §5) |
-| Build | `tsc` (three configs: `tsconfig.json` main/preload/services/store/budget/agents/tests — CommonJS; `tsconfig.renderer.json` renderer — ES modules; `tsconfig.renderer.test.json` renderer tests only, adds Node types) + `scripts/copy-assets.js` |
+| Build | `tsc` (three configs: `tsconfig.json` main/preload/core/services/store/budget/agents/tests — CommonJS; `tsconfig.renderer.json` renderer — ES modules; `tsconfig.renderer.test.json` renderer tests only, adds Node types) + `scripts/copy-assets.js` |
 | Lint | ESLint 10 + typescript-eslint `strictTypeChecked` (`eslint.config.mjs`) |
 | Tests | `node:test` + `node:assert` (no external test library); coverage via Node's built-in `--experimental-test-coverage` |
 | Packaging | electron-builder |
@@ -59,8 +59,10 @@ ia-hypermiler/
 │   ├── copy-assets.js           ← copies renderer html/css into dist/renderer/ + writes dist/renderer/package.json {type: module}
 │   └── generate-icons.js        ← one-off "gauge" icon generator (build/icon.png, build/icons/*, renderer/assets/*.png)
 ├── build/                       ← electron-builder resources (icons) — TRACKED, not an output (packages go to release/)
-├── main.ts                      ← Electron main process (lifecycle, IPC, refresh, update checks)
+├── main.ts                      ← Electron main process: wiring only (lifecycle, windows, tray, IPC, timers, notifications, update checks)
 ├── preload.ts                   ← contextBridge renderer ↔ main
+├── core/
+│   └── usage.ts                 ← fetch orchestration + snapshot computation (createUsageCore, computeAccountSnapshot…): store, provider fetch, local insights, clock and error reporting injected, no Electron (+ usage.test.ts)
 ├── main/
 │   ├── ipc.ts                   ← typed handle/listen/sendToRenderer wrappers keyed on types/ipc.ts
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
@@ -335,7 +337,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **UTC day keys**: `toISOString().slice(0, 10)` is the UTC day, `new Date('YYYY-MM-DD')` is UTC midnight — both wrong for local working days → `localDateKey`/`parseDateKey`.
 
 ### Open items
-- Next agreed step (the shared IPC contract `types/ipc.ts` is done, #22): extracting a testable core from `main.ts` (docs/EVOLUTION.md 2a) and working test-first.
+- The testable core is extracted (`core/usage.ts`, #23). Next: the headless CLI on top of it (docs/EVOLUTION.md 2b); new orchestration/snapshot logic goes in `core/`, test-first, not in `main.ts`.
 - **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), architecture review and simplifications (#12, includes the IPC contract and core extraction below). **Milestone v1.0.0** (out of beta): signed Windows/macOS installers (#11).
 - `agents/advisor.ts` is a stub.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).
