@@ -24,6 +24,7 @@
   },
   "include": [
     "*.ts",
+    "core/**/*.ts",
     "store/**/*.ts",
     "services/**/*.ts",
     "agents/**/*.ts",

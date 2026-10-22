@@ -72,6 +72,7 @@ I pacchetti non sono firmati: macOS Gatekeeper e Windows SmartScreen mostrano un
 ```
 ia-hypermiler/
 ├── main.ts, preload.ts        ← processo principale Electron + bridge sicuro verso il renderer
+├── core/                      ← orchestrazione dei fetch e calcolo degli snapshot, store iniettato, senza Electron (+ test)
 ├── main/                      ← finestre, tray, login Claude/Codex, OAuth, logica per provider, ritmo dei refresh, i18n del main
 ├── renderer/                  ← widget e finestra Impostazioni (HTML/CSS/TS vanilla) + i18n dell'interfaccia
 ├── services/                  ← fetch dell'utilizzo Claude/Copilot/Codex, sessioni locali, controllo aggiornamenti (+ test)
@@ -110,4 +111,5 @@ Approfondimenti:
 - ✅ CI multipiattaforma che pubblica le pre-release; build di prova locali
 - 🟨 Agente consigli (`agents/advisor.ts`) ancora uno stub
 - ✅ Contratto IPC condiviso tra main, preload e renderer (`types/ipc.ts`)
-- ⬜ Prossimi passi: estrazione da `main.ts` di un nucleo testabile per lavorare test-first
+- ✅ Nucleo testabile estratto da `main.ts` (`core/usage.ts`, store e fetch dei provider iniettati)
+- ⬜ Prossimi passi: CLI headless sopra il nucleo (docs/EVOLUTION.md 2b)
