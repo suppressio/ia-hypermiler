@@ -135,10 +135,12 @@ Se li attivi su un account Claude, l'app legge le sessioni di Claude Code su que
 | Sezione | Cosa puoi impostare |
 |---|---|
 | **Account** | aggiungere, connettere, disconnettere (cancella la sessione salvata), attivare/disattivare; per account: nome, calendario di lavoro, giorno di rinnovo se il provider non lo comunica, metodo di login Claude e insight locali, dominio e autenticazione Copilot |
-| **Aspetto** | lingua, stile della finestra (chiaro, scuro, trasparente), intervallo del grafico (7 o 30 giorni), intervallo di aggiornamento, colore d'accento |
+| **Aspetto** | lingua, stile della finestra (chiaro, scuro, trasparente), intervallo del grafico (7 o 30 giorni), intervallo di aggiornamento, colore d'accento, animazioni della finestra (attive di default) |
 | **Notifiche** | soglia di allarme (%), usata anche per i colori |
 | **Aggiornamenti** | versione installata, controllo manuale e automatico; **Guida** apre questa pagina |
 | **Diagnostica** | segnalazione automatica di un cambio di formato del provider; file di report di diagnosi |
+
+Le animazioni della finestra mostrano una pulsazione di allarme ogni 10 secondi quando l'account visualizzato ha una quota a rischio o esaurita, cifre scorrevoli quando cambia la percentuale principale e un segmento nel colore d'accento attorno alla finestra durante ogni aggiornamento, avviato dal widget, dal timer, dal tray o dalle Impostazioni. Disattivandole resta un bordo di allarme statico e ruota solo l'icona di aggiornamento. Con la preferenza di sistema per ridurre il movimento non si muove nulla: l'aggiornamento usa un'icona attenuata con tooltip «Aggiornamento…». Gli effetti si fermano a finestra nascosta o ridotta a icona; il tray resta statico.
 
 ## Notifiche
 

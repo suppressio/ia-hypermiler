@@ -1,4 +1,4 @@
-/* style.css — three skins (see docs/ARCHITECTURE.md §2). Plain, no animation/pulsing. */
+/* style.css — three skins, optional state animations (docs/ARCHITECTURE.md §2). */
 
 /* The `hidden` attribute must win over any `display` set by a class (e.g.
    .window-list/.account-tabs are display:flex): without this rule the author display
@@ -74,7 +74,7 @@ body {
 /* "Always on top" pin: same neutral hover treatment as the other title bar buttons
    (see the per-skin rules below) both on and off — no more full --accent fill (a fully
    saturated "on" color was too intrusive, user feedback). Off: no effect. On: only a
-   static glow (no animation/pulsing, consistent with AGENTS.md) to show the state
+   static glow to show the state
    without being eye-catching. */
 .titlebar-controls-left button.active {
   color: var(--accent);
@@ -299,7 +299,7 @@ body.style-transparent-digital .account-tabs button.active {
 .window-row.verdict-at-risk .window-row-bar > span { background: var(--warning); }
 
 .current-indicator { text-align: center; margin: 8px 0 16px; }
-.current-value { font-size: 42px; font-weight: 700; line-height: 1; }
+.current-value { font-size: 42px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .current-label { font-size: 12px; opacity: 0.75; margin-top: 4px; }
 
 .instant-gauge-section { margin-bottom: 14px; }
@@ -398,3 +398,94 @@ body.compact .tips-section { display: none !important; }
 body.compact #app { padding: 0 14px; overflow: hidden; }
 body.compact .current-indicator { margin: 4px 0 10px; }
 body.compact .instant-gauge-section { margin-bottom: 0; }
+
+/* ---------- Optional window state animations ---------- */
+/* Static glows are painted once: only opacity changes during the alarm pulse.
+   The inset warning border remains readable on white, even with motion disabled. */
+body::after,
+body::before {
+  content: '';
+  position: fixed;
+  inset: 1px;
+  border: 1px solid var(--warning);
+  border-radius: 5px;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+}
+body.alarm::after { opacity: 0.35; }
+body::before { box-shadow: inset 0 0 10px var(--warning); }
+body.style-filled::before { border-width: 2px; box-shadow: none; }
+body.alarm-pulse::before { animation: alarm-pulse 1500ms ease-in-out; }
+@keyframes alarm-pulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.7; }
+}
+
+.odometer-digit {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  vertical-align: bottom;
+  font-variant-numeric: tabular-nums;
+}
+.odometer-strip { display: block; transition: transform 700ms ease-out; }
+.odometer-strip > span { display: block; height: 1em; line-height: 1; }
+.odometer-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.refresh-border {
+  display: none;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 11;
+}
+.refresh-border-active .refresh-border { display: block; }
+.refresh-border > span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 4px 1px var(--accent);
+  transform-origin: 0 0;
+  animation: refresh-border 2400ms linear infinite;
+}
+/* Viewport coordinates track resizing and compact view without a JS frame loop.
+   Rotate only at corners; each straight edge uses translation alone. */
+@keyframes refresh-border {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  24.99% { transform: translate(calc(100vw - 4px), 0) rotate(0deg); }
+  25% { transform: translate(calc(100vw - 4px), 0) rotate(90deg); }
+  49.99% { transform: translate(calc(100vw - 4px), calc(100vh - 4px)) rotate(90deg); }
+  50% { transform: translate(calc(100vw - 4px), calc(100vh - 4px)) rotate(180deg); }
+  74.99% { transform: translate(0, calc(100vh - 4px)) rotate(180deg); }
+  75% { transform: translate(0, calc(100vh - 4px)) rotate(270deg); }
+  99.99% { transform: translate(0, 0) rotate(270deg); }
+  100% { transform: translate(0, 0) rotate(360deg); }
+}
+#btn-refresh:disabled { opacity: 0.5; cursor: default; }
+.refresh-rotate #btn-refresh svg { animation: refresh-rotate 1000ms linear infinite; }
+@keyframes refresh-rotate { to { transform: rotate(360deg); } }
+
+/* Includes existing hover transitions: reduced motion means no motion at all. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+body.motion-disabled *, body.motion-disabled *::before, body.motion-disabled *::after {
+  transition: none !important;
+}
+body.motion-hidden *, body.motion-hidden *::before, body.motion-hidden *::after,
+body.motion-hidden::before, body.motion-hidden::after {
+  animation: none !important;
+  transition: none !important;
+}

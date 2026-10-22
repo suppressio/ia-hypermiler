@@ -7,6 +7,7 @@ export const en = {
   // --- Widget: title bar -----------------------------------------------------
   'widget.pin': 'Always on top',
   'widget.refresh': 'Refresh now',
+  'widget.refreshing': 'Refreshing…',
   'widget.settings': 'Settings',
   'widget.minimize': 'Minimize',
   'widget.compact': 'Compact view',
@@ -257,6 +258,7 @@ export const en = {
   'settings.appearance.refresh30': '30 minutes',
   'settings.appearance.refresh60': '60 minutes',
   'settings.appearance.alwaysOnTop': 'Always on top',
+  'settings.appearance.animations': 'Window animations',
   'settings.appearance.trayBadge': 'Tray icon shows',
   'settings.appearance.trayBadgeCritical': 'Most used account',
   'settings.appearance.trayBadgeOff': 'Nothing (plain icon)',

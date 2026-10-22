@@ -509,11 +509,17 @@ function takeQueuedRefresh(): RefreshMode | null {
 }
 
 async function refreshOnce(mode: RefreshMode): Promise<void> {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    sendToRenderer(mainWindow, 'usage:refreshing', true);
+  }
   let built: { snapshot: UsageSnapshot; consumptionRose: boolean | null };
   const startedAt = Date.now();
   try {
     built = await usageCore.buildUsageSnapshot(mode);
   } catch (err) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      sendToRenderer(mainWindow, 'usage:refreshing', false);
+    }
     console.error('[main] usage refresh failed:', err);
     scheduleRefreshLoop();
     return;

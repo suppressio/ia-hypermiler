@@ -380,6 +380,7 @@ export interface UiSettings {
   windowStyle: WindowStyle;
   alwaysOnTop: boolean;
   compact: boolean;
+  animations: boolean;
   accentColor: string;
   bounds: { x?: number; y?: number; width: number; height: number };
   chartRange: ChartRange;

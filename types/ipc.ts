@@ -58,6 +58,7 @@ export interface IpcSendChannels {
 
 /** main → renderer (`webContents.send` / `ipcRenderer.on`): arguments of the event. */
 export interface IpcEventChannels {
+  'usage:refreshing': [refreshing: boolean];
   'usage:update': [snapshot: UsageSnapshot];
   'settings:update': [settings: AppSettings];
   'window:hoverChanged': [isHovering: boolean];
@@ -68,6 +69,7 @@ export interface HypermilerBridge {
   getSettings(): Promise<AppSettings>;
   setSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   onUsageUpdate(callback: (snapshot: UsageSnapshot) => void): () => void;
+  onUsageRefreshing(callback: (refreshing: boolean) => void): () => void;
   onSettingsUpdate(callback: (settings: AppSettings) => void): () => void;
   onWindowHoverChanged(callback: (isHovering: boolean) => void): () => void;
   requestUsageRefresh(): void;

@@ -111,6 +111,7 @@ Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del fi
     language: 'auto' | 'en' | 'it',       // 'auto' segue la lingua del sistema (vedi §4c)
     windowStyle: 'filled' | 'filled-dark' | 'transparent-digital',
     alwaysOnTop: boolean,
+    animations: boolean,                 // default true; reduced motion ha la precedenza
     accentColor: string,
     bounds: { x, y, width, height },       // posizione/dimensione persistita
     chartRange: 'week' | 'month',
@@ -154,7 +155,15 @@ sfondo opaco, layout a blocchi con bordi. *(Aggiornato:)* sempre `frame: false` 
 Stessa struttura opaca/non trasparente della skin classica, con colori invertiti (sfondo scuro, testo chiaro) — vedi i token `--*-filled-dark` in `renderer/style.css`. Nessuna differenza di comportamento rispetto alla skin classica oltre ai colori (stessa titlebar custom, stesso comportamento hover, stesso layout).
 
 **Stile "trasparente/digitale":**
-`frame: false`, `transparent: true`, `titleBarStyle` nascosto. Numeri/barre in stile HUD (font monospazio, glow leggero — restando comunque sobri per rispettare "no animazioni" di `CLAUDE.md`: niente pulsazioni, solo contrasto/opacità statici). Pulsanti di sistema (chiudi/riduci) ricreati come controlli custom in overlay, `opacity: 0` di default e `opacity: 1` solo on-hover via CSS, con `-webkit-app-region: drag` sull'area libera per permettere lo spostamento finestra senza barra del titolo nativa.
+`frame: false`, `transparent: true`, `titleBarStyle` nascosto. Numeri/barre in stile HUD (font monospazio, glow statico leggero). Pulsanti di sistema (chiudi/riduci) ricreati come controlli custom in overlay, `opacity: 0` di default e `opacity: 1` solo on-hover via CSS, con `-webkit-app-region: drag` sull'area libera per permettere lo spostamento finestra senza barra del titolo nativa.
+
+**Animazioni di stato opzionali (#119):** le animazioni sono ammesse ma devono essere disattivabili, sobrie, comunicare uno stato e fermarsi con `prefers-reduced-motion`. Impostazioni → Aspetto → **Animazioni della finestra** (`ui.animations`, default `true`, normalizzato anche per gli store esistenti) controlla tre effetti nel solo renderer, senza dipendenze:
+
+- Se una finestra di quota dell'account visualizzato è a rischio o esaurita, resta visibile un bordo di allarme statico. Un timer avvia una singola pulsazione di opacità di 1,5 s ogni 10 s, senza animazioni fra le pulsazioni; la skin chiara usa un bordo interno colorato al posto del glow. Il timer viene cancellato quando termina l'allarme, si disattiva l'impostazione, si richiede reduced motion o il documento viene nascosto/ridotto a icona.
+- La percentuale principale fa scorrere verso l'alto le cifre cambiate con una transizione `translateY` ease-out di 700 ms. Primo rendering, cambi di account/finestra/lingua e segnaposto sono immediati. I separatori decimali e delle migliaia restano fermi; a transizione conclusa torna testo semplice e il valore completo resta sempre disponibile alle tecnologie assistive.
+- Durante ogni aggiornamento (widget, timer, tray o Impostazioni), un segmento sottile nel colore d'accento, con `box-shadow` morbido statico, percorre tutti e quattro i bordi tramite `transform`. Le coordinate del viewport seguono ridimensionamento e vista compatta. `refreshOnce()` invia l'evento tipizzato `usage:refreshing` con `true` prima di ogni esecuzione; il preload lo espone come `onUsageRefreshing`. L'evento esistente `usage:update` termina gli aggiornamenti riusciti; un'esecuzione fallita invia `usage:refreshing` con `false` perché non seguirà uno snapshot. Entrambi i segnali saltano le finestre del widget assenti o distrutte. Il widget avvia inoltre l'indicatore in modo ottimistico quando richiede un aggiornamento.
+
+Si animano solo `opacity`/`transform`: niente ombre, filtri, gradienti animati, `offset-path`, loop JS per frame o animazioni del tray. Con l'impostazione disattivata, valori immediati e allarme statico; ruota solo l'SVG del pulsante di aggiornamento mentre è in corso. Con `prefers-reduced-motion: reduce` si ferma ogni movimento (incluse le transizioni hover) e l'aggiornamento appare come icona attenuata con tooltip localizzato «Aggiornamento…». I cambi di visibilità cancellano i timer, completano le transizioni delle cifre e rimuovono le classi di animazione del refresh; riaprendo la finestra riparte l'attesa intera di 10 s. Le verifiche visive delle tre skin nelle due lingue e le misure CPU a finestra aperta (idle/allarme/refresh, metodo `app.getAppMetrics()` in [EVOLUTION.it.md](EVOLUTION.it.md)) vanno eseguite sul desktop del proprietario: Electron è bloccato nella sandbox di implementazione.
 
 **Always-on-top:** toggle in impostazioni e nel menu del tray, applicato con `win.setAlwaysOnTop(bool, 'floating')`; persistito e riapplicato all'avvio.
 

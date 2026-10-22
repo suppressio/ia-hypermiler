@@ -25,6 +25,7 @@ const bridge: HypermilerBridge = {
   setSettings: (patch) => invoke('settings:set', patch),
 
   onUsageUpdate: (callback) => subscribe('usage:update', callback),
+  onUsageRefreshing: (callback) => subscribe('usage:refreshing', callback),
   // Notifies the widget when Settings change (e.g. accent color, language) while it
   // is open: without it, a field with no dedicated IPC (unlike
   // ui.windowStyle/ui.alwaysOnTop) applied only after the next restart.
