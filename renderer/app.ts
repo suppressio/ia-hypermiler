@@ -22,6 +22,7 @@ import { localDateKey, parseDateKey } from './dates.js';
 import { showAutonomy, showPeakAvg, showStreak } from './visibility.js';
 import { createAlarmPulse, motionState } from './motion.js';
 import { finishOdometer, renderOdometer } from './odometer.js';
+import { instantFlow, isWorkingDay } from './instantFlow.js';
 import {
   applyTranslations,
   formatDate,
@@ -67,6 +68,7 @@ function currentMotion(): ReturnType<typeof motionState> {
 
 function syncMotion(): void {
   const motion = currentMotion();
+  document.body.classList.toggle('motion-effects', motion.effects);
   document.body.classList.toggle('motion-hidden', document.hidden);
   document.body.classList.toggle('motion-disabled', state.settings?.ui.animations === false);
   document.body.classList.toggle('alarm', alarmed);
@@ -414,7 +416,7 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined): void {
 // (winSnap.sustainableRate, the "target"), on a logarithmic scale of their ratio
 // (renderer/gauge.ts): the target marker stays in the middle, faint ticks mark ½× and
 // 2×. Without a target there is no scale to read the pace on: only the number.
-function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
+function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined, accountId?: AccountId): void {
   const container = byId('instant-gauge', HTMLDivElement);
   const label = byId('gauge-label', HTMLSpanElement);
   container.innerHTML = '';
@@ -483,6 +485,36 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
   }
 
   container.appendChild(svg);
+
+  const schedule = state.settings?.accounts.find((account) => account.id === accountId)?.workSchedule;
+  // instantRate is already the last-hour average computed by budget.instantaneousRate.
+  const flow = instantFlow(instant, sustainable, schedule !== undefined && isWorkingDay(schedule, new Date()));
+  if (flow) {
+    const strip = document.createElementNS(svgNs, 'svg');
+    strip.setAttribute('class', 'gauge-flow');
+    strip.dataset.direction = flow.direction;
+    strip.setAttribute('aria-hidden', 'true');
+    strip.style.setProperty('--flow-duration', `${flow.durationSeconds}s`);
+    const pattern = document.createElementNS(svgNs, 'pattern');
+    pattern.id = 'instant-flow-pattern';
+    pattern.setAttribute('width', '48');
+    pattern.setAttribute('height', '20');
+    pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+    const arrows = document.createElementNS(svgNs, 'path');
+    arrows.setAttribute('d', flow.direction === 'right'
+      ? 'M12 6l4 4-4 4m8-8 4 4-4 4m8-8 4 4-4 4'
+      : 'M16 6l-4 4 4 4m4-8-4 4 4 4m4-8-4 4 4 4');
+    arrows.setAttribute('fill', 'none');
+    arrows.setAttribute('stroke', 'currentColor');
+    arrows.setAttribute('stroke-width', '2');
+    pattern.append(arrows);
+    const repeat = document.createElementNS(svgNs, 'rect');
+    repeat.setAttribute('width', '100%');
+    repeat.setAttribute('height', '20');
+    repeat.setAttribute('fill', 'url(#instant-flow-pattern)');
+    strip.append(pattern, repeat);
+    container.append(strip);
+  }
 }
 
 // --- Efficiency rating ------------------------------------------------------------
@@ -835,7 +867,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   }
   byId('current-label').textContent = label;
 
-  renderInstantGauge(winSnap);
+  renderInstantGauge(winSnap, account.accountId);
   renderEfficiencyRating(winSnap, chartDays);
   renderLocalInsights(account);
   renderTokenYield(winSnap);
@@ -928,6 +960,8 @@ async function init(): Promise<void> {
     const thresholdChanged = updated.ui.notificationThresholdPercent !== state.settings?.ui.notificationThresholdPercent;
     state.settings = updated;
     syncMotion();
+    const account = state.latestSnapshot ? selectAccount(state.latestSnapshot) : undefined;
+    renderInstantGauge(account ? selectWindowSnapshot(account) : undefined, account?.accountId);
     applyAccentColor(updated.ui.accentColor);
     updatePinButton(updated.ui.alwaysOnTop);
     if (languageChanged) {
