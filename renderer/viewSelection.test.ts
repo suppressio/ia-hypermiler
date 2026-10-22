@@ -87,6 +87,12 @@ test('an account without windows opens locally in Manual until the selection cha
   assert.equal((run('selectAccount')(state.latestSnapshot) as { accountId: string }).accountId, 'c');
   run('applyView')(view('manual', { accountId: 'a', windowId: '5h' }));
   assert.equal(state.localOverride, true, 'a refresh with the same selection keeps the account open');
+  // Clicking the persisted Manual view again closes the windowless account.
+  run('choosePanelView')({ accountId: 'a', windowId: '5h' });
+  assert.equal(state.localOverride, false);
+  run('applyView')(view('manual', { accountId: 'a', windowId: '5h' }));
+  assert.equal((run('selectAccount')(state.latestSnapshot) as { accountId: string }).accountId, 'a');
+  run('choosePanelView')({ accountId: 'c', windowId: null });
   run('applyView')(view('manual', { accountId: 'a', windowId: 'weekly' }));
   assert.equal(state.localOverride, false);
   assert.equal((run('selectAccount')(state.latestSnapshot) as { accountId: string }).accountId, 'a');

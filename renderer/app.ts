@@ -709,6 +709,9 @@ function choosePanelView(view: PanelView): void {
     if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
     return;
   }
+  // An explicit choice ends the local override, also when it is the selection already
+  // persisted (main answers with an unchanged view:update, which renders the panel).
+  state.localOverride = false;
   runGuarded(window.hypermiler.setView({ mode: 'manual', accountId: view.accountId, windowId: view.windowId }));
 }
 
