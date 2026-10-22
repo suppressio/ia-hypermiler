@@ -531,8 +531,10 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined, accountId?
     pattern.setAttribute('patternUnits', 'userSpaceOnUse');
     const arrows = document.createElementNS(svgNs, 'path');
     arrows.setAttribute('d', flow.direction === 'right'
-      ? 'M12 6l4 4-4 4m8-8 4 4-4 4m8-8 4 4-4 4'
-      : 'M16 6l-4 4 4 4m4-8-4 4 4 4m4-8-4 4 4 4');
+      // Chevrons at the start of each 48 px period: with the gap's 24 px minimum width
+      // (style.css) three whole arrows show even when static.
+      ? 'M2 6l4 4-4 4m8-8 4 4-4 4m8-8 4 4-4 4'
+      : 'M6 6l-4 4 4 4m8-8-4 4 4 4m8-8-4 4 4 4');
     arrows.setAttribute('fill', 'none');
     arrows.setAttribute('stroke', 'currentColor');
     arrows.setAttribute('stroke-width', '2');
