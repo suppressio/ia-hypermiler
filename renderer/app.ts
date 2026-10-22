@@ -23,7 +23,7 @@ import { showAutonomy, showPeakAvg, showStreak } from './visibility.js';
 import { createAlarmPulse, motionState } from './motion.js';
 import { finishOdometer, renderOdometer } from './odometer.js';
 import { createCompactTransition, createLayoutAnimation, fadeSlide, initDetailsMotion } from './layoutMotion.js';
-import { instantFlow, isWorkingDay } from './instantFlow.js';
+import { flowSpan, instantFlow, isWorkingDay } from './instantFlow.js';
 import {
   applyTranslations,
   formatDate,
@@ -89,6 +89,7 @@ function syncMotion(): void {
   document.body.classList.toggle('motion-effects', motion.effects);
   document.body.classList.toggle('motion-hidden', document.hidden);
   document.body.classList.toggle('motion-disabled', state.settings?.ui.animations === false);
+  // Compact view: the account name carries the alarm, the window rows are hidden (style.css).
   document.body.classList.toggle('alarm', alarmed);
   document.body.classList.toggle('refresh-border-active', refreshing && motion.effects);
   document.body.classList.toggle('refresh-rotate', refreshing && motion.rotateRefresh);
@@ -511,7 +512,13 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined, accountId?
   const schedule = state.settings?.accounts.find((account) => account.id === accountId)?.workSchedule;
   // instantRate is already the last-hour average computed by budget.instantaneousRate.
   const flow = instantFlow(instant, sustainable, schedule !== undefined && isWorkingDay(schedule, new Date()));
-  if (flow) {
+  if (flow && sustainable !== null) {
+    // The arrows fill only the gap between the bar end and the target marker.
+    const span = flowSpan(gaugePosition(instant, sustainable), GAUGE_TARGET_POSITION);
+    const gap = document.createElement('div');
+    gap.className = 'gauge-flow-gap';
+    gap.style.left = `${span.left * 100}%`;
+    gap.style.width = `${span.width * 100}%`;
     const strip = document.createElementNS(svgNs, 'svg');
     strip.setAttribute('class', 'gauge-flow');
     strip.dataset.direction = flow.direction;
@@ -535,7 +542,8 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined, accountId?
     repeat.setAttribute('height', '20');
     repeat.setAttribute('fill', 'url(#instant-flow-pattern)');
     strip.append(pattern, repeat);
-    container.append(strip);
+    gap.append(strip);
+    container.append(gap);
   }
 }
 
