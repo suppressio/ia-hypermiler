@@ -61,3 +61,33 @@ test('a panel click with the badge Off browses locally and leaves the badge Off'
   choose({ accountId: 'a', windowId: 'weekly' });
   assert.deepEqual(sent.map(c => ({ ...(c as object) })), [{ mode: 'manual', accountId: 'a', windowId: 'weekly' }]);
 });
+
+test('Manual shows the selected window even when the badge shows another one', () => {
+  // e.g. an unlimited Copilot window: listed and selectable, but no percentage for the badge.
+  const selected = { accountId: 'b', windowId: '5h' };
+  const state = { view: { ...view('manual', selected), shown: { accountId: 'a', windowId: 'weekly' } },
+    localView: null, latestSnapshot: { accounts: [a, b] } };
+  const panel = new Script(`${functions}\npanelView`).runInNewContext({ state }) as () => UsageView | null;
+  assert.deepEqual({ ...panel() }, selected);
+  // Gone from the snapshot (disabled account): the panel follows the shown fallback.
+  state.latestSnapshot = { accounts: [a] };
+  assert.deepEqual({ ...panel() }, { accountId: 'a', windowId: 'weekly' });
+});
+
+test('an account without windows opens locally in Manual until the selection changes', () => {
+  const empty = { accountId: 'c', criticalWindow: null, windows: [] };
+  const sent: unknown[] = [];
+  const state = { view: view('manual', { accountId: 'a', windowId: '5h' }), localView: null, localOverride: false,
+    latestSnapshot: { accounts: [a, empty] } };
+  const context = { state, renderSnapshot: () => undefined, runGuarded: () => undefined,
+    window: { hypermiler: { setView: (choice: unknown) => { sent.push(choice); } } } };
+  const run = (name: string) => new Script(`${functions}\n${name}`).runInNewContext(context) as (arg?: unknown) => unknown;
+  run('choosePanelView')({ accountId: 'c', windowId: null });
+  assert.deepEqual(sent, []);
+  assert.equal((run('selectAccount')(state.latestSnapshot) as { accountId: string }).accountId, 'c');
+  run('applyView')(view('manual', { accountId: 'a', windowId: '5h' }));
+  assert.equal(state.localOverride, true, 'a refresh with the same selection keeps the account open');
+  run('applyView')(view('manual', { accountId: 'a', windowId: 'weekly' }));
+  assert.equal(state.localOverride, false);
+  assert.equal((run('selectAccount')(state.latestSnapshot) as { accountId: string }).accountId, 'a');
+});

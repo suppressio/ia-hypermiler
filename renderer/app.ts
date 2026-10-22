@@ -49,14 +49,21 @@ interface RendererState {
   latestSnapshot: UsageSnapshot | null;
   view: TrayViewState | null;
   // Auto/Off browsing stays local; activity in the tray must not move the panel.
-  localView: UsageView | null;
+  // A null window = an account without quota windows (nothing for the badge to show).
+  localView: PanelView | null;
+  // Manual, but the user opened an account with no window: the panel shows it locally
+  // until the selection changes.
+  localOverride: boolean;
 }
+
+type PanelView = Omit<UsageView, 'windowId'> & { windowId: string | null };
 
 const state: RendererState = {
   settings: null,
   latestSnapshot: null,
   view: null,
   localView: null,
+  localOverride: false,
 };
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -668,8 +675,15 @@ function absoluteCountLabel(win: QuotaWindow | null, provider: ProviderId): stri
 
 // One tab per account, in the order of the Settings table (issue #4: N accounts,
 // possibly two of the same provider — hence the account label, not the provider name).
-function panelView(): UsageView | null {
-  return state.view?.selection.view.mode === 'manual' ? state.view.shown : state.localView;
+// In Manual the panel shows the selected view itself, even when the badge cannot draw
+// it (e.g. an unlimited window with no percentage); only when it is gone (disabled
+// account, missing window) does it follow the view the badge shows instead.
+function panelView(): PanelView | null {
+  const selected = state.view?.selection.view;
+  if (selected?.mode !== 'manual' || state.localOverride) return state.localView;
+  const exists = state.latestSnapshot?.accounts.some((a) => a.accountId === selected.accountId
+    && a.windows.some((w) => w.window.id === selected.windowId)) === true;
+  return exists ? { accountId: selected.accountId, windowId: selected.windowId } : state.view?.shown ?? null;
 }
 
 function applyView(updated: TrayViewState): void {
@@ -679,19 +693,23 @@ function applyView(updated: TrayViewState): void {
     const win = account ? selectWindowSnapshot(account) : undefined;
     if (account && win) state.localView = { accountId: account.accountId, windowId: win.window.id };
   }
+  if (JSON.stringify(state.view?.selection.view) !== JSON.stringify(updated.selection.view)) state.localOverride = false;
   state.view = updated;
   if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
 }
 
-// A panel click selects that view as Manual, except with the badge Off: the user turned
-// the badge off, so the panel only browses locally.
-function choosePanelView(view: UsageView): void {
-  if (state.view?.selection.view.mode === 'off') {
+// A panel click selects that view as Manual, except with the badge Off (the user turned
+// the badge off) or on an account without windows (no view to select): then the panel
+// only browses locally.
+function choosePanelView(view: PanelView): void {
+  const mode = state.view?.selection.view.mode;
+  if (mode === 'off' || view.windowId === null) {
     state.localView = view;
+    state.localOverride = mode === 'manual';
     if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
     return;
   }
-  runGuarded(window.hypermiler.setView({ mode: 'manual', ...view }));
+  runGuarded(window.hypermiler.setView({ mode: 'manual', accountId: view.accountId, windowId: view.windowId }));
 }
 
 function selectAccount(snapshot: UsageSnapshot): AccountSnapshot | undefined {
@@ -719,8 +737,11 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
     btn.title = `${account.label} (${utilization === null ? '--%' : formatPercent(utilization)})`;
     btn.className = id === activeId ? 'active' : '';
     btn.addEventListener('click', () => {
-      const win = selectWindowSnapshot(account);
-      if (win) choosePanelView({ accountId: id, windowId: win.window.id });
+      // Diagnostic for issue #25 (tab occasionally not clickable right after login):
+      // if this fires but the widget stays unchanged, check state.view and
+      // state.latestSnapshot in the DevTools console.
+      console.debug('[widget] tab click id=%s mode=%s accounts=%d', id, state.view?.selection.view.mode, state.latestSnapshot?.accounts.length ?? 0);
+      choosePanelView({ accountId: id, windowId: selectWindowSnapshot(account)?.window.id ?? null });
     });
     nav.appendChild(btn);
   });
