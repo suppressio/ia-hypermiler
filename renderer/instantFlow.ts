@@ -7,6 +7,15 @@ export function isWorkingDay(schedule: WorkSchedule, now: Date): boolean {
   return day !== undefined && schedule.days[day] !== 'off';
 }
 
+/**
+ * Where the arrows live (#125): only between the end of the bar and the target marker,
+ * as fractions of the gauge width, so they point to where the bar should go instead of
+ * reading as a flow across the whole bar.
+ */
+export function flowSpan(barEnd: number, target: number): { left: number; width: number } {
+  return { left: Math.min(barEnd, target), width: Math.abs(target - barEnd) };
+}
+
 export function instantFlow(
   hourlyAverage: number | null,
   sustainable: number | null,
@@ -19,6 +28,6 @@ export function instantFlow(
   const direction = hourlyAverage > sustainable ? 'left' : 'right';
   if (direction === 'right' && !working) return null;
   const distance = sustainable === 0 ? 2 : Math.min(2, Math.abs(hourlyAverage / sustainable - 1));
-  // A 48 px repeat moves at 6 px/s per unit of relative distance, capped at 12 px/s.
-  return { direction, durationSeconds: 48 / (6 * distance) };
+  // A 48 px repeat moves at 18 px/s per unit of relative distance, capped at 36 px/s.
+  return { direction, durationSeconds: 48 / (18 * distance) };
 }

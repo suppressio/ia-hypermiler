@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { instantFlow, isWorkingDay } from './instantFlow.js';
+import { flowSpan, instantFlow, isWorkingDay } from './instantFlow.js';
 import type { WorkSchedule } from '../types/index';
 
 test('instant flow: account schedule uses local full/half/off days; disabled means unrestricted', () => {
@@ -44,8 +44,8 @@ test('instant flow: speed is proportional to the relative gap in either directio
   assert.equal(slow.durationSeconds, fast.durationSeconds * 2);
   assert.equal(instantFlow(5, 10, true)?.durationSeconds, fast.durationSeconds);
   assert.equal(instantFlow(150, 100, true)?.durationSeconds, fast.durationSeconds);
-  assert.equal(instantFlow(30, 10, true)?.durationSeconds, 4);
-  assert.equal(instantFlow(1000, 10, true)?.durationSeconds, 4);
+  assert.equal(instantFlow(30, 10, true)?.durationSeconds, 48 / 36);
+  assert.equal(instantFlow(1000, 10, true)?.durationSeconds, 48 / 36);
 });
 
 test('instant flow: no samples, missing targets and invalid rates show no arrows', () => {
@@ -59,5 +59,11 @@ test('instant flow: no samples, missing targets and invalid rates show no arrows
 
 test('instant flow: exhausted quota has capped left flow only when consumption is positive', () => {
   assert.equal(instantFlow(0, 0, true), null);
-  assert.deepEqual(instantFlow(1, 0, false), { direction: 'left', durationSeconds: 4 });
+  assert.deepEqual(instantFlow(1, 0, false), { direction: 'left', durationSeconds: 48 / 36 });
+});
+
+test('flow span: arrows only between the bar end and the target marker, either side', () => {
+  assert.deepEqual(flowSpan(0.75, 0.5), { left: 0.5, width: 0.25 });
+  assert.deepEqual(flowSpan(0.25, 0.5), { left: 0.25, width: 0.25 });
+  assert.deepEqual(flowSpan(0.5, 0.5), { left: 0.5, width: 0 });
 });
