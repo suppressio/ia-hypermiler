@@ -3,8 +3,8 @@
 // Every visible string goes through t() (renderer/i18n): see CLAUDE.md, i18n rule.
 
 import type {
-  AccountId,
   AccountSnapshot,
+  AccountId,
   AppSettings,
   DailyTip,
   ProviderId,
@@ -12,6 +12,8 @@ import type {
   QuotaWindowSnapshot,
   UsageSnapshot,
   WindowVerdict,
+  UsageView,
+  TrayViewState,
 } from '../types/index';
 import type { HypermilerBridge } from '../types/ipc';
 import { windowLabel } from './windowLabel.js';
@@ -45,16 +47,16 @@ declare global {
 interface RendererState {
   settings: AppSettings | null;
   latestSnapshot: UsageSnapshot | null;
-  // null = no explicit choice: the first account of the snapshot is shown.
-  activeAccount: AccountId | null;
-  activeWindowId: string | null;
+  view: TrayViewState | null;
+  // Auto/Off browsing stays local; activity in the tray must not move the panel.
+  localView: UsageView | null;
 }
 
 const state: RendererState = {
   settings: null,
   latestSnapshot: null,
-  activeAccount: null,
-  activeWindowId: null,
+  view: null,
+  localView: null,
 };
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -666,9 +668,25 @@ function absoluteCountLabel(win: QuotaWindow | null, provider: ProviderId): stri
 
 // One tab per account, in the order of the Settings table (issue #4: N accounts,
 // possibly two of the same provider — hence the account label, not the provider name).
+function panelView(): UsageView | null {
+  return state.view?.selection.view.mode === 'manual' ? state.view.shown : state.localView;
+}
+
+function applyView(updated: TrayViewState): void {
+  // Freeze the panel's current view when switching away from Manual.
+  if (state.latestSnapshot && state.view?.selection.view.mode === 'manual' && updated.selection.view.mode !== 'manual') {
+    const account = selectAccount(state.latestSnapshot);
+    const win = account ? selectWindowSnapshot(account) : undefined;
+    if (account && win) state.localView = { accountId: account.accountId, windowId: win.window.id };
+  }
+  state.view = updated;
+  if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+}
+
 function selectAccount(snapshot: UsageSnapshot): AccountSnapshot | undefined {
   const accounts = snapshot.accounts;
-  return accounts.find((a) => a.accountId === state.activeAccount) ?? accounts[0];
+  const view = panelView();
+  return accounts.find((a) => a.accountId === view?.accountId) ?? accounts[0];
 }
 
 function renderAccountTabs(snapshot: UsageSnapshot): void {
@@ -690,13 +708,8 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
     btn.title = `${account.label} (${utilization === null ? '--%' : formatPercent(utilization)})`;
     btn.className = id === activeId ? 'active' : '';
     btn.addEventListener('click', () => {
-      // Diagnostic for issue #25 (tab occasionally not clickable right after login):
-      // if this fires but the widget stays unchanged, check state.activeAccount and
-      // state.latestSnapshot in the DevTools console.
-      console.debug('[widget] tab click id=%s active=%s accounts=%d', id, state.activeAccount, state.latestSnapshot?.accounts.length ?? 0);
-      state.activeAccount = id;
-      state.activeWindowId = null;
-      if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+      const win = selectWindowSnapshot(account);
+      if (win) runGuarded(window.hypermiler.setView({ mode: 'manual', accountId: id, windowId: win.window.id }));
     });
     nav.appendChild(btn);
   });
@@ -759,8 +772,7 @@ function renderWindowList(account: AccountSnapshot): void {
 
     row.append(dot, label, bar, pct, verdict);
     row.addEventListener('click', () => {
-      state.activeWindowId = winSnap.window.id;
-      if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+      runGuarded(window.hypermiler.setView({ mode: 'manual', accountId: account.accountId, windowId: winSnap.window.id }));
     });
     list.appendChild(row);
   });
@@ -768,8 +780,9 @@ function renderWindowList(account: AccountSnapshot): void {
 
 function selectWindowSnapshot(account: AccountSnapshot): QuotaWindowSnapshot | undefined {
   if (!account.windows.length) return undefined;
-  const byActive = state.activeWindowId
-    ? account.windows.find((w) => w.window.id === state.activeWindowId)
+  const view = panelView();
+  const byActive = view?.accountId === account.accountId
+    ? account.windows.find((w) => w.window.id === view.windowId)
     : undefined;
   if (byActive) return byActive;
   const criticalId = account.criticalWindow?.id;
@@ -844,6 +857,11 @@ function renderPeriodMetrics(winSnap: QuotaWindowSnapshot | undefined): void {
 // --- Main render ------------------------------------------------------------------
 
 function renderSnapshot(snapshot: UsageSnapshot): void {
+  if (state.view?.selection.view.mode !== 'manual') {
+    const account = selectAccount(snapshot);
+    const win = account ? selectWindowSnapshot(account) : undefined;
+    if (account && win) state.localView = { accountId: account.accountId, windowId: win.window.id };
+  }
   detailsMotion?.finish();
   state.latestSnapshot = snapshot;
   renderAccountTabs(snapshot);
@@ -952,6 +970,8 @@ async function toggleCompact(): Promise<void> {
 async function init(): Promise<void> {
   const settings = await window.hypermiler.getSettings();
   state.settings = settings;
+  window.hypermiler.onViewUpdate(applyView);
+  state.view = await window.hypermiler.getView();
   applyLanguage(settings);
   applyWindowStyle(settings.ui.windowStyle);
   applyAccentColor(settings.ui.accentColor);

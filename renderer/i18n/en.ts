@@ -260,8 +260,11 @@ export const en = {
   'settings.appearance.alwaysOnTop': 'Always on top',
   'settings.appearance.animations': 'Window animations',
   'settings.appearance.trayBadge': 'Tray icon shows',
-  'settings.appearance.trayBadgeCritical': 'Most used account',
-  'settings.appearance.trayBadgeOff': 'Nothing (plain icon)',
+  'settings.appearance.trayBadgeCritical': 'Critical alerts',
+  'settings.appearance.trayBadgeAuto': 'Auto',
+  'settings.appearance.trayBadgeUnavailable': '{account} · {window} (unavailable)',
+  'settings.appearance.trayBadgePending': 'Critical window',
+  'settings.appearance.trayBadgeOff': 'Off',
   'settings.appearance.accentColor': 'Accent color',
 
   // --- Settings: notifications ----------------------------------------------------

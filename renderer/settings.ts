@@ -1,11 +1,12 @@
 // settings.ts — Settings window logic (no direct access to Node.js).
 // Every visible string goes through t() or data-i18n attributes (renderer/i18n).
 
-import type { AccountConfig, AccountId, AppSettings, ProviderId, UpdateSettings } from '../types/index';
+import type { AccountConfig, AccountId, AppSettings, ProviderId, UpdateSettings, TrayViewState } from '../types/index';
 import type { HypermilerBridge } from '../types/ipc';
 import { byId } from './dom.js';
 import { applyTranslations, formatDate, formatDateTime, formatTime, resolveLocale, setLocale, t, type MessageKey } from './i18n/index.js';
 import { summarizeWorkSchedule } from './schedule.js';
+import { windowLabel } from './windowLabel.js';
 import { renewalFromProvider } from './renewal.js';
 
 declare global {
@@ -18,6 +19,7 @@ const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 const DAY_STATUSES = ['full', 'half', 'off'] as const;
 
 let settings: AppSettings | null = null;
+let trayView: TrayViewState | null = null;
 // Last state actually persisted (confirmed with "Save" or just received from
 // getSettings()): used by "Cancel" to restore the form, and to tell which fields
 // really changed since the last save (e.g. not to recreate the window on every
@@ -66,6 +68,7 @@ function topLevelKey(path: string): string {
 }
 
 function readFieldValue(el: HTMLInputElement | HTMLSelectElement): unknown {
+  if (el.id === 'tray-badge-select') return JSON.parse(el.value) as unknown;
   if (el instanceof HTMLInputElement) {
     if (el.type === 'checkbox') return el.checked;
     if (el.type === 'number') return el.value === '' ? null : Number(el.value);
@@ -228,17 +231,28 @@ function renderAccountsTable(): void {
   });
 }
 
-// The tray badge can follow one account: one option per account, next to the fixed ones.
 function renderTrayBadgeOptions(): void {
   const select = byId('tray-badge-select', HTMLSelectElement);
-  select.querySelectorAll('option[data-account]').forEach((option) => { option.remove(); });
-  accounts().forEach((account) => {
+  select.innerHTML = '';
+  const entries = [...(trayView?.entries ?? [])];
+  const choice = settings?.ui.trayBadge.view;
+  const value = JSON.stringify(choice);
+  if (choice && !entries.some(e => JSON.stringify(e.view) === value)) {
+    entries.push({ view: choice, enabled: false, checked: true });
+  }
+  for (const entry of entries) {
     const option = document.createElement('option');
-    option.value = account.id;
-    option.dataset.account = 'true';
-    option.textContent = account.label;
+    option.value = JSON.stringify(entry.view);
+    option.disabled = !entry.enabled;
+    option.textContent = entry.view.mode === 'off' ? t('settings.appearance.trayBadgeOff')
+      : entry.view.mode === 'auto' ? t('settings.appearance.trayBadgeAuto')
+      : entry.window && entry.provider ? `${entry.accountLabel ?? ''} · ${windowLabel(entry.window, entry.provider)}`
+      : t('settings.appearance.trayBadgeUnavailable', { account: entry.accountLabel ?? entry.view.accountId,
+        window: entry.view.windowId ?? t('settings.appearance.trayBadgePending') });
     select.appendChild(option);
-  });
+  }
+  select.value = value;
+  byId('tray-badge-critical', HTMLInputElement).disabled = choice?.mode === 'off';
 }
 
 function populateForm(): void {
@@ -538,6 +552,7 @@ function bindEvents(): void {
     const field = el.dataset.field;
     const value = readFieldValue(el);
     setPath(settings as unknown as PlainRecord, field, value);
+    if (el.id === 'tray-badge-select') renderTrayBadgeOptions();
     const accountMatch = /^accounts\.(\d+)\.(.+)$/.exec(field);
     if (accountMatch) {
       const index = Number(accountMatch[1]);
@@ -675,6 +690,19 @@ async function init(): Promise<void> {
   applyLanguage('auto');
   settings = await window.hypermiler.getSettings();
   savedSettings = structuredClone(settings);
+  window.hypermiler.onViewUpdate((updated) => {
+    const clean = JSON.stringify(settings?.ui.trayBadge) === JSON.stringify(savedSettings?.ui.trayBadge);
+    trayView = updated;
+    if (clean && settings && savedSettings) {
+      settings.ui.trayBadge = structuredClone(updated.selection);
+      savedSettings.ui.trayBadge = structuredClone(updated.selection);
+      byId('tray-badge-critical', HTMLInputElement).checked = updated.selection.critical;
+    }
+    renderTrayBadgeOptions();
+  });
+  trayView = await window.hypermiler.getView();
+  settings.ui.trayBadge = structuredClone(trayView.selection);
+  savedSettings.ui.trayBadge = structuredClone(trayView.selection);
   applyLanguage(settings.ui.language);
   populateForm();
   bindEvents();

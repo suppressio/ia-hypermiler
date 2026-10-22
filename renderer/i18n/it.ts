@@ -243,8 +243,11 @@ export const it: Record<MessageKey, string> = {
   'settings.appearance.alwaysOnTop': 'Sempre in primo piano',
   'settings.appearance.animations': 'Animazioni della finestra',
   'settings.appearance.trayBadge': "L'icona nella tray mostra",
-  'settings.appearance.trayBadgeCritical': 'Account più usato',
-  'settings.appearance.trayBadgeOff': 'Niente (icona semplice)',
+  'settings.appearance.trayBadgeCritical': 'Avvisi critici',
+  'settings.appearance.trayBadgeAuto': 'Auto',
+  'settings.appearance.trayBadgeUnavailable': '{account} · {window} (non disponibile)',
+  'settings.appearance.trayBadgePending': 'Finestra critica',
+  'settings.appearance.trayBadgeOff': 'Disattivato',
   'settings.appearance.accentColor': 'Colore accento',
 
   'settings.notifications.title': 'Notifiche',

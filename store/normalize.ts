@@ -19,7 +19,7 @@
 
 import type { AppSettings } from '../types/index';
 import { mergeWithDefaults, isPlainRecord } from './merge';
-import { migrateAccounts, normalizeAccounts } from './migrate';
+import { migrateAccounts, normalizeAccounts, migrateTrayBadge } from './migrate';
 
 /**
  * Store on disk (any shape) → valid AppSettings. `legacyLocalInsights` serves only
@@ -41,6 +41,8 @@ export function normalizeSettings(raw: unknown, defaults: AppSettings): AppSetti
   // The old global `localInsights` flag and work schedule (now per account) are not part
   // of AppSettings.
   const result: AppSettings & { localInsights?: unknown; workSchedule?: unknown } = { ...merged, accounts };
+  const rawUi = isPlainRecord(raw) && isPlainRecord(raw.ui) ? raw.ui : {};
+  result.ui = { ...merged.ui, trayBadge: migrateTrayBadge(rawUi.trayBadge, isPlainRecord(raw) ? raw.history : undefined) };
   delete result.localInsights;
   delete result.workSchedule;
   return result;

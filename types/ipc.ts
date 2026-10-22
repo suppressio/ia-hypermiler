@@ -12,6 +12,8 @@ import type {
   UpdateSettings,
   UsageSnapshot,
   WindowStyle,
+  TrayBadgeChoice,
+  TrayViewState,
 } from './index';
 
 export interface CopilotOAuthPayload {
@@ -25,6 +27,8 @@ type NoResult = Awaited<Promise<void>>;
 
 /** renderer → main, `ipcRenderer.invoke` / `ipcMain.handle`: arguments and result. */
 export interface IpcInvokeChannels {
+  'view:get': { args: []; result: TrayViewState };
+  'view:set': { args: [choice: TrayBadgeChoice]; result: TrayViewState };
   'settings:get': { args: []; result: AppSettings };
   'settings:set': { args: [patch: Partial<AppSettings>]; result: AppSettings };
   'window:setAlwaysOnTop': { args: [value: boolean]; result: boolean };
@@ -60,12 +64,16 @@ export interface IpcSendChannels {
 export interface IpcEventChannels {
   'usage:refreshing': [refreshing: boolean];
   'usage:update': [snapshot: UsageSnapshot];
+  'view:update': [state: TrayViewState];
   'settings:update': [settings: AppSettings];
   'window:hoverChanged': [isHovering: boolean];
 }
 
 /** API exposed by the preload to the renderer (`window.hypermiler`). */
 export interface HypermilerBridge {
+  getView(): Promise<TrayViewState>;
+  setView(choice: TrayBadgeChoice): Promise<TrayViewState>;
+  onViewUpdate(callback: (state: TrayViewState) => void): () => void;
   getSettings(): Promise<AppSettings>;
   setSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   onUsageUpdate(callback: (snapshot: UsageSnapshot) => void): () => void;

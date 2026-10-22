@@ -4,8 +4,9 @@ import { Tray, Menu, nativeImage, app, BrowserWindow, MenuItem } from 'electron'
 import path from 'path';
 import type Store from 'electron-store';
 import { trayTooltip } from './traySummary';
-import { BADGE_SIZE, badgeText, badgeTone, pickBadge, renderBadge } from './trayBadge';
-import type { AppSettings, UsageSnapshot } from '../types/index';
+import { BADGE_SIZE, badgeText, badgeTone, pickBadge, pickAlert, renderBadge } from './trayBadge';
+import { windowLabel } from './windowLabel';
+import type { AppSettings, UsageSnapshot, TrayBadgeChoice, TrayViewState } from '../types/index';
 import { t } from './i18n/index';
 
 const ICON_PATH = path.join(__dirname, '..', 'renderer', 'assets', 'tray-icon.png');
@@ -15,6 +16,8 @@ export interface CreateTrayDeps {
   openSettings: () => void;
   refreshNow: () => void;
   store: Store<AppSettings>;
+  getViewState: () => TrayViewState;
+  selectView: (choice: TrayBadgeChoice) => void;
 }
 
 /** Creates the tray icon with its context menu. */
@@ -26,7 +29,7 @@ export interface TrayHandle {
   updateUsage: (snapshot: UsageSnapshot) => void;
 }
 
-export function createTray({ getMainWindow, openSettings, refreshNow, store }: CreateTrayDeps): TrayHandle {
+export function createTray({ getMainWindow, openSettings, refreshNow, store, getViewState, selectView }: CreateTrayDeps): TrayHandle {
   // If the custom icon does not exist (missing asset), an empty fallback icon is used:
   // Electron does not crash, but a real cross-platform asset must ship in builds (see
   // scripts/generate-icons.js).
@@ -42,29 +45,37 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
   const tray = new Tray(icon);
   tray.setToolTip('IA Hypermiler');
 
-  // Usage badge (#33). macOS shows the percentage as text next to the icon (the menu
-  // bar has room for it, and a drawn number would not follow the system appearance);
-  // Windows and Linux (StatusNotifier) have no tray text, so the icon itself becomes
-  // the number. The taskbar overlay of Windows belongs to windows, not to the tray.
-  // Re-rendered only when the shown value changes: nothing runs between refreshes.
+  let latestSnapshot: UsageSnapshot | null = null;
   let shownBadge = '';
-  const applyBadge = (snapshot: UsageSnapshot | null) => {
-    const ui = store.get('ui');
-    const badge = snapshot ? pickBadge(snapshot.accounts, ui.trayBadge) : null;
-    const tone = badge ? badgeTone(badge, ui.notificationThresholdPercent) : null;
-    const key = badge && tone ? `${badgeText(badge.percent)}:${tone}` : '';
+  let alertFrame = false;
+  let alertTimer: ReturnType<typeof setInterval> | null = null;
+  const stopAlert = () => {
+    if (alertTimer) clearInterval(alertTimer);
+    alertTimer = null;
+    alertFrame = false;
+  };
+  app.once('before-quit', stopAlert);
+
+  let normal: ReturnType<typeof pickBadge> = null;
+  let alert: ReturnType<typeof pickAlert> = null;
+  let threshold = 80;
+  const renderFrame = () => {
+    const badge = alertFrame && alert ? alert : normal;
+    const isAlert = alertFrame && alert !== null;
+    const tone = badge ? isAlert ? 'warning' : badgeTone(badge, threshold) : null;
+    const key = badge && tone ? `${badgeText(badge.percent, isAlert)}:${tone}:${String(isAlert)}:${String(badge.stale)}` : '';
     if (key === shownBadge) return;
     shownBadge = key;
     if (process.platform === 'darwin') {
-      tray.setTitle(badge ? `${badgeText(badge.percent)}%${badge.stale ? '*' : ''}` : '');
+      tray.setTitle(badge ? `${isAlert ? '!' : ''}${badgeText(badge.percent)}%${badge.stale ? '*' : ''}` : '');
       return;
     }
     if (!badge || !tone) {
       tray.setImage(baseIcon);
       return;
     }
-    // Electron wants BGRA; the renderer draws RGBA.
-    const rgba = renderBadge(badge.percent, tone);
+    // Electron wants BGRA; the pure renderer draws RGBA.
+    const rgba = renderBadge(badge.percent, tone, isAlert);
     const bgra = Buffer.alloc(rgba.length);
     for (let i = 0; i < rgba.length; i += 4) {
       bgra[i] = rgba[i + 2] ?? 0;
@@ -73,6 +84,23 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
       bgra[i + 3] = rgba[i + 3] ?? 0;
     }
     tray.setImage(nativeImage.createFromBitmap(bgra, { width: BADGE_SIZE, height: BADGE_SIZE }));
+  };
+
+  const applyBadge = () => {
+    const ui = store.get('ui');
+    const state = getViewState();
+    const accounts = latestSnapshot?.accounts ?? [];
+    threshold = ui.notificationThresholdPercent;
+    normal = pickBadge(accounts, state.selection, state.shown?.accountId ?? null);
+    alert = pickAlert(accounts, state.selection, normal, threshold);
+    if (alert && !alertTimer) {
+      alertTimer = setInterval(() => {
+        if (tray.isDestroyed()) { stopAlert(); return; }
+        alertFrame = !alertFrame;
+        renderFrame();
+      }, 2000);
+    } else if (!alert) stopAlert();
+    renderFrame();
   };
 
   const toggleMainWindow = () => {
@@ -92,6 +120,16 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
       { label: t('tray.toggle'), click: toggleMainWindow },
       { label: t('tray.settings'), click: openSettings },
       { label: t('tray.refresh'), click: refreshNow },
+      { type: 'separator' },
+      ...getViewState().entries.map(entry => ({
+        type: 'radio' as const,
+        label: entry.view.mode === 'off' ? t('tray.badgeOff') : entry.view.mode === 'auto' ? t('tray.badgeAuto')
+          : entry.window && entry.provider ? `${entry.accountLabel ?? ''} · ${windowLabel(entry.window, entry.provider)}`
+          : t('tray.badgeUnavailable', { account: entry.accountLabel ?? '', window: entry.view.windowId ?? t('tray.badgePending') }),
+        checked: entry.checked,
+        enabled: entry.enabled,
+        click: () => { selectView(entry.view); },
+      })),
       { type: 'separator' },
       {
         label: t('tray.alwaysOnTop'),
@@ -117,10 +155,12 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
 
   return {
     tray,
-    refreshMenu: () => { tray.setContextMenu(buildMenu()); },
+    refreshMenu: () => { tray.setContextMenu(buildMenu()); applyBadge(); },
     updateUsage: (snapshot) => {
+      latestSnapshot = snapshot;
       tray.setToolTip(trayTooltip(snapshot.accounts));
-      applyBadge(snapshot);
+      tray.setContextMenu(buildMenu());
+      applyBadge();
     },
   };
 }

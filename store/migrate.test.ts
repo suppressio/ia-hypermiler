@@ -9,6 +9,7 @@ import {
   defaultCopilotAccount,
   enforceSingleLocalInsights,
   migrateAccounts,
+  migrateTrayBadge,
   nextAccountLabel,
   normalizeAccounts,
 } from './migrate';
@@ -129,5 +130,26 @@ test('new accounts start from the default Monday–Friday schedule', () => {
     assert.equal(account.workSchedule.enabled, true);
     assert.equal(account.workSchedule.days.fri, 'full');
     assert.equal(account.workSchedule.days.sun, 'off');
+  }
+});
+
+
+test('migrateTrayBadge: old off/critical choices and per-account current critical window', () => {
+  assert.deepEqual(migrateTrayBadge('off', {}), { view: { mode: 'off' }, critical: true });
+  assert.deepEqual(migrateTrayBadge('critical', {}), { view: { mode: 'auto' }, critical: true });
+  const history = { lastGood: { a: { quotaWindows: [
+    { id: '5h', used: 20, total: 100, unit: 'percentage' },
+    { id: 'weekly', used: 270, total: 300, unit: 'count' },
+  ] } } };
+  assert.deepEqual(migrateTrayBadge('a', history), { view: { mode: 'manual', accountId: 'a', windowId: 'weekly' }, critical: true });
+  assert.deepEqual(migrateTrayBadge('a', {}), { view: { mode: 'manual', accountId: 'a', windowId: null }, critical: true });
+  assert.deepEqual(migrateTrayBadge('a', { lastGood: { a: { quotaWindows: [null, 2, { id: 'bad' }] } } }).view,
+    { mode: 'manual', accountId: 'a', windowId: null });
+});
+
+test('migrateTrayBadge: new preferences are idempotent, including unavailable views', () => {
+  for (const view of [{ mode: 'off' }, { mode: 'auto' }, { mode: 'manual', accountId: 'gone', windowId: 'missing' }]) {
+    const setting = { view, critical: false };
+    assert.deepEqual(migrateTrayBadge(setting, {}), setting);
   }
 });
