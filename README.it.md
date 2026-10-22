@@ -68,6 +68,7 @@ A che velocità stai usando la quota in questo momento, in % della quota all'ora
 - **Come si calcola**: quanto è salito il consumo nell'ultima ora circa di letture. Mentre il consumo sale l'app interroga il provider ogni 5 minuti, altrimenti all'intervallo scelto nelle Impostazioni (30 minuti di default).
 - **Target** (la tacca bianca): il ritmo che ti porterebbe esattamente al 100% al reset, ripartito sulle ore lavorative rimaste.
 - **Come leggerlo**: la tacca è sempre a metà. Le tacche leggere segnano metà del target (a sinistra) e il doppio (a destra), e l'estremità destra vale quattro volte il target o più. La barra diventa rossa sopra il target. Un picco breve va bene; una barra rossa per ore è il segnale da tenere d'occhio.
+- **Frecce sullo sfondo**: `>>>` indica che puoi consumare di più, `<<<` che conviene rallentare. Confrontano la media dell’ultima ora con il target e spariscono entro ±15% o in attesa di campioni. Più lo scarto cresce, più scorrono veloci, fino a un limite. Le frecce a destra compaiono solo nei giorni lavorativi full/half dell’account (lo schedule non ha orari di inizio/fine); con schedule disabilitato non ci sono vincoli di giorno. Le frecce a sinistra compaiono anche nei giorni liberi.
 
 ### Consumo giornaliero vs budget
 
@@ -140,7 +141,7 @@ Se li attivi su un account Claude, l'app legge le sessioni di Claude Code su que
 | **Aggiornamenti** | versione installata, controllo manuale e automatico; **Guida** apre questa pagina |
 | **Diagnostica** | segnalazione automatica di un cambio di formato del provider; file di report di diagnosi |
 
-Le animazioni della finestra mostrano una pulsazione di allarme ogni 10 secondi quando l'account visualizzato ha una quota a rischio o esaurita, cifre scorrevoli quando cambia la percentuale principale e un segmento nel colore d'accento attorno alla finestra durante ogni aggiornamento, avviato dal widget, dal timer, dal tray o dalle Impostazioni. Disattivandole resta un bordo di allarme statico e ruota solo l'icona di aggiornamento. Con la preferenza di sistema per ridurre il movimento non si muove nulla: l'aggiornamento usa un'icona attenuata con tooltip «Aggiornamento…». Gli effetti si fermano a finestra nascosta o ridotta a icona; il tray resta statico.
+Le animazioni della finestra mostrano una pulsazione di allarme ogni 10 secondi quando l'account visualizzato ha una quota a rischio o esaurita, cifre scorrevoli quando cambia la percentuale principale e un segmento nel colore d'accento attorno alla finestra durante ogni aggiornamento, avviato dal widget, dal timer, dal tray o dalle Impostazioni. Disattivandole restano statici il bordo di allarme e le frecce di consumo, e ruota solo l'icona di aggiornamento. Con la preferenza di sistema per ridurre il movimento non si muove nulla: l'aggiornamento usa un'icona attenuata con tooltip «Aggiornamento…». Gli effetti si fermano a finestra nascosta o ridotta a icona; il tray resta statico.
 
 ## Notifiche
 
