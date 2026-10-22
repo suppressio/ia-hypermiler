@@ -222,7 +222,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 ## What NOT to do
 
 - Do not invent API endpoints not documented in `docs/RESEARCH.md`.
-- Do not add animations or effects to the UI — plain and readable is the priority.
+- Animations are allowed but must be switchable off in Settings, low-key, carry state, and off with `prefers-reduced-motion`. Keep them in the visible widget renderer only (never the tray), animate only `opacity`/`transform`, and stop timers when hidden. With animations disabled, only the refresh icon rotates during refresh; reduced motion uses a static refresh state.
 - Do not expose secrets or credentials in any git-tracked file.
 - Do not use `any`. If a type is really dynamic use `unknown` with explicit narrowing.
 - Do not paste real credentials (sessionKey, PAT/token) in chat, commits, issues or logs — not even for tests. See "Integration tests" below.

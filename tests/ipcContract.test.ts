@@ -68,6 +68,7 @@ test('every channel of the IPC maps is wired in main and in the preload', () => 
   const invoke = channelKeys(contract, 'IpcInvokeChannels');
   const send = channelKeys(contract, 'IpcSendChannels');
   const events = channelKeys(contract, 'IpcEventChannels');
+  assert.ok(events.includes('usage:refreshing'), 'refresh lifecycle must be exposed to the widget');
 
   const handled = usedChannels(main, 'handle');
   const listened = usedChannels(main, 'listen');

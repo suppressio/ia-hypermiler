@@ -8,6 +8,21 @@ import { mergeWithDefaults } from './merge';
 import { DEFAULT_WORK_SCHEDULE, DEFAULTS } from './defaults';
 import { at } from '../tests/support/at';
 
+test('normalizeSettings: animations default on for new and existing stores; false is preserved', () => {
+  assert.equal(DEFAULTS.ui.animations, true);
+  for (const raw of [undefined, {}, { ui: {} }, { ui: { windowStyle: 'filled-dark' } }]) {
+    assert.equal(normalizeSettings(raw, DEFAULTS).ui.animations, true);
+  }
+  assert.equal(normalizeSettings({ ui: { animations: false } }, DEFAULTS).ui.animations, false);
+  assert.equal(normalizeSettings({ ui: { animations: true } }, DEFAULTS).ui.animations, true);
+});
+
+test('normalizeSettings: invalid animation settings fall back to true', () => {
+  for (const animations of [null, 'false', 0, [], {}]) {
+    assert.equal(normalizeSettings({ ui: { animations } }, DEFAULTS).ui.animations, true);
+  }
+});
+
 test('mergeWithDefaults: deep merge, wrong types replaced, extra keys kept', () => {
   const defaults = { a: 1, nested: { flag: true, list: [] as number[] }, nullable: null as string | null };
   const raw = { a: 'uno', nested: { list: [3] }, nullable: 'x', extra: 42 };

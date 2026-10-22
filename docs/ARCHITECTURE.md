@@ -111,6 +111,7 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
     language: 'auto' | 'en' | 'it',       // 'auto' follows the system language (see §4c)
     windowStyle: 'filled' | 'filled-dark' | 'transparent-digital',
     alwaysOnTop: boolean,
+    animations: boolean,                 // default true; reduced motion overrides it
     accentColor: string,
     bounds: { x, y, width, height },       // persisted position/size
     chartRange: 'week' | 'month',
@@ -154,7 +155,15 @@ opaque background, block layout with borders. *(Updated:)* always `frame: false`
 Same opaque structure as the classic skin, with inverted colors (dark background, light text) — see the `--*-filled-dark` tokens in `renderer/style.css`. No behavioural difference from the classic skin besides colors (same custom title bar, same hover behaviour, same layout).
 
 **"Transparent/digital" style:**
-`frame: false`, `transparent: true`. HUD-style numbers/bars (monospace font, light glow — still plain to respect "no animations" in `CLAUDE.md`: no pulsing, only static contrast/opacity). System buttons (close/minimize) recreated as custom overlay controls, `opacity: 0` by default and `opacity: 1` only on hover, with `-webkit-app-region: drag` on the title bar strip to move the window without a native title bar.
+`frame: false`, `transparent: true`. HUD-style numbers/bars (monospace font, light static glow). System buttons (close/minimize) recreated as custom overlay controls, `opacity: 0` by default and `opacity: 1` only on hover, with `-webkit-app-region: drag` on the title bar strip to move the window without a native title bar.
+
+**Optional state animations (#119):** animations are allowed but must be switchable off, low-key, carry state, and off with `prefers-reduced-motion`. Settings → Appearance → **Window animations** (`ui.animations`, default `true`, also normalized for existing stores) controls three renderer-only effects, without dependencies:
+
+- If any quota window of the displayed account is at risk or exhausted, a static warning border remains visible. A timer triggers one 1.5 s opacity pulse every 10 s, with no animation between pulses; the light skin uses a coloured inset border instead of a glow. The timer is cleared when the alarm ends, the setting is disabled, reduced motion is requested, or the document becomes hidden/minimized.
+- The main usage percentage rolls its changed digits upwards over 700 ms with an ease-out `translateY` transition. First render, account/window/language switches and placeholders appear immediately. Decimal/group separators remain literal; completed transitions collapse back to plain text, with the complete value available to assistive technology throughout.
+- During any refresh (widget, timer, tray or Settings), a thin accent segment with a static soft `box-shadow` travels around all four window edges using `transform`. Viewport coordinates follow resizing and compact mode. `refreshOnce()` sends the typed `usage:refreshing` event with `true` before each run; the preload exposes it as `onUsageRefreshing`. The existing `usage:update` event ends successful refreshes; a failed run sends `usage:refreshing` with `false` because no snapshot follows. Both signals skip absent or destroyed widget windows. The widget also starts its indicator optimistically when requesting a refresh.
+
+Only `opacity`/`transform` are animated: no animated shadows, filters, gradients, `offset-path`, per-frame JS loops or tray animation. With the setting off, values update immediately and the alarm is static; only the refresh button's SVG rotates during refresh. With `prefers-reduced-motion: reduce`, all motion (including hover transitions) stops and refresh is a dimmed icon with a localized “Refreshing…” tooltip. Visibility changes cancel the pulse timers, finish digit transitions and remove refresh animation classes; showing the window restarts a full 10 s pulse wait. Visual checks on all three skins in both languages and open-window CPU measurements (idle/alarm/refresh, the `app.getAppMetrics()` method in [EVOLUTION.md](EVOLUTION.md)) must be performed on the owner's desktop: Electron is blocked in the implementation sandbox.
 
 **Always-on-top:** toggle in Settings and in the tray menu, applied with `win.setAlwaysOnTop(bool, 'floating')`; persisted and re-applied at startup.
 

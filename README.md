@@ -135,10 +135,12 @@ When enabled on one Claude account, the app reads the Claude Code sessions on th
 | Section | What you can set |
 |---|---|
 | **Accounts** | add, connect, disconnect (deletes the saved session), enable/disable; per account: name, work schedule, renewal day when the provider does not report it, Claude login method and local insights, Copilot domain and authentication |
-| **Appearance** | language, window style (light, dark, transparent), chart range (7 or 30 days), refresh interval, accent colour |
+| **Appearance** | language, window style (light, dark, transparent), chart range (7 or 30 days), refresh interval, accent colour, window animations (on by default) |
 | **Notifications** | alert threshold (%), also used by the colours |
 | **Updates** | installed version, check now, automatic check; **User guide** opens this page |
 | **Diagnostics** | automatic report of a provider format change; diagnostic report file |
+
+Window animations show an alarm pulse every 10 seconds when the displayed account has an at-risk or exhausted quota, rolling digits when its main percentage changes, and an accent segment around the window during every refresh, whether started by the widget, timer, tray or Settings. Turning them off keeps a static alarm border and only rotates the refresh icon. With your system's reduced-motion preference, nothing moves: refresh uses a dimmed icon with a “Refreshing…” tooltip. Effects stop while the window is hidden or minimized; the tray stays static.
 
 ## Notifications
 

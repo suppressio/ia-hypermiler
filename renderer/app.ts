@@ -20,6 +20,8 @@ import { applySeverity, severityLevel, todaySeverity } from './severity.js';
 import { GAUGE_TARGET_POSITION, GAUGE_TICK_RATIOS, gaugePosition } from './gauge.js';
 import { localDateKey, parseDateKey } from './dates.js';
 import { showAutonomy, showPeakAvg, showStreak } from './visibility.js';
+import { createAlarmPulse, motionState } from './motion.js';
+import { finishOdometer, renderOdometer } from './odometer.js';
 import {
   applyTranslations,
   formatDate,
@@ -52,6 +54,41 @@ const state: RendererState = {
   activeAccount: null,
   activeWindowId: null,
 };
+
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const alarmPulse = createAlarmPulse((active) => { document.body.classList.toggle('alarm-pulse', active); });
+let alarmed = false;
+let refreshing = false;
+let valueContext: string | null = null;
+
+function currentMotion(): ReturnType<typeof motionState> {
+  return motionState(state.settings?.ui.animations ?? true, reducedMotion.matches, !document.hidden);
+}
+
+function syncMotion(): void {
+  const motion = currentMotion();
+  document.body.classList.toggle('motion-hidden', document.hidden);
+  document.body.classList.toggle('motion-disabled', state.settings?.ui.animations === false);
+  document.body.classList.toggle('alarm', alarmed);
+  document.body.classList.toggle('refresh-border-active', refreshing && motion.effects);
+  document.body.classList.toggle('refresh-rotate', refreshing && motion.rotateRefresh);
+  alarmPulse.setActive(alarmed && motion.effects);
+  if (!motion.effects) finishOdometer(byId('current-value'));
+  const button = byId('btn-refresh', HTMLButtonElement);
+  button.disabled = refreshing;
+  button.setAttribute('aria-busy', String(refreshing));
+  const key = refreshing ? 'widget.refreshing' : 'widget.refresh';
+  button.dataset.i18nTitle = key;
+  button.dataset.i18nAriaLabel = key;
+  button.title = t(key);
+  button.setAttribute('aria-label', t(key));
+}
+
+function requestRefresh(): void {
+  refreshing = true;
+  syncMotion();
+  window.hypermiler.requestUsageRefresh();
+}
 
 // --- Language ------------------------------------------------------------------
 
@@ -748,8 +785,11 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
 
   const account = selectAccount(snapshot);
   if (!account) {
+    alarmed = false;
+    valueContext = null;
+    syncMotion();
     byId('window-list').hidden = true;
-    byId('current-value').textContent = '--';
+    renderOdometer(byId('current-value'), '--', false);
     byId('current-count').hidden = true;
     byId('current-label').textContent = t('widget.noAccount');
     renderInstantGauge(undefined);
@@ -765,8 +805,13 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   const win = winSnap?.window ?? null;
   const utilization = win ? budgetNormalizedUtilization(win) : null;
 
-  byId('current-value').textContent =
-    utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
+  const context = `${account.accountId}:${win?.id ?? ''}:${document.documentElement.lang}`;
+  const value = utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
+  renderOdometer(byId('current-value'), value, currentMotion().effects && context === valueContext && utilization !== null,
+    formatNumber(1.1).replace(/\d/g, ''));
+  valueContext = context;
+  alarmed = account.windows.some((entry) => entry.verdict.kind === 'at-risk' || entry.verdict.kind === 'exhausted');
+  syncMotion();
   applySeverity(byId('current-value'), severityLevel(utilization, warningThreshold()));
   const countLabel = byId('current-count', HTMLDivElement);
   const absoluteCount = absoluteCountLabel(win, account.provider);
@@ -845,6 +890,10 @@ async function init(): Promise<void> {
   updatePinButton(settings.ui.alwaysOnTop);
   updateCompactButton(settings.ui.compact);
   initHoverReveal();
+  reducedMotion.addEventListener('change', syncMotion);
+  document.addEventListener('visibilitychange', syncMotion);
+  window.addEventListener('pagehide', () => { alarmPulse.setActive(false); });
+  syncMotion();
 
   byId('btn-settings').addEventListener('click', () => {
     window.hypermiler.openSettingsWindow();
@@ -859,16 +908,18 @@ async function init(): Promise<void> {
   byId('btn-pin').addEventListener('click', () => { runGuarded(togglePin()); });
   byId('btn-refresh').addEventListener('click', () => {
     // requestUsageRefresh() is fire-and-forget (ipcRenderer.send): the result
-    // arrives through onUsageUpdate below, which re-enables the button —
-    // disabling it meanwhile only prevents spam clicks.
-    const btn = byId('btn-refresh', HTMLButtonElement);
-    btn.disabled = true;
-    window.hypermiler.requestUsageRefresh();
+    // arrives through onUsageUpdate below; onUsageRefreshing also clears failures.
+    requestRefresh();
   });
 
+  window.hypermiler.onUsageRefreshing((active) => {
+    refreshing = active;
+    syncMotion();
+  });
   window.hypermiler.onUsageUpdate((snapshot) => {
-    renderSnapshot(snapshot);
-    byId('btn-refresh', HTMLButtonElement).disabled = false;
+    refreshing = false;
+    try { renderSnapshot(snapshot); }
+    finally { syncMotion(); }
   });
   // Applies Settings changes live while the widget is open (accent color, always
   // on top from Settings/tray, language) — see preload.ts/main.ts, settings:update.
@@ -876,6 +927,7 @@ async function init(): Promise<void> {
     const languageChanged = updated.ui.language !== state.settings?.ui.language;
     const thresholdChanged = updated.ui.notificationThresholdPercent !== state.settings?.ui.notificationThresholdPercent;
     state.settings = updated;
+    syncMotion();
     applyAccentColor(updated.ui.accentColor);
     updatePinButton(updated.ui.alwaysOnTop);
     if (languageChanged) {
@@ -885,7 +937,7 @@ async function init(): Promise<void> {
     // The warning colours follow the notification threshold (renderer/severity.ts).
     else if (thresholdChanged && state.latestSnapshot) renderSnapshot(state.latestSnapshot);
   });
-  window.hypermiler.requestUsageRefresh();
+  requestRefresh();
 }
 
 // An error at startup or on a button must not leave the widget silent: it is
