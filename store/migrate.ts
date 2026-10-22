@@ -12,8 +12,11 @@ import type {
   DayStatus,
   ProviderId,
   WorkSchedule,
+  TrayBadgeSettings,
+  QuotaWindow,
 } from '../types/index';
 import { isPlainRecord, mergeWithDefaults } from './merge';
+import { pickCriticalWindow } from '../budget';
 import { DEFAULT_WORK_SCHEDULE } from './defaults';
 import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from '../services/githubHost';
 
@@ -220,4 +223,34 @@ export function normalizeAccounts(rawAccounts: unknown[], inheritedSchedule?: un
     }
   }
   return enforceSingleLocalInsights(result);
+}
+
+/** Migrates the old string preference; null window defers only an uncached legacy choice. */
+export function migrateTrayBadge(raw: unknown, history: unknown): TrayBadgeSettings {
+  const fallback: TrayBadgeSettings = { view: { mode: 'auto' }, critical: true };
+  if (typeof raw === 'string') {
+    if (raw === 'off') return { ...fallback, view: { mode: 'off' } };
+    if (raw === 'critical' || raw === '') return fallback;
+    const cached = isPlainRecord(history) && isPlainRecord(history.lastGood) ? history.lastGood[raw] : undefined;
+    const windows = isPlainRecord(cached) && Array.isArray(cached.quotaWindows) ? cached.quotaWindows : [];
+    // Persisted history is not trusted: only validated fields reach budget helpers.
+    const known: QuotaWindow[] = windows.flatMap((win: unknown): QuotaWindow[] => {
+      if (!isPlainRecord(win) || typeof win.id !== 'string' || typeof win.used !== 'number'
+        || (win.total !== null && typeof win.total !== 'number') || (win.unit !== 'percentage' && win.unit !== 'count')) return [];
+      return [{ id: win.id, label: '', used: win.used, total: win.total, unit: win.unit,
+        periodType: win.periodType === 'rolling-hours' || win.periodType === 'rolling-days' ? win.periodType : 'billing-cycle',
+        periodLength: typeof win.periodLength === 'number' ? win.periodLength : null, resetsAt: null }];
+    });
+    return { ...fallback, view: { mode: 'manual', accountId: raw, windowId: pickCriticalWindow(known)?.id ?? null } };
+  }
+  if (!isPlainRecord(raw)) return fallback;
+  const critical = typeof raw.critical === 'boolean' ? raw.critical : true;
+  const view = raw.view;
+  if (!isPlainRecord(view)) return { ...fallback, critical };
+  if (view.mode === 'off' || view.mode === 'auto') return { view: { mode: view.mode }, critical };
+  if (view.mode === 'manual' && typeof view.accountId === 'string' && view.accountId !== ''
+    && (view.windowId === null || (typeof view.windowId === 'string' && view.windowId !== ''))) {
+    return { view: { mode: 'manual', accountId: view.accountId, windowId: view.windowId }, critical };
+  }
+  return { ...fallback, critical };
 }

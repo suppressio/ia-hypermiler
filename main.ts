@@ -9,6 +9,7 @@ import { normalizeSettings } from './store/normalize';
 import { isPlainRecord } from './store/merge';
 import { applyCompact, createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
+import { badgeEntries, pickBadge, resolveLegacyView, sameChoice, trackAutoAccount } from './main/trayBadge';
 import { captureClaudeSession, buildClaudeCookieHeader, migrateDefaultSessionCookies } from './main/claude-auth';
 import { captureGithubOAuthToken } from './main/copilot-oauth';
 import * as providers from './main/providers';
@@ -37,6 +38,9 @@ import { randomUUID } from 'crypto';
 import { handle, listen, sendToRenderer } from './main/ipc';
 import type {
   AccountConfig,
+  AccountSnapshot,
+  TrayBadgeChoice,
+  TrayViewState,
   AccountId,
   AppSettings,
   ClaudeLocalInsights,
@@ -254,7 +258,7 @@ function friendlyErrorMessage(err: unknown): string {
 function applyMainLocale(): void {
   setLocale(resolveLocale(store.get('ui').language, app.getLocale()));
   trayHandle?.refreshMenu();
-  if (lastSnapshot) trayHandle?.updateUsage(lastSnapshot);
+  if (lastSnapshot) trayHandle?.updateUsage({ ...lastSnapshot, accounts: badgeAccounts() });
 }
 
 // ---------------------------------------------------------------------------
@@ -528,13 +532,53 @@ async function refreshOnce(mode: RefreshMode): Promise<void> {
   lastConsumptionRose = built.consumptionRose ?? lastConsumptionRose;
   scheduleNextRefresh(refreshPolicy.nextRefreshDelayMs(lastConsumptionRose, configuredRefreshIntervalMs()));
   timings.lastRefresh = { at: new Date().toISOString(), ms: Date.now() - startedAt };
-  lastSnapshot = snapshot;
-  trayHandle?.updateUsage(snapshot);
+  updateTrayView(snapshot);
   maybeNotifyThreshold(snapshot);
   maybeNotifyPace(snapshot);
   if (mainWindow && !mainWindow.isDestroyed()) {
     sendToRenderer(mainWindow, 'usage:update', snapshot);
   }
+}
+
+// Main owns the persisted choice; Auto activity is session-local and starts at the highest usage.
+let autoBadgeAccountId: string | null = null;
+
+function updateTrayView(snapshot: UsageSnapshot): void {
+  autoBadgeAccountId = trackAutoAccount(autoBadgeAccountId, lastSnapshot?.accounts ?? [], snapshot.accounts);
+  const ui = store.get('ui');
+  const resolved = resolveLegacyView(ui.trayBadge.view, snapshot.accounts);
+  if (!sameChoice(resolved, ui.trayBadge.view)) store.set('ui.trayBadge', { ...ui.trayBadge, view: resolved });
+  lastSnapshot = snapshot;
+  broadcastView();
+}
+
+function badgeAccounts(): AccountSnapshot[] {
+  const enabled = new Set(getAccounts().filter(a => a.enabled).map(a => a.id));
+  return (lastSnapshot?.accounts ?? []).filter(a => enabled.has(a.accountId));
+}
+
+function getTrayViewState(): TrayViewState {
+  const selection = store.get('ui').trayBadge;
+  const accounts = badgeAccounts();
+  const cached = store.get('history').lastGood;
+  const registry = getAccounts().map(a => ({ ...a, quotaWindows: cached?.[a.id]?.quotaWindows ?? [] }));
+  return { selection, shown: pickBadge(accounts, selection, autoBadgeAccountId)?.view ?? null,
+    entries: badgeEntries(registry, accounts, selection.view) };
+}
+
+function broadcastView(): TrayViewState {
+  const state = getTrayViewState();
+  if (lastSnapshot) trayHandle?.updateUsage({ ...lastSnapshot, accounts: badgeAccounts() });
+  else trayHandle?.refreshMenu();
+  for (const win of [mainWindow, settingsWindow]) {
+    if (win && !win.isDestroyed()) sendToRenderer(win, 'view:update', state);
+  }
+  return state;
+}
+
+function setTrayView(choice: TrayBadgeChoice): TrayViewState {
+  store.set('ui.trayBadge', { ...store.get('ui').trayBadge, view: choice });
+  return broadcastView();
 }
 
 // ---------------------------------------------------------------------------
@@ -695,6 +739,7 @@ function startUpdateChecks(): void {
 }
 
 function broadcastSettings(): void {
+  broadcastView();
   const redacted = redactSecretsForRenderer(store.store);
   for (const win of [mainWindow, settingsWindow]) {
     if (win && !win.isDestroyed()) sendToRenderer(win, 'settings:update', redacted);
@@ -702,6 +747,14 @@ function broadcastSettings(): void {
 }
 
 function registerIpcHandlers(): void {
+  handle('view:get', () => getTrayViewState());
+  handle('view:set', (_event, raw: unknown) => {
+    if (!isPlainRecord(raw)) throw new Error('View: invalid choice');
+    const entry = getTrayViewState().entries.find(e => e.enabled && raw.mode === e.view.mode
+      && (e.view.mode !== 'manual' || (raw.accountId === e.view.accountId && raw.windowId === e.view.windowId)));
+    if (!entry) throw new Error('View: unavailable choice');
+    return setTrayView(entry.view);
+  });
   handle('settings:get', () => redactSecretsForRenderer(store.store));
 
   handle('settings:set', (_event, patch: unknown) => {
@@ -715,6 +768,7 @@ function registerIpcHandlers(): void {
     // or a field missing from the patch never reaches the store.
     store.store = normalizeSettings(next, DEFAULTS);
     applyMainLocale();
+    broadcastView();
     scheduleRefreshLoop();
     const redacted = redactSecretsForRenderer(store.store);
     // Propagates the change to the widget if open: some fields (e.g. accent color) have
@@ -998,6 +1052,8 @@ app.whenReady().then(async () => {
   mainWindow = win;
   trayHandle = createTray({
     getMainWindow: () => mainWindow,
+    getViewState: getTrayViewState,
+    selectView: (choice) => { setTrayView(choice); },
     openSettings: openSettingsWindow,
     refreshNow: () => { runDetached('refresh usage', refreshAndBroadcast('manual')); },
     store,

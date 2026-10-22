@@ -168,3 +168,25 @@ test('normalizeSettings: Codex preserves capture time and repairs malformed sett
   if (repaired.provider !== 'codex') throw new Error('Expected Codex');
   assert.deepEqual(repaired.session, { capturedAt: null });
 });
+
+
+test('normalizeSettings: tray badge migrates the raw string before merging object defaults', () => {
+  const raw = { ui: { trayBadge: 'a' }, history: { lastGood: { a: { quotaWindows: [
+    { id: 'monthly', used: 80, total: 100, unit: 'percentage' },
+  ] } } } };
+  const result = normalizeSettings(raw, DEFAULTS);
+  assert.deepEqual(result.ui.trayBadge, { view: { mode: 'manual', accountId: 'a', windowId: 'monthly' }, critical: true });
+  assert.deepEqual(normalizeSettings(result, DEFAULTS), result);
+});
+
+test('normalizeSettings: invalid badge fields fall back safely, valid missing preferences survive', () => {
+  for (const trayBadge of [null, 3, [], {}, { view: { mode: 'bad' } }, { view: { mode: 'manual', accountId: 2, windowId: [] } }]) {
+    assert.deepEqual(normalizeSettings({ ui: { trayBadge } }, DEFAULTS).ui.trayBadge, DEFAULTS.ui.trayBadge);
+  }
+  const trayBadge = { view: { mode: 'manual', accountId: 'disabled', windowId: 'missing' }, critical: false };
+  assert.deepEqual(normalizeSettings({ ui: { trayBadge } }, DEFAULTS).ui.trayBadge, trayBadge);
+  const defaults = structuredClone(DEFAULTS);
+  normalizeSettings({ ui: { trayBadge: 'off' } }, defaults);
+  normalizeSettings({}, defaults);
+  assert.deepEqual(defaults, DEFAULTS);
+});

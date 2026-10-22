@@ -21,6 +21,9 @@ function subscribe<C extends keyof IpcEventChannels>(channel: C, callback: (...a
 }
 
 const bridge: HypermilerBridge = {
+  getView: () => invoke('view:get'),
+  setView: (choice) => invoke('view:set', choice),
+  onViewUpdate: (callback) => subscribe('view:update', callback),
   getSettings: () => invoke('settings:get'),
   setSettings: (patch) => invoke('settings:set', patch),
 

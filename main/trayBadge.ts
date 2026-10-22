@@ -1,34 +1,101 @@
 // main/trayBadge.ts — usage badge of the tray icon (issue #33): which percentage it
 // shows, its colour and the icon bitmap. Pure (no Electron), tested in trayBadge.test.ts.
 
-import type { AccountSnapshot } from '../types/index';
+import type { AccountSnapshot, ProviderId, QuotaWindow, TrayBadgeChoice, TrayBadgeEntry, TrayBadgeSettings, UsageView } from '../types/index';
 import { normalizedUtilization } from '../budget';
 
-/** `ui.trayBadge`: 'off', 'critical' (highest account) or the id of one account. */
-export const TRAY_BADGE_OFF = 'off';
-export const TRAY_BADGE_CRITICAL = 'critical';
-
-type BadgeAccount = Pick<AccountSnapshot, 'accountId' | 'criticalWindow' | 'stale'>;
+type BadgeAccount = Pick<AccountSnapshot, 'accountId' | 'quotaWindows' | 'criticalWindow' | 'stale'> & { lastUpdatedAt?: string };
 
 export interface Badge {
   percent: number;
   stale: boolean;
+  view: UsageView;
 }
 
-/**
- * The percentage the icon shows. 'critical' = the highest utilization across accounts;
- * an account id = that account's critical window, falling back to 'critical' when the
- * account is gone or disabled. Accounts with unknown usage are skipped.
- */
-export function pickBadge(accounts: BadgeAccount[], choice: string): Badge | null {
-  if (choice === TRAY_BADGE_OFF) return null;
-  const known = accounts.flatMap((a) => {
-    const percent = a.criticalWindow ? normalizedUtilization(a.criticalWindow) : null;
-    return percent === null ? [] : [{ id: a.accountId, percent, stale: a.stale === true }];
+function criticalBadge(account: BadgeAccount): Badge | null {
+  const win = account.criticalWindow;
+  const percent = win ? normalizedUtilization(win) : null;
+  return win && percent !== null ? { percent, stale: account.stale === true, view: { accountId: account.accountId, windowId: win.id } } : null;
+}
+
+function autoBadge(accounts: BadgeAccount[], autoAccountId: string | null): Badge | null {
+  const known = accounts.flatMap(account => {
+    const badge = criticalBadge(account);
+    const utilization = Math.max(...account.quotaWindows.map(win => normalizedUtilization(win) ?? -1));
+    return badge ? [{ badge, utilization }] : [];
   });
-  const chosen = known.find((a) => a.id === choice);
-  const top = chosen ?? [...known].sort((a, b) => b.percent - a.percent)[0];
-  return top ? { percent: top.percent, stale: top.stale } : null;
+  return (known.find(b => b.badge.view.accountId === autoAccountId)
+    ?? known.sort((a, b) => b.utilization - a.utilization)[0])?.badge ?? null;
+}
+
+/** Stable on idle/reset. A new account/window establishes a baseline, not activity. */
+export function trackAutoAccount(current: string | null, previous: BadgeAccount[], accounts: BadgeAccount[]): string | null {
+  const rising = accounts.filter(account => !account.stale && account.quotaWindows.some(win => {
+    const before = previous.find(a => a.accountId === account.accountId)?.quotaWindows.find(w => w.id === win.id);
+    return before !== undefined && before.total === win.total && before.unit === win.unit && win.used > before.used;
+  })).sort((a, b) => (b.lastUpdatedAt ?? '').localeCompare(a.lastUpdatedAt ?? ''));
+  return rising[0]?.accountId ?? autoBadge(accounts, current)?.view.accountId ?? null;
+}
+
+/** The exact Manual view, or Auto while unavailable; the preference is never mutated. */
+export function pickBadge(accounts: BadgeAccount[], choice: TrayBadgeSettings, autoAccountId: string | null): Badge | null {
+  const view = choice.view;
+  if (view.mode === 'off') return null;
+  if (view.mode === 'manual') {
+    const account = accounts.find(a => a.accountId === view.accountId);
+    const win = account?.quotaWindows.find(w => w.id === view.windowId);
+    const percent = win ? normalizedUtilization(win) : null;
+    if (account && win && percent !== null) return { percent, stale: account.stale === true, view: { accountId: account.accountId, windowId: win.id } };
+  }
+  return autoBadge(accounts, autoAccountId);
+}
+
+export function pickAlert(accounts: BadgeAccount[], choice: TrayBadgeSettings, shown: Badge | null, threshold: number): Badge | null {
+  if (choice.view.mode === 'off' || !choice.critical) return null;
+  return accounts.flatMap(account => account.quotaWindows.flatMap(win => {
+    if (shown?.view.accountId === account.accountId && shown.view.windowId === win.id) return [];
+    const percent = normalizedUtilization(win);
+    return percent !== null && percent >= threshold
+      ? [{ percent, stale: account.stale === true, view: { accountId: account.accountId, windowId: win.id } }] : [];
+  })).sort((a, b) => b.percent - a.percent)[0] ?? null;
+}
+
+export function sameChoice(a: TrayBadgeChoice, b: TrayBadgeChoice): boolean {
+  return a.mode === b.mode && (a.mode !== 'manual' || (b.mode === 'manual' && a.accountId === b.accountId && a.windowId === b.windowId));
+}
+
+/** null windowId is reserved for old account-only preferences with no cached usage. */
+export function resolveLegacyView(view: TrayBadgeChoice, accounts: BadgeAccount[]): TrayBadgeChoice {
+  if (view.mode !== 'manual' || view.windowId !== null) return view;
+  const id = accounts.find(a => a.accountId === view.accountId)?.criticalWindow?.id;
+  return id === undefined ? view : { ...view, windowId: id };
+}
+
+export interface BadgeMenuAccount {
+  id: string;
+  label: string;
+  provider: ProviderId;
+  enabled: boolean;
+  quotaWindows: QuotaWindow[];
+}
+
+export function badgeEntries(registry: BadgeMenuAccount[], accounts: BadgeAccount[], choice: TrayBadgeChoice): TrayBadgeEntry[] {
+  const entries: TrayBadgeEntry[] = ['off', 'auto'].map(mode => ({
+    view: { mode: mode === 'off' ? 'off' : 'auto' }, checked: choice.mode === mode, enabled: true,
+  }));
+  for (const account of registry) {
+    const live = accounts.find(a => a.accountId === account.id);
+    for (const win of live?.quotaWindows ?? account.quotaWindows) {
+      const view: TrayBadgeChoice = { mode: 'manual', accountId: account.id, windowId: win.id };
+      entries.push({ view, checked: sameChoice(choice, view), enabled: account.enabled && live?.quotaWindows.some(w => w.id === win.id) === true,
+        accountLabel: account.label, provider: account.provider, window: win });
+    }
+  }
+  if (choice.mode === 'manual' && !entries.some(e => e.checked)) {
+    const account = registry.find(a => a.id === choice.accountId);
+    entries.push({ view: choice, checked: true, enabled: false, accountLabel: account?.label ?? choice.accountId });
+  }
+  return entries;
 }
 
 export type BadgeTone = 'ok' | 'caution' | 'warning' | 'stale';
@@ -36,7 +103,7 @@ export type BadgeTone = 'ok' | 'caution' | 'warning' | 'stale';
 const CAUTION_POINTS = 5;
 
 /** Same bands as the widget (renderer/severity.ts): red from the notification threshold. */
-export function badgeTone(badge: Badge, threshold: number): BadgeTone {
+export function badgeTone(badge: Pick<Badge, 'percent' | 'stale'>, threshold: number): BadgeTone {
   if (badge.stale) return 'stale';
   if (badge.percent >= threshold) return 'warning';
   if (badge.percent >= threshold - CAUTION_POINTS) return 'caution';
@@ -52,6 +119,7 @@ const TONE_RGB: Record<BadgeTone, [number, number, number]> = {
 
 // 3×5 digit glyphs, one string per row ('#' = lit).
 const GLYPHS: Record<string, readonly string[]> = {
+  '!': [' # ', ' # ', ' # ', '   ', ' # '],
   '0': ['###', '# #', '# #', '# #', '###'],
   '1': [' # ', '## ', ' # ', ' # ', '###'],
   '2': ['###', '  #', '###', '#  ', '###'],
@@ -67,12 +135,13 @@ const GLYPHS: Record<string, readonly string[]> = {
 export const BADGE_SIZE = 32;
 const CORNER = 6;
 
-export function badgeText(percent: number): string {
-  return String(Math.min(100, Math.max(0, Math.round(percent))));
+export function badgeText(percent: number, alert = false): string {
+  const value = Math.min(100, Math.max(0, Math.round(percent)));
+  return `${alert && value < 100 ? '!' : ''}${String(value)}`;
 }
 
 /** RGBA bitmap (BADGE_SIZE², row-major): a rounded square in the tone colour with white digits. */
-export function renderBadge(percent: number, tone: BadgeTone): Uint8Array {
+export function renderBadge(percent: number, tone: BadgeTone, alert = false): Uint8Array {
   const size = BADGE_SIZE;
   const pixels = new Uint8Array(size * size * 4);
   const [r, g, b] = TONE_RGB[tone];
@@ -87,7 +156,7 @@ export function renderBadge(percent: number, tone: BadgeTone): Uint8Array {
   };
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (inside(x, y)) put(x, y, [r, g, b]);
 
-  const text = badgeText(percent);
+  const text = badgeText(percent, alert);
   const scale = text.length >= 3 ? 3 : 4;
   const gap = text.length >= 3 ? 1 : 2;
   const width = text.length * 3 * scale + (text.length - 1) * gap;

@@ -17,6 +17,7 @@ function harness(windowState: 'alive' | 'destroyed' | 'absent' = 'alive') {
   let resolveBuild: (value: unknown) => void = () => { assert.fail('build has not started'); };
   let rejectBuild: (error: Error) => void = () => { assert.fail('build has not started'); };
   let retries = 0;
+  let viewUpdates = 0;
   let destroyed = windowState === 'destroyed';
   const refreshOnce = script.runInNewContext({
     mainWindow: windowState === 'absent' ? null : { isDestroyed: () => destroyed },
@@ -35,6 +36,7 @@ function harness(windowState: 'alive' | 'destroyed' | 'absent' = 'alive') {
     scheduleNextRefresh: () => undefined,
     timings: {},
     lastSnapshot: null,
+    updateTrayView: () => { viewUpdates++; },
     trayHandle: null,
     maybeNotifyThreshold: () => undefined,
     maybeNotifyPace: () => undefined,
@@ -45,6 +47,7 @@ function harness(windowState: 'alive' | 'destroyed' | 'absent' = 'alive') {
     fail: () => { rejectBuild(new Error('Snapshot failed')); },
     destroy: () => { destroyed = true; },
     retries: () => retries,
+    viewUpdates: () => viewUpdates,
   };
 }
 
@@ -57,6 +60,7 @@ test('every refresh mode emits start before completion and usage:update on succe
     const snapshot = { accounts: [] };
     h.succeed(snapshot);
     await running;
+    assert.equal(h.viewUpdates(), 1);
     assert.deepEqual(h.events, [
       { channel: 'usage:refreshing', payload: true },
       { channel: 'usage:update', payload: snapshot },
@@ -74,6 +78,7 @@ test('failed refresh clears the indicator without usage:update and schedules a r
     { channel: 'usage:refreshing', payload: false },
   ]);
   assert.equal(h.retries(), 1);
+  assert.equal(h.viewUpdates(), 0);
 });
 
 test('refresh IPC skips absent or destroyed windows, including destruction during a run', async () => {

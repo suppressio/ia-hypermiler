@@ -237,11 +237,9 @@
       </div>
       <div class="field-row">
         <label><span data-i18n="settings.appearance.trayBadge">Tray icon shows</span>
-          <select data-field="ui.trayBadge" id="tray-badge-select">
-            <option value="critical" data-i18n="settings.appearance.trayBadgeCritical">Most used account</option>
-            <option value="off" data-i18n="settings.appearance.trayBadgeOff">Nothing (plain icon)</option>
-          </select>
+          <select data-field="ui.trayBadge.view" id="tray-badge-select"></select>
         </label>
+        <label><input type="checkbox" data-field="ui.trayBadge.critical" id="tray-badge-critical" /> <span data-i18n="settings.appearance.trayBadgeCritical">Critical alerts</span></label>
       </div>
       <div class="field-row">
         <label><input type="checkbox" data-field="ui.alwaysOnTop" /> <span data-i18n="settings.appearance.alwaysOnTop">Always on top</span></label>
