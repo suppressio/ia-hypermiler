@@ -298,7 +298,7 @@ A tip is **data** (`{ key, params }`); the candidates are those whose condition 
 
 ### 3.16 Period end and renewal
 
-The period end is, in order: the window's `resetsAt`, the provider's `subscriptionRenewsAt`, the manual day of month (`resolveRenewalDate`: the next occurrence strictly after `now`). Only `dayOfMonth` is supported.
+The period end is, in order: the window's `resetsAt`, the provider's `subscriptionRenewsAt`, the manual day of month (`resolveRenewalDate`: the next occurrence strictly after `now`). Only `dayOfMonth` is supported. A day beyond the length of a month (29-31) means the last day of that month, never the following month.
 
 | # | Input | Expected |
 |---|---|---|
@@ -307,6 +307,10 @@ The period end is, in order: the window's `resetsAt`, the provider's `subscripti
 | N-3 | window reset 10-27 and provider renewal 11-01 | end 10-27 |
 | N-4 | no window reset, provider renewal 11-01 | end 11-01 |
 | N-5 | none of them, manual day 15 | end 2026-11-15 |
+| N-6 | day 31, now 10-20 | 2026-10-31 |
+| N-7 | day 31, now 10-31 | 2026-11-30 (shorter month: its last day) |
+| N-8 | day 30, now 01-31 | 2026-02-28 (the January occurrence has passed; February is clamped) |
+| N-9 | day 29, now 2028-02-10 | 2028-02-29 (leap year) |
 
 ### 3.17 Notifications
 
@@ -415,7 +419,7 @@ Found while writing the model; each becomes a failing case and an item of the re
 6. **Reset passed**: `sustainableHourlyRate` answers `0` instead of "undefined"; the gauge then reads as "always over".
 7. **Rolling window without `resetsAt`** falls back to the manual renewal rule as period end; meaningless for a rolling window (E6).
 8. **Day granularity of period bounds** (`startOfDay`) is not mentioned anywhere in the UI; kept in the model (§1) and to be confirmed.
-9. **`resolveRenewalDate` with day 29-31** overflows into the following month (`setDate` on a shorter month); the model wants the last day of the month.
+9. ~~**`resolveRenewalDate` with day 29-31** overflowed into the following month~~ — fixed (#111, N-6..N-9).
 10. **`budget.ts` mixes** day-based pacing, hour-based gauge, history bookkeeping, chart, insights and tips in one file; the model suggests the split used by this document (§2 time, §3.2-3.8 pacing, §3.6/3.9 hourly, §3.11-3.12 history, §3.14-3.15 advice).
 
 ---

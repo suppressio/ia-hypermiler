@@ -416,6 +416,15 @@ test('resolveRenewalDate: future dayOfMonth in the current month', () => {
   assert.equal(result.getDate(), 20);
 });
 
+test('resolveRenewalDate: day 29-31 is clamped to the last day of a shorter month (N-6..N-9)', () => {
+  const ymd = (d: Date): string => budget.localDateKey(d);
+  const rule = (day: number) => ({ type: 'dayOfMonth' as const, day });
+  assert.equal(ymd(budget.resolveRenewalDate(rule(31), new Date(2026, 9, 20))), '2026-10-31'); // N-6
+  assert.equal(ymd(budget.resolveRenewalDate(rule(31), new Date(2026, 9, 31))), '2026-11-30'); // N-7
+  assert.equal(ymd(budget.resolveRenewalDate(rule(30), new Date(2026, 0, 31))), '2026-02-28'); // N-8
+  assert.equal(ymd(budget.resolveRenewalDate(rule(29), new Date(2028, 1, 10))), '2028-02-29'); // N-9
+});
+
 test('resolveRenewalDate: past dayOfMonth moves to the next month', () => {
   const ref = new Date(2026, 6, 25); // 25 luglio
   const result = budget.resolveRenewalDate({ type: 'dayOfMonth', day: 5 }, ref);

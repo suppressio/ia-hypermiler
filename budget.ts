@@ -7,7 +7,7 @@
 //
 // All functions are pure (no I/O), testable from the terminal/test runner.
 
-import { addDays, differenceInCalendarDays, isBefore, startOfDay, setDate, addMonths } from 'date-fns';
+import { addDays, differenceInCalendarDays, isBefore, startOfDay, setDate, addMonths, getDaysInMonth } from 'date-fns';
 import type {
   QuotaWindow,
   WorkSchedule,
@@ -1033,9 +1033,12 @@ export function generateDailyTip(ctx: DailyTipContext, random: () => number = Ma
 export function resolveRenewalDate(renewalRule: RenewalRule, referenceDate: Date = new Date()): Date {
   if (renewalRule.type === 'dayOfMonth' && typeof renewalRule.day === 'number') {
     const day = renewalRule.day;
-    let candidate = setDate(startOfDay(new Date(referenceDate)), day);
+    // setDate on a shorter month would overflow into the next one: clamp to its last day.
+    const inMonthOf = (monthStart: Date): Date => setDate(monthStart, Math.min(day, getDaysInMonth(monthStart)));
+    const monthStart = setDate(startOfDay(new Date(referenceDate)), 1);
+    let candidate = inMonthOf(monthStart);
     if (!isBefore(referenceDate, candidate)) {
-      candidate = setDate(addMonths(candidate, 1), day);
+      candidate = inMonthOf(addMonths(monthStart, 1));
     }
     return candidate;
   }
