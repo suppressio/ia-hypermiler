@@ -4,6 +4,7 @@ import { Tray, Menu, nativeImage, app, BrowserWindow, MenuItem } from 'electron'
 import path from 'path';
 import type Store from 'electron-store';
 import { trayTooltip } from './traySummary';
+import { BADGE_SIZE, badgeText, badgeTone, pickBadge, renderBadge } from './trayBadge';
 import type { AppSettings, UsageSnapshot } from '../types/index';
 import { t } from './i18n/index';
 
@@ -37,8 +38,42 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
     icon = nativeImage.createEmpty();
   }
 
+  const baseIcon = icon;
   const tray = new Tray(icon);
   tray.setToolTip('IA Hypermiler');
+
+  // Usage badge (#33). macOS shows the percentage as text next to the icon (the menu
+  // bar has room for it, and a drawn number would not follow the system appearance);
+  // Windows and Linux (StatusNotifier) have no tray text, so the icon itself becomes
+  // the number. The taskbar overlay of Windows belongs to windows, not to the tray.
+  // Re-rendered only when the shown value changes: nothing runs between refreshes.
+  let shownBadge = '';
+  const applyBadge = (snapshot: UsageSnapshot | null) => {
+    const ui = store.get('ui');
+    const badge = snapshot ? pickBadge(snapshot.accounts, ui.trayBadge) : null;
+    const tone = badge ? badgeTone(badge, ui.notificationThresholdPercent) : null;
+    const key = badge && tone ? `${badgeText(badge.percent)}:${tone}` : '';
+    if (key === shownBadge) return;
+    shownBadge = key;
+    if (process.platform === 'darwin') {
+      tray.setTitle(badge ? `${badgeText(badge.percent)}%${badge.stale ? '*' : ''}` : '');
+      return;
+    }
+    if (!badge || !tone) {
+      tray.setImage(baseIcon);
+      return;
+    }
+    // Electron wants BGRA; the renderer draws RGBA.
+    const rgba = renderBadge(badge.percent, tone);
+    const bgra = Buffer.alloc(rgba.length);
+    for (let i = 0; i < rgba.length; i += 4) {
+      bgra[i] = rgba[i + 2] ?? 0;
+      bgra[i + 1] = rgba[i + 1] ?? 0;
+      bgra[i + 2] = rgba[i] ?? 0;
+      bgra[i + 3] = rgba[i + 3] ?? 0;
+    }
+    tray.setImage(nativeImage.createFromBitmap(bgra, { width: BADGE_SIZE, height: BADGE_SIZE }));
+  };
 
   const toggleMainWindow = () => {
     const win = getMainWindow();
@@ -83,6 +118,9 @@ export function createTray({ getMainWindow, openSettings, refreshNow, store }: C
   return {
     tray,
     refreshMenu: () => { tray.setContextMenu(buildMenu()); },
-    updateUsage: (snapshot) => { tray.setToolTip(trayTooltip(snapshot.accounts)); },
+    updateUsage: (snapshot) => {
+      tray.setToolTip(trayTooltip(snapshot.accounts));
+      applyBadge(snapshot);
+    },
   };
 }

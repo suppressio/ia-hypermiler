@@ -240,6 +240,9 @@ export const it: Record<MessageKey, string> = {
   'settings.appearance.refresh30': '30 minuti',
   'settings.appearance.refresh60': '60 minuti',
   'settings.appearance.alwaysOnTop': 'Sempre in primo piano',
+  'settings.appearance.trayBadge': "L'icona nella tray mostra",
+  'settings.appearance.trayBadgeCritical': 'Account più usato',
+  'settings.appearance.trayBadgeOff': 'Niente (icona semplice)',
   'settings.appearance.accentColor': 'Colore accento',
 
   'settings.notifications.title': 'Notifiche',

@@ -228,8 +228,22 @@ function renderAccountsTable(): void {
   });
 }
 
+// The tray badge can follow one account: one option per account, next to the fixed ones.
+function renderTrayBadgeOptions(): void {
+  const select = byId('tray-badge-select', HTMLSelectElement);
+  select.querySelectorAll('option[data-account]').forEach((option) => { option.remove(); });
+  accounts().forEach((account) => {
+    const option = document.createElement('option');
+    option.value = account.id;
+    option.dataset.account = 'true';
+    option.textContent = account.label;
+    select.appendChild(option);
+  });
+}
+
 function populateForm(): void {
   renderAccountsTable();
+  renderTrayBadgeOptions();
   fieldElements().forEach((el) => {
     const value = getPath(settings, el.dataset.field as string);
     if (el instanceof HTMLInputElement && el.type === 'checkbox') {

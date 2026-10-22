@@ -65,6 +65,7 @@ ia-hypermiler/
 │   ├── ipc.ts                   ← typed handle/listen/sendToRenderer wrappers keyed on types/ipc.ts
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
+│   ├── trayBadge.ts             ← tray usage badge: account choice, tone, icon bitmap (+ test)
 │   ├── claude-auth.ts           ← Claude session capture via login BrowserWindow, one Electron partition per account
 │   ├── codex-auth.ts            ← ChatGPT login in a per-account partition, stock User-Agent
 │   ├── codex-session-cookie.ts  ← recognizes ChatGPT session cookies, including chunks (+ test)
