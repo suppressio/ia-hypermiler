@@ -34,24 +34,24 @@
   </div>
 
   <main id="app">
-    <nav id="account-tabs" class="account-tabs" hidden></nav>
-    <div id="window-list" class="window-list" hidden></div>
+    <nav id="account-tabs" class="account-tabs compact-extra" hidden></nav>
+    <div id="window-list" class="window-list compact-extra" hidden></div>
 
     <section class="current-indicator">
       <div class="current-value" id="current-value">--%</div>
-      <div class="metric-hint current-count" id="current-count" hidden></div>
+      <div class="metric-hint current-count compact-extra" id="current-count" hidden></div>
       <div class="current-label" id="current-label" data-i18n="widget.waiting">Waiting for data…</div>
     </section>
 
     <section class="instant-gauge-section">
-      <div class="gauge-header">
+      <div class="gauge-header compact-extra">
         <span data-i18n="widget.gauge.title">Instant consumption</span>
         <span id="gauge-label">--</span>
       </div>
       <div id="instant-gauge" class="instant-gauge"></div>
     </section>
 
-    <section class="chart-section">
+    <section class="chart-section compact-extra">
       <div class="chart-header">
         <span id="chart-title">Daily consumption vs budget</span>
         <span id="chart-ideal" class="chart-ideal"></span>
@@ -59,7 +59,7 @@
       <div id="chart" class="chart"></div>
     </section>
 
-    <section class="metrics-grid" id="metrics-grid">
+    <section class="metrics-grid compact-extra" id="metrics-grid">
       <div class="metric metric-today" data-i18n-title="widget.metric.todayHelp">
         <span class="metric-label" data-i18n="widget.metric.today">Today: used / budget</span>
         <span class="metric-value" id="metric-today">--</span>
@@ -98,12 +98,12 @@
       </div>
     </section>
 
-    <details class="tips-section" open>
+    <details class="tips-section compact-extra" open>
       <summary data-i18n="widget.tips.title">Tip of the day</summary>
       <div class="tips-text" id="tips-text">—</div>
     </details>
 
-    <details id="local-insights" class="tips-section local-insights" open hidden>
+    <details id="local-insights" class="tips-section local-insights compact-extra" open hidden>
       <summary data-i18n="widget.insights.header">Local insights · Claude Code</summary>
       <div class="local-insights-body">
         <div class="metric local-insights-yield" data-i18n-title="widget.insights.yieldHelp">

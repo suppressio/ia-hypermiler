@@ -22,6 +22,7 @@ import { localDateKey, parseDateKey } from './dates.js';
 import { showAutonomy, showPeakAvg, showStreak } from './visibility.js';
 import { createAlarmPulse, motionState } from './motion.js';
 import { finishOdometer, renderOdometer } from './odometer.js';
+import { createCompactTransition, createLayoutAnimation, fadeSlide, initDetailsMotion } from './layoutMotion.js';
 import { instantFlow, isWorkingDay } from './instantFlow.js';
 import {
   applyTranslations,
@@ -61,6 +62,23 @@ const alarmPulse = createAlarmPulse((active) => { document.body.classList.toggle
 let alarmed = false;
 let refreshing = false;
 let valueContext: string | null = null;
+const compactAnimation = createLayoutAnimation(true);
+let detailsMotion: { finish(): void } | undefined;
+const compactTransition = createCompactTransition({
+  isCompact: () => document.body.classList.contains('compact'),
+  effects: () => currentMotion().effects,
+  animate: (expanding) => compactAnimation.play(
+    Array.from(document.querySelectorAll<HTMLElement>('.compact-extra'))
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => fadeSlide(element, expanding)),
+  ),
+  finish: () => { compactAnimation.finish(); },
+  resize: (compact) => window.hypermiler.setCompact(compact),
+  apply: (compact) => {
+    if (state.settings) state.settings.ui.compact = compact;
+    updateCompactButton(compact);
+  },
+});
 
 function currentMotion(): ReturnType<typeof motionState> {
   return motionState(state.settings?.ui.animations ?? true, reducedMotion.matches, !document.hidden);
@@ -75,7 +93,11 @@ function syncMotion(): void {
   document.body.classList.toggle('refresh-border-active', refreshing && motion.effects);
   document.body.classList.toggle('refresh-rotate', refreshing && motion.rotateRefresh);
   alarmPulse.setActive(alarmed && motion.effects);
-  if (!motion.effects) finishOdometer(byId('current-value'));
+  if (!motion.effects) {
+    finishOdometer(byId('current-value'));
+    detailsMotion?.finish();
+    compactAnimation.finish();
+  }
   const button = byId('btn-refresh', HTMLButtonElement);
   button.disabled = refreshing;
   button.setAttribute('aria-busy', String(refreshing));
@@ -129,8 +151,8 @@ function updatePinButton(active: boolean): void {
   btn.setAttribute('aria-pressed', String(active));
 }
 
-// Compact view: the triangle points right when compact, down when full (like the
-// collapsible sections); the layout switch is a body class (renderer/style.css).
+// Compact view: the triangle points up when compact, down when full; rotating it
+// by 180 degrees follows the body class that switches the layout (style.css).
 function updateCompactButton(compact: boolean): void {
   const btn = byId('btn-compact', HTMLButtonElement);
   const label = t(compact ? 'widget.expand' : 'widget.compact');
@@ -810,6 +832,7 @@ function renderPeriodMetrics(winSnap: QuotaWindowSnapshot | undefined): void {
 // --- Main render ------------------------------------------------------------------
 
 function renderSnapshot(snapshot: UsageSnapshot): void {
+  detailsMotion?.finish();
   state.latestSnapshot = snapshot;
   renderAccountTabs(snapshot);
   // Same window (7/30 days) as the chart view, also used by the star rating.
@@ -824,6 +847,7 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     renderOdometer(byId('current-value'), '--', false);
     byId('current-count').hidden = true;
     byId('current-label').textContent = t('widget.noAccount');
+    delete byId('current-label').dataset.account;
     renderInstantGauge(undefined);
     renderEfficiencyRating(undefined, chartDays);
     renderLocalInsights(undefined);
@@ -866,6 +890,8 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     if (account.lastError) label = t('widget.withError', { label, error: account.lastError });
   }
   byId('current-label').textContent = label;
+  // The compact view hides the account tabs: the label carries the account name there (style.css).
+  byId('current-label').dataset.account = account.label;
 
   renderInstantGauge(winSnap, account.accountId);
   renderEfficiencyRating(winSnap, chartDays);
@@ -907,10 +933,8 @@ async function togglePin(): Promise<void> {
 }
 
 async function toggleCompact(): Promise<void> {
-  const next = !(state.settings?.ui.compact ?? false);
-  await window.hypermiler.setCompact(next);
-  if (state.settings) state.settings.ui.compact = next;
-  updateCompactButton(next);
+  detailsMotion?.finish();
+  await compactTransition.toggle();
 }
 
 async function init(): Promise<void> {
@@ -921,10 +945,15 @@ async function init(): Promise<void> {
   applyAccentColor(settings.ui.accentColor);
   updatePinButton(settings.ui.alwaysOnTop);
   updateCompactButton(settings.ui.compact);
+  detailsMotion = initDetailsMotion(() => currentMotion().effects);
   initHoverReveal();
   reducedMotion.addEventListener('change', syncMotion);
   document.addEventListener('visibilitychange', syncMotion);
-  window.addEventListener('pagehide', () => { alarmPulse.setActive(false); });
+  window.addEventListener('pagehide', () => {
+    alarmPulse.setActive(false);
+    detailsMotion?.finish();
+    compactAnimation.finish();
+  });
   syncMotion();
 
   byId('btn-settings').addEventListener('click', () => {
@@ -966,7 +995,7 @@ async function init(): Promise<void> {
     updatePinButton(updated.ui.alwaysOnTop);
     if (languageChanged) {
       applyLanguage(updated);
-      updateCompactButton(updated.ui.compact);
+      updateCompactButton(document.body.classList.contains('compact'));
     }
     // The warning colours follow the notification threshold (renderer/severity.ts).
     else if (thresholdChanged && state.latestSnapshot) renderSnapshot(state.latestSnapshot);
