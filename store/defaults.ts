@@ -37,12 +37,14 @@ export const DEFAULTS: AppSettings = {
     alwaysOnTop: false,
     // Compact view of the widget (percentage + instant gauge only).
     compact: false,
+    animations: true,
     accentColor: '#2563eb',
     // x/y missing until the user moves the window (see main/windows.ts).
     bounds: { width: 360, height: 480 },
     chartRange: 'week',
     refreshIntervalMinutes: 30,
     notificationThresholdPercent: 80,
+    trayBadge: { view: { mode: 'auto' }, critical: true },
   },
 
   history: {

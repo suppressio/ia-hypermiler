@@ -72,6 +72,7 @@ Packages are not signed: macOS Gatekeeper and Windows SmartScreen show a warning
 ```
 ia-hypermiler/
 ├── main.ts, preload.ts        ← Electron main process + secure bridge to the renderer
+├── core/                      ← fetch orchestration and snapshot computation, store injected, no Electron (+ tests)
 ├── main/                      ← windows, tray, Claude/Codex login, OAuth, per-provider logic, refresh pace, main-process i18n
 ├── renderer/                  ← widget and Settings window (vanilla HTML/CSS/TS) + UI i18n
 ├── services/                  ← Claude/Copilot/Codex usage fetch, local sessions, update check (+ tests)
@@ -110,4 +111,5 @@ Further reading:
 - ✅ Cross-platform CI publishing pre-releases; local test builds
 - 🟨 Advice agent (`agents/advisor.ts`) still a stub
 - ✅ Shared IPC contract between main, preload and renderer (`types/ipc.ts`)
-- ⬜ Next: extracting a testable core from `main.ts` to work test-first
+- ✅ Testable core extracted from `main.ts` (`core/usage.ts`, store and provider fetch injected)
+- ⬜ Next: headless CLI on top of the core (docs/EVOLUTION.md 2b)

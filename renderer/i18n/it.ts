@@ -6,6 +6,7 @@ import type { MessageKey } from './en.js';
 export const it: Record<MessageKey, string> = {
   'widget.pin': 'Sempre in primo piano',
   'widget.refresh': 'Aggiorna ora',
+  'widget.refreshing': 'Aggiornamento…',
   'widget.settings': 'Impostazioni',
   'widget.minimize': 'Riduci a icona',
   'widget.compact': 'Vista compatta',
@@ -240,6 +241,13 @@ export const it: Record<MessageKey, string> = {
   'settings.appearance.refresh30': '30 minuti',
   'settings.appearance.refresh60': '60 minuti',
   'settings.appearance.alwaysOnTop': 'Sempre in primo piano',
+  'settings.appearance.animations': 'Animazioni della finestra',
+  'settings.appearance.trayBadge': "L'icona nella tray mostra",
+  'settings.appearance.trayBadgeCritical': 'Avvisi critici',
+  'settings.appearance.trayBadgeAuto': 'Auto',
+  'settings.appearance.trayBadgeUnavailable': '{account} · {window} (non disponibile)',
+  'settings.appearance.trayBadgePending': 'Finestra critica',
+  'settings.appearance.trayBadgeOff': 'Disattivato',
   'settings.appearance.accentColor': 'Colore accento',
 
   'settings.notifications.title': 'Notifiche',

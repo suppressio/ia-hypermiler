@@ -32,7 +32,7 @@ I pacchetti non sono firmati: Windows SmartScreen e macOS Gatekeeper mostrano un
    **GitHub Copilot**: incolla un Personal Access Token (fine-grained con *Plan* in sola lettura, o classic senza scope), oppure accedi con una GitHub OAuth App. Per una licenza aziendale su un tenant `<nome>.ghe.com`, imposta prima il dominio GitHub.
 3. Facoltativo, per ogni account: il **calendario di lavoro** (ultima sezione dell'account) e, solo se il provider non lo comunica, il **giorno di rinnovo**.
 
-Chiudendo il widget l'app resta nel tray; *Esci* è nel menu del tray.
+Il badge nel tray mostra un account e una finestra di limite come numero colorato (verde, arancione, rosso come nel widget, grigio se non aggiornato; su macOS, testo accanto all'icona). Scegli **Disattivato**, **Auto** o un **account · finestra** dal menu del tray o da Impostazioni → Aspetto. Auto segue la finestra critica dell'ultimo account il cui utilizzo è aumentato, resta fermo durante l'inattività e parte dall'utilizzo più alto. Il pannello resta sulla vista che stai leggendo. Un clic su un account o una finestra del pannello seleziona Manuale (con il badge Disattivato cambia solo il pannello): pannello e tray mostrano quindi la stessa vista, anche scegliendola dal tray. Se l'account manuale è disabilitato o la finestra scompare, la voce selezionata è disabilitata e compare temporaneamente il valore Auto; la preferenza ritorna quando disponibile. Con **Avvisi critici** attivo (predefinito), un'altra vista alla soglia di notifica o sopra si alterna al badge normale ogni 2 secondi in rosso (`!95`, oppure `100`; macOS `!95%`), indipendentemente dalle animazioni della finestra. Disattivare il badge disattiva anche gli avvisi. Il tooltip elenca tutti gli account. Chiudendo il widget l'app resta nel tray; *Esci* è nel suo menu.
 
 ---
 
@@ -68,6 +68,7 @@ A che velocità stai usando la quota in questo momento, in % della quota all'ora
 - **Come si calcola**: quanto è salito il consumo nell'ultima ora circa di letture. Mentre il consumo sale l'app interroga il provider ogni 5 minuti, altrimenti all'intervallo scelto nelle Impostazioni (30 minuti di default).
 - **Target** (la tacca bianca): il ritmo che ti porterebbe esattamente al 100% al reset, ripartito sulle ore lavorative rimaste.
 - **Come leggerlo**: la tacca è sempre a metà. Le tacche leggere segnano metà del target (a sinistra) e il doppio (a destra), e l'estremità destra vale quattro volte il target o più. La barra diventa rossa sopra il target. Un picco breve va bene; una barra rossa per ore è il segnale da tenere d'occhio.
+- **Frecce sullo sfondo**: `>>>` indica che puoi consumare di più, `<<<` che conviene rallentare. Confrontano la media dell’ultima ora con il target e spariscono entro ±15% o in attesa di campioni. Più lo scarto cresce, più scorrono veloci, fino a un limite. Le frecce a destra compaiono solo nei giorni lavorativi full/half dell’account (lo schedule non ha orari di inizio/fine); con schedule disabilitato non ci sono vincoli di giorno. Le frecce a sinistra compaiono anche nei giorni liberi.
 
 ### Consumo giornaliero vs budget
 
@@ -135,10 +136,12 @@ Se li attivi su un account Claude, l'app legge le sessioni di Claude Code su que
 | Sezione | Cosa puoi impostare |
 |---|---|
 | **Account** | aggiungere, connettere, disconnettere (cancella la sessione salvata), attivare/disattivare; per account: nome, calendario di lavoro, giorno di rinnovo se il provider non lo comunica, metodo di login Claude e insight locali, dominio e autenticazione Copilot |
-| **Aspetto** | lingua, stile della finestra (chiaro, scuro, trasparente), intervallo del grafico (7 o 30 giorni), intervallo di aggiornamento, colore d'accento |
+| **Aspetto** | lingua, stile della finestra (chiaro, scuro, trasparente), intervallo del grafico (7 o 30 giorni), intervallo di aggiornamento, colore d'accento, animazioni della finestra (attive di default) |
 | **Notifiche** | soglia di allarme (%), usata anche per i colori |
 | **Aggiornamenti** | versione installata, controllo manuale e automatico; **Guida** apre questa pagina |
 | **Diagnostica** | segnalazione automatica di un cambio di formato del provider; file di report di diagnosi |
+
+Le animazioni della finestra fanno risplendere e lampeggiare ogni 10 secondi i valori rossi quando l'account visualizzato ha una quota a rischio o esaurita (in vista compatta, il nome dell'account sotto il valore), cifre scorrevoli quando cambia la percentuale principale e un segmento nel colore d'accento attorno alla finestra durante ogni aggiornamento, avviato dal widget, dal timer, dal tray o dalle Impostazioni. Le sezioni del consiglio e degli insight locali si aprono e chiudono con una breve sfumatura e uno scorrimento; lo stesso effetto accompagna il passaggio fra vista compatta e completa, con la freccia rivolta in alto nella compatta e in basso nella completa. Disattivandole i cambi di vista sono immediati, i valori rossi restano illuminati senza lampeggio e le frecce di consumo restano ferme, e ruota solo l'icona di aggiornamento. Con la preferenza di sistema per ridurre il movimento non si muove nulla: l'aggiornamento usa un'icona attenuata con tooltip «Aggiornamento…». Gli effetti si fermano a finestra nascosta o ridotta a icona; il tray alterna i valori solo in presenza di un avviso critico.
 
 ## Notifiche
 

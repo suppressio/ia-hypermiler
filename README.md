@@ -32,7 +32,7 @@ The packages are not signed: Windows SmartScreen and macOS Gatekeeper show a war
    **GitHub Copilot**: paste a Personal Access Token (fine-grained, *Plan* read-only, or classic with no scope), or sign in with a GitHub OAuth App. For a company seat on a `<name>.ghe.com` tenant, set the GitHub domain first.
 3. Optional, per account: the **work schedule** (last section of the account) and, only when the provider does not report it, the **renewal day**.
 
-The widget stays in the tray when you close it; *Quit* is in the tray menu.
+The tray badge shows one account and limit window as a coloured number (green, orange, red like the widget, grey when stale; on macOS, text beside the icon). Choose **Off**, **Auto**, or an **account · window** in the tray menu or Settings → Appearance. Auto follows the critical window of the last account whose usage increased, stays there while idle, and starts with the highest utilization. It leaves the panel on the view you are reading. Clicking a panel account tab or window selects Manual (with the badge Off it only changes the panel): panel and tray then show the same view, including when you choose it from the tray. If a Manual account is disabled or its window disappears, its checked entry is disabled and Auto is shown temporarily; the preference returns when available. With **Critical alerts** enabled (default), another view at or above the notification threshold alternates with the normal badge every 2 seconds in red (`!95`, or `100`; macOS `!95%`), independently of window animations. Off also disables alerts. The tooltip lists every account. Closing the widget leaves the app in the tray; *Quit* is in its menu.
 
 ---
 
@@ -68,6 +68,7 @@ How fast you are using the quota right now, in % of the quota per hour.
 - **How it is computed**: the rise in usage over about the last hour of readings. While usage is rising the app reads the provider every 5 minutes, otherwise at the interval set in Settings (30 minutes by default).
 - **Target** (the white marker): the pace that would bring you exactly to 100% at the reset, spread over the working hours left.
 - **How to read it**: the marker is always in the middle. The faint ticks mark half the target (left) and twice the target (right), and the far right end is four times the target or more. The bar turns red above the target. A short burst is fine; a bar that stays red for hours is what to watch.
+- **Background arrows**: `>>>` means you can consume more, `<<<` means slow down. They compare the last-hour average with the target and disappear within ±15% or while waiting for samples. A larger gap makes them flow faster, up to a limit. Right arrows appear only on the account’s full/half working days (the schedule has no start/end times); a disabled schedule has no day restriction. Left arrows also appear on days off.
 
 ### Daily consumption vs budget
 
@@ -135,10 +136,12 @@ When enabled on one Claude account, the app reads the Claude Code sessions on th
 | Section | What you can set |
 |---|---|
 | **Accounts** | add, connect, disconnect (deletes the saved session), enable/disable; per account: name, work schedule, renewal day when the provider does not report it, Claude login method and local insights, Copilot domain and authentication |
-| **Appearance** | language, window style (light, dark, transparent), chart range (7 or 30 days), refresh interval, accent colour |
+| **Appearance** | language, window style (light, dark, transparent), chart range (7 or 30 days), refresh interval, accent colour, window animations (on by default) |
 | **Notifications** | alert threshold (%), also used by the colours |
 | **Updates** | installed version, check now, automatic check; **User guide** opens this page |
 | **Diagnostics** | automatic report of a provider format change; diagnostic report file |
+
+Window animations make the red values glow and blink every 10 seconds when the displayed account has an at-risk or exhausted quota (in compact mode, the account name under the value), rolling digits when its main percentage changes, and an accent segment around the window during every refresh, whether started by the widget, timer, tray or Settings. Tip and local-insights sections open and close with a short fade and slide; the same effect accompanies compact/full view switches, with the arrow pointing up in compact mode and down in full mode. Turning animations off makes view changes immediate and keeps the red values glowing without blink and the consumption arrows static; only the refresh icon rotates. With your system's reduced-motion preference, nothing moves: refresh uses a dimmed icon with a “Refreshing…” tooltip. Effects stop while the window is hidden or minimized; the tray only alternates while a Critical alert exists.
 
 ## Notifications
 

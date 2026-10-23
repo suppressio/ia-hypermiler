@@ -21,10 +21,14 @@ function subscribe<C extends keyof IpcEventChannels>(channel: C, callback: (...a
 }
 
 const bridge: HypermilerBridge = {
+  getView: () => invoke('view:get'),
+  setView: (choice) => invoke('view:set', choice),
+  onViewUpdate: (callback) => subscribe('view:update', callback),
   getSettings: () => invoke('settings:get'),
   setSettings: (patch) => invoke('settings:set', patch),
 
   onUsageUpdate: (callback) => subscribe('usage:update', callback),
+  onUsageRefreshing: (callback) => subscribe('usage:refreshing', callback),
   // Notifies the widget when Settings change (e.g. accent color, language) while it
   // is open: without it, a field with no dedicated IPC (unlike
   // ui.windowStyle/ui.alwaysOnTop) applied only after the next restart.

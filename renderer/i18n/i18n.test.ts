@@ -6,6 +6,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dictionaries, interpolate, placeholdersOf, resolveLocale, setLocale, t } from './index.js';
 
+test('animation setting and refresh state are translated in every locale', () => {
+  for (const dictionary of Object.values(dictionaries)) {
+    const messages: Record<string, string> = dictionary;
+    for (const key of ['settings.appearance.animations', 'widget.refreshing']) {
+      assert.ok(messages[key]?.trim(), `missing message: ${key}`);
+    }
+  }
+});
+
 test('every Italian message uses exactly the same placeholders as the English one', () => {
   for (const [key, english] of Object.entries(dictionaries.en)) {
     const italian = (dictionaries.it as Record<string, string>)[key];

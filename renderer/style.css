@@ -1,4 +1,4 @@
-/* style.css — three skins (see docs/ARCHITECTURE.md §2). Plain, no animation/pulsing. */
+/* style.css — three skins, optional state animations (docs/ARCHITECTURE.md §2). */
 
 /* The `hidden` attribute must win over any `display` set by a class (e.g.
    .window-list/.account-tabs are display:flex): without this rule the author display
@@ -74,7 +74,7 @@ body {
 /* "Always on top" pin: same neutral hover treatment as the other title bar buttons
    (see the per-skin rules below) both on and off — no more full --accent fill (a fully
    saturated "on" color was too intrusive, user feedback). Off: no effect. On: only a
-   static glow (no animation/pulsing, consistent with AGENTS.md) to show the state
+   static glow to show the state
    without being eye-catching. */
 .titlebar-controls-left button.active {
   color: var(--accent);
@@ -299,7 +299,7 @@ body.style-transparent-digital .account-tabs button.active {
 .window-row.verdict-at-risk .window-row-bar > span { background: var(--warning); }
 
 .current-indicator { text-align: center; margin: 8px 0 16px; }
-.current-value { font-size: 42px; font-weight: 700; line-height: 1; }
+.current-value { font-size: 42px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .current-label { font-size: 12px; opacity: 0.75; margin-top: 4px; }
 
 .instant-gauge-section { margin-bottom: 14px; }
@@ -310,7 +310,20 @@ body.style-transparent-digital .account-tabs button.active {
   opacity: 0.75;
   margin-bottom: 4px;
 }
-.instant-gauge { width: 100%; height: 20px; }
+.instant-gauge { position: relative; width: 100%; height: 20px; overflow: hidden; border-radius: 4px; }
+.gauge-flow-gap { position: absolute; top: 0; height: 20px; min-width: 24px; overflow: hidden; pointer-events: none; }
+.gauge-flow {
+  position: absolute;
+  top: 0;
+  left: -48px;
+  width: calc(100% + 96px);
+  height: 20px;
+  pointer-events: none;
+  opacity: 0.35;
+}
+.motion-effects .gauge-flow { animation: gauge-flow var(--flow-duration) linear infinite; }
+.gauge-flow[data-direction="right"] { animation-direction: reverse; }
+@keyframes gauge-flow { from { transform: translateX(0); } to { transform: translateX(-48px); } }
 
 .chart-section { margin-bottom: 16px; }
 .chart-header { display: flex; justify-content: space-between; font-size: 12px; opacity: 0.75; margin-bottom: 6px; }
@@ -357,6 +370,7 @@ body.style-transparent-digital .account-tabs button.active {
    (opt-in, only when enabled and available — see docs/RESEARCH.md §5). Open by default: the
    tip was always visible before it became collapsible and must not lose prominence. */
 .tips-section {
+  position: relative;
   border-top: 1px solid rgba(127, 127, 127, 0.2);
   padding-top: 10px;
 }
@@ -367,6 +381,7 @@ body.style-transparent-digital .account-tabs button.active {
   margin-bottom: 4px;
 }
 .tips-text { font-size: 13px; line-height: 1.4; }
+.details-closing > div { position: absolute; pointer-events: none; }
 
 .local-insights {
   margin-top: 10px;
@@ -385,16 +400,115 @@ body.style-transparent-digital .account-tabs button.active {
 .local-insights-tools li { display: flex; justify-content: space-between; padding: 1px 0; }
 
 /* ---------- Compact view: percentage + instant gauge only ---------- */
-#btn-compact svg { transform: rotate(90deg); }
-body.compact #btn-compact svg { transform: none; }
-body.compact #account-tabs,
-body.compact #window-list,
-body.compact #current-count,
-body.compact #current-label,
-body.compact .gauge-header,
-body.compact .chart-section,
-body.compact .metrics-grid,
-body.compact .tips-section { display: none !important; }
+#btn-compact svg { transform: rotate(90deg); transition: transform 200ms ease-out; }
+body.compact #btn-compact svg { transform: rotate(270deg); }
+body.compact .compact-extra { display: none !important; }
 body.compact #app { padding: 0 14px; overflow: hidden; }
 body.compact .current-indicator { margin: 4px 0 10px; }
 body.compact .instant-gauge-section { margin-bottom: 0; }
+body.compact .current-value { font-size: 32px; }
+body.compact .current-label { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.compact .current-label[data-account]::before { content: attr(data-account) " · "; }
+/* An at-risk window may stay under the colour threshold: without window rows (compact
+   mode, or an account with one window) the label is the only place left for the alarm
+   (#125). Compact: the account name; full view with one window: the whole label. */
+body.compact.alarm .current-label[data-account]::before {
+  content: "● " attr(data-account) " · ";
+  color: var(--warning);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--warning) 75%, transparent);
+}
+
+/* ---------- Optional window state animations ---------- */
+/* Alarm glow on the red values (#125): a static text-shadow painted once, plus a colour
+   blink every 10 s. Bars are clipped by their track, so only text glows. */
+#app .severity-warning:not(.window-row-bar > span),
+.window-row.verdict-at-risk .window-row-verdict,
+.window-row.verdict-exhausted .window-row-verdict {
+  text-shadow: 0 0 6px color-mix(in srgb, var(--warning) 75%, transparent);
+}
+body.single-window.alarm:not(.compact) .current-label {
+  color: var(--warning);
+  opacity: 1;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--warning) 75%, transparent);
+}
+body.single-window.alarm:not(.compact) .current-label::before { content: "● "; }
+body.alarm-pulse #app .severity-warning:not(.window-row-bar > span),
+body.alarm-pulse .window-row.verdict-at-risk .window-row-verdict,
+body.alarm-pulse .window-row.verdict-exhausted .window-row-verdict,
+body.compact.alarm.alarm-pulse .current-label[data-account]::before,
+body.single-window.alarm.alarm-pulse:not(.compact) .current-label { animation: alarm-pulse 1500ms step-end; }
+/* A crisp colour blink (near-white with a glow, then darker, three times) reads on every skin; colour repaints only
+   these few short values for 1.5 s every 10 s, the one exception to opacity/transform. */
+@keyframes alarm-pulse {
+  0%, 100% { color: var(--warning); }
+  15%, 45%, 75% { color: color-mix(in srgb, var(--warning) 25%, white); text-shadow: 0 0 10px var(--warning); }
+  30%, 60%, 90% { color: color-mix(in srgb, var(--warning) 60%, black); text-shadow: none; }
+}
+
+.odometer-digit {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  vertical-align: bottom;
+  font-variant-numeric: tabular-nums;
+}
+.odometer-strip { display: block; transition: transform 700ms ease-out; }
+.odometer-strip > span { display: block; height: 1em; line-height: 1; }
+.odometer-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.refresh-border {
+  display: none;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 11;
+}
+.refresh-border-active .refresh-border { display: block; }
+.refresh-border > span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 4px 1px var(--accent);
+  transform-origin: 0 0;
+  animation: refresh-border 2400ms linear infinite;
+}
+/* Viewport coordinates track resizing and compact view without a JS frame loop.
+   Rotate only at corners; each straight edge uses translation alone. */
+@keyframes refresh-border {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  24.99% { transform: translate(calc(100vw - 4px), 0) rotate(0deg); }
+  25% { transform: translate(calc(100vw - 4px), 0) rotate(90deg); }
+  49.99% { transform: translate(calc(100vw - 4px), calc(100vh - 4px)) rotate(90deg); }
+  50% { transform: translate(calc(100vw - 4px), calc(100vh - 4px)) rotate(180deg); }
+  74.99% { transform: translate(0, calc(100vh - 4px)) rotate(180deg); }
+  75% { transform: translate(0, calc(100vh - 4px)) rotate(270deg); }
+  99.99% { transform: translate(0, 0) rotate(270deg); }
+  100% { transform: translate(0, 0) rotate(360deg); }
+}
+#btn-refresh:disabled { opacity: 0.5; cursor: default; }
+.refresh-rotate #btn-refresh svg { animation: refresh-rotate 1000ms linear infinite; }
+@keyframes refresh-rotate { to { transform: rotate(360deg); } }
+
+/* Includes existing hover transitions: reduced motion means no motion at all. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+body.motion-disabled *, body.motion-disabled *::before, body.motion-disabled *::after {
+  transition: none !important;
+}
+body.motion-hidden *, body.motion-hidden *::before, body.motion-hidden *::after,
+body.motion-hidden::before, body.motion-hidden::after {
+  animation: none !important;
+  transition: none !important;
+}

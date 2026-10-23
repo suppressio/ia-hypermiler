@@ -298,7 +298,7 @@ Un consiglio è un **dato** (`{ key, params }`); i candidati sono quelli la cui 
 
 ### 3.16 Fine periodo e rinnovo
 
-La fine del periodo è, in ordine: il `resetsAt` della finestra, il `subscriptionRenewsAt` del provider, il giorno del mese manuale (`resolveRenewalDate`: la prima occorrenza strettamente dopo `now`). È supportato solo `dayOfMonth`.
+La fine del periodo è, in ordine: il `resetsAt` della finestra, il `subscriptionRenewsAt` del provider, il giorno del mese manuale (`resolveRenewalDate`: la prima occorrenza strettamente dopo `now`). È supportato solo `dayOfMonth`. Un giorno oltre la lunghezza del mese (29-31) vale l'ultimo giorno di quel mese, mai il mese seguente.
 
 | # | Input | Atteso |
 |---|---|---|
@@ -307,6 +307,10 @@ La fine del periodo è, in ordine: il `resetsAt` della finestra, il `subscriptio
 | N-3 | reset di finestra 10-27 e rinnovo del provider 11-01 | fine 10-27 |
 | N-4 | nessun reset di finestra, rinnovo del provider 11-01 | fine 11-01 |
 | N-5 | nessuno dei due, giorno manuale 15 | fine 2026-11-15 |
+| N-6 | giorno 31, ora 10-20 | 2026-10-31 |
+| N-7 | giorno 31, ora 10-31 | 2026-11-30 (mese più corto: il suo ultimo giorno) |
+| N-8 | giorno 30, ora 01-31 | 2026-02-28 (l'occorrenza di gennaio è passata; febbraio è ridotto all'ultimo giorno) |
+| N-9 | giorno 29, ora 2028-02-10 | 2028-02-29 (anno bisestile) |
 
 ### 3.17 Notifiche
 
@@ -415,7 +419,7 @@ Emersi scrivendo il modello; ognuno diventa un caso che fallisce e una voce del 
 6. **Reset passato**: `sustainableHourlyRate` risponde `0` invece di «indefinito»; il misuratore allora si legge come «sempre oltre».
 7. **Finestra mobile senza `resetsAt`** ripiega sulla regola di rinnovo manuale come fine periodo; privo di senso per una finestra mobile (E6).
 8. **Granularità al giorno dei limiti del periodo** (`startOfDay`) non è citata nella UI; tenuta nel modello (§1) e da confermare.
-9. **`resolveRenewalDate` con giorno 29-31** trabocca nel mese seguente (`setDate` su un mese più corto); il modello vuole l'ultimo giorno del mese.
+9. ~~**`resolveRenewalDate` con giorno 29-31** traboccava nel mese seguente~~ — risolto (#111, N-6..N-9).
 10. **`budget.ts` mescola** pacing a giorni, misuratore a ore, gestione dello storico, grafico, insight e consigli in un solo file; il modello suggerisce la divisione usata da questo documento (§2 tempo, §3.2-3.8 pacing, §3.6/3.9 orario, §3.11-3.12 storico, §3.14-3.15 consigli).
 
 ---

@@ -3,8 +3,8 @@
 // Every visible string goes through t() (renderer/i18n): see CLAUDE.md, i18n rule.
 
 import type {
-  AccountId,
   AccountSnapshot,
+  AccountId,
   AppSettings,
   DailyTip,
   ProviderId,
@@ -12,6 +12,8 @@ import type {
   QuotaWindowSnapshot,
   UsageSnapshot,
   WindowVerdict,
+  UsageView,
+  TrayViewState,
 } from '../types/index';
 import type { HypermilerBridge } from '../types/ipc';
 import { windowLabel } from './windowLabel.js';
@@ -20,6 +22,10 @@ import { applySeverity, severityLevel, todaySeverity } from './severity.js';
 import { GAUGE_TARGET_POSITION, GAUGE_TICK_RATIOS, gaugePosition } from './gauge.js';
 import { localDateKey, parseDateKey } from './dates.js';
 import { showAutonomy, showPeakAvg, showStreak } from './visibility.js';
+import { createAlarmPulse, motionState } from './motion.js';
+import { finishOdometer, renderOdometer } from './odometer.js';
+import { createCompactTransition, createLayoutAnimation, fadeSlide, initDetailsMotion } from './layoutMotion.js';
+import { flowSpan, instantFlow, isWorkingDay } from './instantFlow.js';
 import {
   applyTranslations,
   formatDate,
@@ -41,17 +47,82 @@ declare global {
 interface RendererState {
   settings: AppSettings | null;
   latestSnapshot: UsageSnapshot | null;
-  // null = no explicit choice: the first account of the snapshot is shown.
-  activeAccount: AccountId | null;
-  activeWindowId: string | null;
+  view: TrayViewState | null;
+  // Auto/Off browsing stays local; activity in the tray must not move the panel.
+  // A null window = an account without quota windows (nothing for the badge to show).
+  localView: PanelView | null;
+  // Manual, but the user opened an account with no window: the panel shows it locally
+  // until the selection changes.
+  localOverride: boolean;
 }
+
+type PanelView = Omit<UsageView, 'windowId'> & { windowId: string | null };
 
 const state: RendererState = {
   settings: null,
   latestSnapshot: null,
-  activeAccount: null,
-  activeWindowId: null,
+  view: null,
+  localView: null,
+  localOverride: false,
 };
+
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const alarmPulse = createAlarmPulse((active) => { document.body.classList.toggle('alarm-pulse', active); });
+let alarmed = false;
+let refreshing = false;
+let valueContext: string | null = null;
+const compactAnimation = createLayoutAnimation(true);
+let detailsMotion: { finish(): void } | undefined;
+const compactTransition = createCompactTransition({
+  isCompact: () => document.body.classList.contains('compact'),
+  effects: () => currentMotion().effects,
+  animate: (expanding) => compactAnimation.play(
+    Array.from(document.querySelectorAll<HTMLElement>('.compact-extra'))
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => fadeSlide(element, expanding)),
+  ),
+  finish: () => { compactAnimation.finish(); },
+  resize: (compact) => window.hypermiler.setCompact(compact),
+  apply: (compact) => {
+    if (state.settings) state.settings.ui.compact = compact;
+    updateCompactButton(compact);
+  },
+});
+
+function currentMotion(): ReturnType<typeof motionState> {
+  return motionState(state.settings?.ui.animations ?? true, reducedMotion.matches, !document.hidden);
+}
+
+function syncMotion(): void {
+  const motion = currentMotion();
+  document.body.classList.toggle('motion-effects', motion.effects);
+  document.body.classList.toggle('motion-hidden', document.hidden);
+  document.body.classList.toggle('motion-disabled', state.settings?.ui.animations === false);
+  // Compact or single-window view: the label carries the alarm, no window rows (style.css).
+  document.body.classList.toggle('alarm', alarmed);
+  document.body.classList.toggle('refresh-border-active', refreshing && motion.effects);
+  document.body.classList.toggle('refresh-rotate', refreshing && motion.rotateRefresh);
+  alarmPulse.setActive(alarmed && motion.effects);
+  if (!motion.effects) {
+    finishOdometer(byId('current-value'));
+    detailsMotion?.finish();
+    compactAnimation.finish();
+  }
+  const button = byId('btn-refresh', HTMLButtonElement);
+  button.disabled = refreshing;
+  button.setAttribute('aria-busy', String(refreshing));
+  const key = refreshing ? 'widget.refreshing' : 'widget.refresh';
+  button.dataset.i18nTitle = key;
+  button.dataset.i18nAriaLabel = key;
+  button.title = t(key);
+  button.setAttribute('aria-label', t(key));
+}
+
+function requestRefresh(): void {
+  refreshing = true;
+  syncMotion();
+  window.hypermiler.requestUsageRefresh();
+}
 
 // --- Language ------------------------------------------------------------------
 
@@ -90,8 +161,8 @@ function updatePinButton(active: boolean): void {
   btn.setAttribute('aria-pressed', String(active));
 }
 
-// Compact view: the triangle points right when compact, down when full (like the
-// collapsible sections); the layout switch is a body class (renderer/style.css).
+// Compact view: the triangle points up when compact, down when full; rotating it
+// by 180 degrees follows the body class that switches the layout (style.css).
 function updateCompactButton(compact: boolean): void {
   const btn = byId('btn-compact', HTMLButtonElement);
   const label = t(compact ? 'widget.expand' : 'widget.compact');
@@ -377,7 +448,7 @@ function renderChart(winSnap: QuotaWindowSnapshot | undefined): void {
 // (winSnap.sustainableRate, the "target"), on a logarithmic scale of their ratio
 // (renderer/gauge.ts): the target marker stays in the middle, faint ticks mark ½× and
 // 2×. Without a target there is no scale to read the pace on: only the number.
-function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
+function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined, accountId?: AccountId): void {
   const container = byId('instant-gauge', HTMLDivElement);
   const label = byId('gauge-label', HTMLSpanElement);
   container.innerHTML = '';
@@ -446,6 +517,45 @@ function renderInstantGauge(winSnap: QuotaWindowSnapshot | undefined): void {
   }
 
   container.appendChild(svg);
+
+  const schedule = state.settings?.accounts.find((account) => account.id === accountId)?.workSchedule;
+  // instantRate is already the last-hour average computed by budget.instantaneousRate.
+  const flow = instantFlow(instant, sustainable, schedule !== undefined && isWorkingDay(schedule, new Date()));
+  if (flow && sustainable !== null) {
+    // The arrows fill only the gap between the bar end and the target marker.
+    const span = flowSpan(gaugePosition(instant, sustainable), GAUGE_TARGET_POSITION);
+    const gap = document.createElement('div');
+    gap.className = 'gauge-flow-gap';
+    gap.style.left = `${span.left * 100}%`;
+    gap.style.width = `${span.width * 100}%`;
+    const strip = document.createElementNS(svgNs, 'svg');
+    strip.setAttribute('class', 'gauge-flow');
+    strip.dataset.direction = flow.direction;
+    strip.setAttribute('aria-hidden', 'true');
+    strip.style.setProperty('--flow-duration', `${flow.durationSeconds}s`);
+    const pattern = document.createElementNS(svgNs, 'pattern');
+    pattern.id = 'instant-flow-pattern';
+    pattern.setAttribute('width', '48');
+    pattern.setAttribute('height', '20');
+    pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+    const arrows = document.createElementNS(svgNs, 'path');
+    arrows.setAttribute('d', flow.direction === 'right'
+      // Chevrons at the start of each 48 px period: with the gap's 24 px minimum width
+      // (style.css) three whole arrows show even when static.
+      ? 'M2 6l4 4-4 4m8-8 4 4-4 4m8-8 4 4-4 4'
+      : 'M6 6l-4 4 4 4m8-8-4 4 4 4m8-8-4 4 4 4');
+    arrows.setAttribute('fill', 'none');
+    arrows.setAttribute('stroke', 'currentColor');
+    arrows.setAttribute('stroke-width', '2');
+    pattern.append(arrows);
+    const repeat = document.createElementNS(svgNs, 'rect');
+    repeat.setAttribute('width', '100%');
+    repeat.setAttribute('height', '20');
+    repeat.setAttribute('fill', 'url(#instant-flow-pattern)');
+    strip.append(pattern, repeat);
+    gap.append(strip);
+    container.append(gap);
+  }
 }
 
 // --- Efficiency rating ------------------------------------------------------------
@@ -565,9 +675,50 @@ function absoluteCountLabel(win: QuotaWindow | null, provider: ProviderId): stri
 
 // One tab per account, in the order of the Settings table (issue #4: N accounts,
 // possibly two of the same provider — hence the account label, not the provider name).
+// In Manual the panel shows the selected view itself, even when the badge cannot draw
+// it (e.g. an unlimited window with no percentage); only when it is gone (disabled
+// account, missing window) does it follow the view the badge shows instead.
+function panelView(): PanelView | null {
+  const selected = state.view?.selection.view;
+  if (selected?.mode !== 'manual' || state.localOverride) return state.localView;
+  const exists = state.latestSnapshot?.accounts.some((a) => a.accountId === selected.accountId
+    && a.windows.some((w) => w.window.id === selected.windowId)) === true;
+  return exists ? { accountId: selected.accountId, windowId: selected.windowId } : state.view?.shown ?? null;
+}
+
+function applyView(updated: TrayViewState): void {
+  // Freeze the panel's current view when switching away from Manual.
+  if (state.latestSnapshot && state.view?.selection.view.mode === 'manual' && updated.selection.view.mode !== 'manual') {
+    const account = selectAccount(state.latestSnapshot);
+    const win = account ? selectWindowSnapshot(account) : undefined;
+    if (account && win) state.localView = { accountId: account.accountId, windowId: win.window.id };
+  }
+  if (JSON.stringify(state.view?.selection.view) !== JSON.stringify(updated.selection.view)) state.localOverride = false;
+  state.view = updated;
+  if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+}
+
+// A panel click selects that view as Manual, except with the badge Off (the user turned
+// the badge off) or on an account without windows (no view to select): then the panel
+// only browses locally.
+function choosePanelView(view: PanelView): void {
+  const mode = state.view?.selection.view.mode;
+  if (mode === 'off' || view.windowId === null) {
+    state.localView = view;
+    state.localOverride = mode === 'manual';
+    if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+    return;
+  }
+  // An explicit choice ends the local override, also when it is the selection already
+  // persisted (main answers with an unchanged view:update, which renders the panel).
+  state.localOverride = false;
+  runGuarded(window.hypermiler.setView({ mode: 'manual', accountId: view.accountId, windowId: view.windowId }));
+}
+
 function selectAccount(snapshot: UsageSnapshot): AccountSnapshot | undefined {
   const accounts = snapshot.accounts;
-  return accounts.find((a) => a.accountId === state.activeAccount) ?? accounts[0];
+  const view = panelView();
+  return accounts.find((a) => a.accountId === view?.accountId) ?? accounts[0];
 }
 
 function renderAccountTabs(snapshot: UsageSnapshot): void {
@@ -590,12 +741,10 @@ function renderAccountTabs(snapshot: UsageSnapshot): void {
     btn.className = id === activeId ? 'active' : '';
     btn.addEventListener('click', () => {
       // Diagnostic for issue #25 (tab occasionally not clickable right after login):
-      // if this fires but the widget stays unchanged, check state.activeAccount and
+      // if this fires but the widget stays unchanged, check state.view and
       // state.latestSnapshot in the DevTools console.
-      console.debug('[widget] tab click id=%s active=%s accounts=%d', id, state.activeAccount, state.latestSnapshot?.accounts.length ?? 0);
-      state.activeAccount = id;
-      state.activeWindowId = null;
-      if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+      console.debug('[widget] tab click id=%s mode=%s accounts=%d', id, state.view?.selection.view.mode, state.latestSnapshot?.accounts.length ?? 0);
+      choosePanelView({ accountId: id, windowId: selectWindowSnapshot(account)?.window.id ?? null });
     });
     nav.appendChild(btn);
   });
@@ -610,6 +759,8 @@ function renderWindowList(account: AccountSnapshot): void {
   // Always emptied, even when hidden: no row of another account may stay in the
   // DOM (see [hidden] in style.css, 0.2.0 bug).
   list.innerHTML = '';
+  // Without rows, the label under the value is the only place for the alarm (style.css).
+  document.body.classList.toggle('single-window', account.windows.length <= 1);
   if (account.windows.length <= 1) {
     list.hidden = true;
     return;
@@ -656,8 +807,7 @@ function renderWindowList(account: AccountSnapshot): void {
 
     row.append(dot, label, bar, pct, verdict);
     row.addEventListener('click', () => {
-      state.activeWindowId = winSnap.window.id;
-      if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
+      choosePanelView({ accountId: account.accountId, windowId: winSnap.window.id });
     });
     list.appendChild(row);
   });
@@ -665,8 +815,9 @@ function renderWindowList(account: AccountSnapshot): void {
 
 function selectWindowSnapshot(account: AccountSnapshot): QuotaWindowSnapshot | undefined {
   if (!account.windows.length) return undefined;
-  const byActive = state.activeWindowId
-    ? account.windows.find((w) => w.window.id === state.activeWindowId)
+  const view = panelView();
+  const byActive = view?.accountId === account.accountId
+    ? account.windows.find((w) => w.window.id === view.windowId)
     : undefined;
   if (byActive) return byActive;
   const criticalId = account.criticalWindow?.id;
@@ -741,6 +892,12 @@ function renderPeriodMetrics(winSnap: QuotaWindowSnapshot | undefined): void {
 // --- Main render ------------------------------------------------------------------
 
 function renderSnapshot(snapshot: UsageSnapshot): void {
+  if (state.view?.selection.view.mode !== 'manual') {
+    const account = selectAccount(snapshot);
+    const win = account ? selectWindowSnapshot(account) : undefined;
+    if (account && win) state.localView = { accountId: account.accountId, windowId: win.window.id };
+  }
+  detailsMotion?.finish();
   state.latestSnapshot = snapshot;
   renderAccountTabs(snapshot);
   // Same window (7/30 days) as the chart view, also used by the star rating.
@@ -748,10 +905,14 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
 
   const account = selectAccount(snapshot);
   if (!account) {
+    alarmed = false;
+    valueContext = null;
+    syncMotion();
     byId('window-list').hidden = true;
-    byId('current-value').textContent = '--';
+    renderOdometer(byId('current-value'), '--', false);
     byId('current-count').hidden = true;
     byId('current-label').textContent = t('widget.noAccount');
+    delete byId('current-label').dataset.account;
     renderInstantGauge(undefined);
     renderEfficiencyRating(undefined, chartDays);
     renderLocalInsights(undefined);
@@ -765,8 +926,13 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   const win = winSnap?.window ?? null;
   const utilization = win ? budgetNormalizedUtilization(win) : null;
 
-  byId('current-value').textContent =
-    utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
+  const context = `${account.accountId}:${win?.id ?? ''}:${document.documentElement.lang}`;
+  const value = utilization !== null ? formatPercent(utilization) : (win ? `${win.used}${win.total ? `/${win.total}` : ''}` : '--');
+  renderOdometer(byId('current-value'), value, currentMotion().effects && context === valueContext && utilization !== null,
+    formatNumber(1.1).replace(/\d/g, ''));
+  valueContext = context;
+  alarmed = account.windows.some((entry) => entry.verdict.kind === 'at-risk' || entry.verdict.kind === 'exhausted');
+  syncMotion();
   applySeverity(byId('current-value'), severityLevel(utilization, warningThreshold()));
   const countLabel = byId('current-count', HTMLDivElement);
   const absoluteCount = absoluteCountLabel(win, account.provider);
@@ -789,8 +955,10 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
     if (account.lastError) label = t('widget.withError', { label, error: account.lastError });
   }
   byId('current-label').textContent = label;
+  // The compact view hides the account tabs: the label carries the account name there (style.css).
+  byId('current-label').dataset.account = account.label;
 
-  renderInstantGauge(winSnap);
+  renderInstantGauge(winSnap, account.accountId);
   renderEfficiencyRating(winSnap, chartDays);
   renderLocalInsights(account);
   renderTokenYield(winSnap);
@@ -830,21 +998,30 @@ async function togglePin(): Promise<void> {
 }
 
 async function toggleCompact(): Promise<void> {
-  const next = !(state.settings?.ui.compact ?? false);
-  await window.hypermiler.setCompact(next);
-  if (state.settings) state.settings.ui.compact = next;
-  updateCompactButton(next);
+  detailsMotion?.finish();
+  await compactTransition.toggle();
 }
 
 async function init(): Promise<void> {
   const settings = await window.hypermiler.getSettings();
   state.settings = settings;
+  window.hypermiler.onViewUpdate(applyView);
+  state.view = await window.hypermiler.getView();
   applyLanguage(settings);
   applyWindowStyle(settings.ui.windowStyle);
   applyAccentColor(settings.ui.accentColor);
   updatePinButton(settings.ui.alwaysOnTop);
   updateCompactButton(settings.ui.compact);
+  detailsMotion = initDetailsMotion(() => currentMotion().effects);
   initHoverReveal();
+  reducedMotion.addEventListener('change', syncMotion);
+  document.addEventListener('visibilitychange', syncMotion);
+  window.addEventListener('pagehide', () => {
+    alarmPulse.setActive(false);
+    detailsMotion?.finish();
+    compactAnimation.finish();
+  });
+  syncMotion();
 
   byId('btn-settings').addEventListener('click', () => {
     window.hypermiler.openSettingsWindow();
@@ -859,16 +1036,18 @@ async function init(): Promise<void> {
   byId('btn-pin').addEventListener('click', () => { runGuarded(togglePin()); });
   byId('btn-refresh').addEventListener('click', () => {
     // requestUsageRefresh() is fire-and-forget (ipcRenderer.send): the result
-    // arrives through onUsageUpdate below, which re-enables the button —
-    // disabling it meanwhile only prevents spam clicks.
-    const btn = byId('btn-refresh', HTMLButtonElement);
-    btn.disabled = true;
-    window.hypermiler.requestUsageRefresh();
+    // arrives through onUsageUpdate below; onUsageRefreshing also clears failures.
+    requestRefresh();
   });
 
+  window.hypermiler.onUsageRefreshing((active) => {
+    refreshing = active;
+    syncMotion();
+  });
   window.hypermiler.onUsageUpdate((snapshot) => {
-    renderSnapshot(snapshot);
-    byId('btn-refresh', HTMLButtonElement).disabled = false;
+    refreshing = false;
+    try { renderSnapshot(snapshot); }
+    finally { syncMotion(); }
   });
   // Applies Settings changes live while the widget is open (accent color, always
   // on top from Settings/tray, language) — see preload.ts/main.ts, settings:update.
@@ -876,16 +1055,19 @@ async function init(): Promise<void> {
     const languageChanged = updated.ui.language !== state.settings?.ui.language;
     const thresholdChanged = updated.ui.notificationThresholdPercent !== state.settings?.ui.notificationThresholdPercent;
     state.settings = updated;
+    syncMotion();
+    const account = state.latestSnapshot ? selectAccount(state.latestSnapshot) : undefined;
+    renderInstantGauge(account ? selectWindowSnapshot(account) : undefined, account?.accountId);
     applyAccentColor(updated.ui.accentColor);
     updatePinButton(updated.ui.alwaysOnTop);
     if (languageChanged) {
       applyLanguage(updated);
-      updateCompactButton(updated.ui.compact);
+      updateCompactButton(document.body.classList.contains('compact'));
     }
     // The warning colours follow the notification threshold (renderer/severity.ts).
     else if (thresholdChanged && state.latestSnapshot) renderSnapshot(state.latestSnapshot);
   });
-  window.hypermiler.requestUsageRefresh();
+  requestRefresh();
 }
 
 // An error at startup or on a button must not leave the widget silent: it is

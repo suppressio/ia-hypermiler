@@ -23,7 +23,7 @@ Instructions for every coding agent (Claude Code, Codex, pi, Copilot). Read it i
 | Persistence | electron-store (with encryptionKey for secrets), normalized at startup (`store/normalize.ts`) |
 | Advice agent | `agents/advisor.ts` is a dormant stub, not wired. No Anthropic SDK: #29 will use plain HTTP calls through the accounts the user already connected |
 | Local insights (opt-in) | `@anthropic-ai/claude-agent-sdk` — reads local Claude Code sessions via `listSessions`/`getSessionMessages`, never by parsing the internal JSONL directly (see docs/RESEARCH.md §5) |
-| Build | `tsc` (three configs: `tsconfig.json` main/preload/services/store/budget/agents/tests — CommonJS; `tsconfig.renderer.json` renderer — ES modules; `tsconfig.renderer.test.json` renderer tests only, adds Node types) + `scripts/copy-assets.js` |
+| Build | `tsc` (three configs: `tsconfig.json` main/preload/core/services/store/budget/agents/tests — CommonJS; `tsconfig.renderer.json` renderer — ES modules; `tsconfig.renderer.test.json` renderer tests only, adds Node types) + `scripts/copy-assets.js` |
 | Lint | ESLint 10 + typescript-eslint `strictTypeChecked` (`eslint.config.mjs`) |
 | Tests | `node:test` + `node:assert` (no external test library); coverage via Node's built-in `--experimental-test-coverage` |
 | Packaging | electron-builder |
@@ -59,12 +59,15 @@ ia-hypermiler/
 │   ├── copy-assets.js           ← copies renderer html/css into dist/renderer/ + writes dist/renderer/package.json {type: module}
 │   └── generate-icons.js        ← one-off "gauge" icon generator (build/icon.png, build/icons/*, renderer/assets/*.png)
 ├── build/                       ← electron-builder resources (icons) — TRACKED, not an output (packages go to release/)
-├── main.ts                      ← Electron main process (lifecycle, IPC, refresh, update checks)
+├── main.ts                      ← Electron main process: wiring only (lifecycle, windows, tray, IPC, timers, notifications, update checks)
 ├── preload.ts                   ← contextBridge renderer ↔ main
+├── core/
+│   └── usage.ts                 ← fetch orchestration + snapshot computation (createUsageCore, computeAccountSnapshot…): store, provider fetch, local insights, clock and error reporting injected, no Electron (+ usage.test.ts)
 ├── main/
 │   ├── ipc.ts                   ← typed handle/listen/sendToRenderer wrappers keyed on types/ipc.ts
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
+│   ├── trayBadge.ts             ← tray usage badge: account choice, tone, icon bitmap (+ test)
 │   ├── claude-auth.ts           ← Claude session capture via login BrowserWindow, one Electron partition per account
 │   ├── codex-auth.ts            ← ChatGPT login in a per-account partition, stock User-Agent
 │   ├── codex-session-cookie.ts  ← recognizes ChatGPT session cookies, including chunks (+ test)
@@ -219,7 +222,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 ## What NOT to do
 
 - Do not invent API endpoints not documented in `docs/RESEARCH.md`.
-- Do not add animations or effects to the UI — plain and readable is the priority.
+- Animations are allowed but must be switchable off in Settings, low-key, carry state, and off with `prefers-reduced-motion`. Keep them in the visible widget renderer only (never the tray), animate only `opacity`/`transform`, and stop timers when hidden. With animations disabled, only the refresh icon rotates during refresh; reduced motion uses a static refresh state. Not an animation: the tray badge's critical alert (#122) alternates the normal frame with the alert frame every 2 s while another view is over the threshold. It carries information that would otherwise stay hidden, changes state far below the WCAG flash limit (3/s), and does not follow `ui.animations` or reduced motion.
 - Do not expose secrets or credentials in any git-tracked file.
 - Do not use `any`. If a type is really dynamic use `unknown` with explicit narrowing.
 - Do not paste real credentials (sessionKey, PAT/token) in chat, commits, issues or logs — not even for tests. See "Integration tests" below.
@@ -317,6 +320,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-09 | v0.4.14-beta | Reactive pacing overhaul: adaptive refresh (5 min after a rise), 1h instant pace, moving budget on the chart, leaner widget layout, user-only README (#38, #39, #40, #41); consistent streak/bar colours with the budget (#42); chart: highlight today's slot, thinner share bars (#43); fix: Free tier response no longer triggers a drift report, widget shows "Free plan" label (#44, #45) |
 | 2026-10-18 | v0.4.15-beta | Codex provider: ChatGPT login in a per-account partition, usage from the web session (5-hour and weekly windows), Settings, widget labels, diagnostics (#82, #83, #86-#90); tray tooltip with every account's usage (#33); AppStream metadata and readable name for the Linux .deb (#10); shared IPC contract (#22); tray-only footprint measured on Linux (#27) |
 | 2026-10-22 | v0.4.16-beta | Compact widget view: percentage and instant gauge only, toggle in the title bar (#60); pacing fixes: today's usage against the baseline at the same precision, reset only on a real drop (#64); Codex accounts without the useless manual renewal day (#95); slimmer packages, only en/it Chromium locales and no unused Anthropic SDK (#35); hardware acceleration off, tray-only PSS ~378 → ~295 MB on Linux (#99); CI lint + tests on every PR to `next`, rc tags never publish (#97, #100); pacing model written down in docs/PACING.md (#74) |
+| 2026-10-24 | v0.4.17-beta | Usage badge on the tray icon with an Auto/Manual view shared with the panel and a critical alert (#33, #122); optional window animations: alarm pulse, odometer, neon refresh border (#119); animated push/slow-down arrows on the instant bar pointing to the target (#66, #125); alarm glow and blink on red values (#125); animated collapsible sections and compact/full switch, compact label (#121); renewal day 29-31 clamped to the last day of shorter months (#111); tests guard the IPC contract and channel wiring (#71) |
 
 ### Lessons learned (still relevant)
 - **Codex login User-Agent**: Google refuses embedded login when a rewritten User-Agent contradicts the client hints. Never change the UA of the Codex login window or its partition.
@@ -335,7 +339,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **UTC day keys**: `toISOString().slice(0, 10)` is the UTC day, `new Date('YYYY-MM-DD')` is UTC midnight — both wrong for local working days → `localDateKey`/`parseDateKey`.
 
 ### Open items
-- Next agreed step (the shared IPC contract `types/ipc.ts` is done, #22): extracting a testable core from `main.ts` (docs/EVOLUTION.md 2a) and working test-first.
+- The testable core is extracted (`core/usage.ts`, #23). Next: the headless CLI on top of it (docs/EVOLUTION.md 2b); new orchestration/snapshot logic goes in `core/`, test-first, not in `main.ts`.
 - **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), architecture review and simplifications (#12, includes the IPC contract and core extraction below). **Milestone v1.0.0** (out of beta): signed Windows/macOS installers (#11).
 - `agents/advisor.ts` is a stub.
 - Copilot tab occasionally not clickable right after login (not reproduced; if it happens, open the widget DevTools and check the console).

@@ -375,16 +375,47 @@ export interface CodexAccountSettings extends AccountConfigBase {
 
 export type AccountConfig = ClaudeAccountSettings | CopilotAccountSettings | CodexAccountSettings;
 
+export interface UsageView {
+  accountId: AccountId;
+  windowId: string;
+}
+
+/** A null Manual window exists only until an uncached legacy account preference resolves. */
+export type TrayBadgeChoice = { mode: 'off' } | { mode: 'auto' }
+  | { mode: 'manual'; accountId: AccountId; windowId: string | null };
+
+export interface TrayBadgeSettings {
+  view: TrayBadgeChoice;
+  critical: boolean;
+}
+
+export interface TrayBadgeEntry {
+  view: TrayBadgeChoice;
+  checked: boolean;
+  enabled: boolean;
+  accountLabel?: string;
+  provider?: ProviderId;
+  window?: QuotaWindow;
+}
+
+export interface TrayViewState {
+  selection: TrayBadgeSettings;
+  shown: UsageView | null;
+  entries: TrayBadgeEntry[];
+}
+
 export interface UiSettings {
   language: LanguageSetting;
   windowStyle: WindowStyle;
   alwaysOnTop: boolean;
   compact: boolean;
+  animations: boolean;
   accentColor: string;
   bounds: { x?: number; y?: number; width: number; height: number };
   chartRange: ChartRange;
   refreshIntervalMinutes: number;
   notificationThresholdPercent: number;
+  trayBadge: TrayBadgeSettings;
 }
 
 export interface HistorySettings {

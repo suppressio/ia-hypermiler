@@ -8,6 +8,21 @@ import { mergeWithDefaults } from './merge';
 import { DEFAULT_WORK_SCHEDULE, DEFAULTS } from './defaults';
 import { at } from '../tests/support/at';
 
+test('normalizeSettings: animations default on for new and existing stores; false is preserved', () => {
+  assert.equal(DEFAULTS.ui.animations, true);
+  for (const raw of [undefined, {}, { ui: {} }, { ui: { windowStyle: 'filled-dark' } }]) {
+    assert.equal(normalizeSettings(raw, DEFAULTS).ui.animations, true);
+  }
+  assert.equal(normalizeSettings({ ui: { animations: false } }, DEFAULTS).ui.animations, false);
+  assert.equal(normalizeSettings({ ui: { animations: true } }, DEFAULTS).ui.animations, true);
+});
+
+test('normalizeSettings: invalid animation settings fall back to true', () => {
+  for (const animations of [null, 'false', 0, [], {}]) {
+    assert.equal(normalizeSettings({ ui: { animations } }, DEFAULTS).ui.animations, true);
+  }
+});
+
 test('mergeWithDefaults: deep merge, wrong types replaced, extra keys kept', () => {
   const defaults = { a: 1, nested: { flag: true, list: [] as number[] }, nullable: null as string | null };
   const raw = { a: 'uno', nested: { list: [3] }, nullable: 'x', extra: 42 };
@@ -152,4 +167,26 @@ test('normalizeSettings: Codex preserves capture time and repairs malformed sett
   assert.deepEqual(repaired.workSchedule, DEFAULT_WORK_SCHEDULE);
   if (repaired.provider !== 'codex') throw new Error('Expected Codex');
   assert.deepEqual(repaired.session, { capturedAt: null });
+});
+
+
+test('normalizeSettings: tray badge migrates the raw string before merging object defaults', () => {
+  const raw = { ui: { trayBadge: 'a' }, history: { lastGood: { a: { quotaWindows: [
+    { id: 'monthly', used: 80, total: 100, unit: 'percentage' },
+  ] } } } };
+  const result = normalizeSettings(raw, DEFAULTS);
+  assert.deepEqual(result.ui.trayBadge, { view: { mode: 'manual', accountId: 'a', windowId: 'monthly' }, critical: true });
+  assert.deepEqual(normalizeSettings(result, DEFAULTS), result);
+});
+
+test('normalizeSettings: invalid badge fields fall back safely, valid missing preferences survive', () => {
+  for (const trayBadge of [null, 3, [], {}, { view: { mode: 'bad' } }, { view: { mode: 'manual', accountId: 2, windowId: [] } }]) {
+    assert.deepEqual(normalizeSettings({ ui: { trayBadge } }, DEFAULTS).ui.trayBadge, DEFAULTS.ui.trayBadge);
+  }
+  const trayBadge = { view: { mode: 'manual', accountId: 'disabled', windowId: 'missing' }, critical: false };
+  assert.deepEqual(normalizeSettings({ ui: { trayBadge } }, DEFAULTS).ui.trayBadge, trayBadge);
+  const defaults = structuredClone(DEFAULTS);
+  normalizeSettings({ ui: { trayBadge: 'off' } }, defaults);
+  normalizeSettings({}, defaults);
+  assert.deepEqual(defaults, DEFAULTS);
 });
