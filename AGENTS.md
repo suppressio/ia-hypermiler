@@ -215,7 +215,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - Adaptive pace (`main/refreshPolicy.ts`): after a refresh where a freshly fetched window rose, the next one comes after **5 minutes**; the first one without a rise goes back to the interval. Per-account backoff: every consecutive failed fetch doubles that account's minimum gap (5 → 10 → 20 min, capped at the interval), a scheduled tick skips it meanwhile and shows its last data as stale with the error. Refresh modes: `scheduled` (timer, backoff applies), `manual` (button, tray, widget opening: reuses a fetch less than 1 minute old), `forced` (login, disconnect, account changes: always fetches). Only freshly fetched values are recorded as samples.
 
 ### Update check
-- At startup (packaged app only) and every 24h: GitHub Releases list (not `/releases/latest`, which skips pre-releases), one notification per version, download opens in the browser. No electron-updater (unsigned packages).
+- At startup (packaged app only) and every 24h: GitHub Releases list (not `/releases/latest`, which skips pre-releases; pre-releases are offered only to whoever runs one), one notification per version, download opens in the browser. No electron-updater (unsigned packages).
 
 ---
 

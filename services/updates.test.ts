@@ -31,6 +31,7 @@ function release(tag: string, overrides: Partial<GithubRelease> = {}): GithubRel
     tag_name: tag,
     html_url: `https://github.com/suppressio/ia-hypermiler/releases/tag/${tag}`,
     draft: false,
+    prerelease: false,
     published_at: '2026-10-01T10:00:00Z',
     assets: CI_ASSETS,
     ...overrides,
@@ -55,6 +56,17 @@ test('pickLatestRelease: the highest one, drafts and non-semver tags excluded', 
 test('pickLatestRelease: no newer version → null', () => {
   assert.equal(pickLatestRelease([release('v0.2.1-beta'), release('v0.2.0-beta')], '0.2.1-beta'), null);
   assert.equal(pickLatestRelease([], '0.2.1-beta'), null);
+});
+
+test('pickLatestRelease: pre-releases only for who runs a pre-release', () => {
+  const releases = [release('v0.4.0-beta', { prerelease: true }), release('v0.3.0-beta'), release('v0.2.9-beta', { prerelease: true })];
+  // On a normal release: the test build is skipped.
+  assert.equal(pickLatestRelease(releases, '0.2.1-beta')?.tag_name, 'v0.3.0-beta');
+  assert.equal(pickLatestRelease(releases, '0.3.0-beta'), null);
+  // On a pre-release: newer pre-releases are offered too.
+  assert.equal(pickLatestRelease(releases, '0.2.9-beta')?.tag_name, 'v0.4.0-beta');
+  // Not in the list (dev build): treated as a normal release.
+  assert.equal(pickLatestRelease(releases, '0.2.5-beta')?.tag_name, 'v0.3.0-beta');
 });
 
 test('pickDownloadAsset: right package for every OS', () => {
