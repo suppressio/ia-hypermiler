@@ -5,9 +5,10 @@
 // with unsigned packages.
 //
 // Endpoint: GET /repos/{owner}/{repo}/releases (official GitHub REST API, no
-// authentication). NOT /releases/latest: it skips pre-releases, and every release of
-// this project is one (`releaseType: "prerelease"` in package.json). No user data
-// leaves in the request: it is an anonymous GET to a public repository.
+// authentication). NOT /releases/latest: CI publishes every release as a pre-release
+// (`releaseType: "prerelease"` in package.json) and the owner promotes the tested ones
+// by hand, so the list is needed to tell the two apart. No user data leaves in the
+// request: it is an anonymous GET to a public repository.
 //
 // Pure functions (compareVersions/pickLatestRelease/pickDownloadAsset) + a single
 // network point (fetchLatestUpdate, via services/_http.ts: 10s timeout, explicit errors).
@@ -34,6 +35,7 @@ export interface GithubRelease {
   tag_name: string;
   html_url: string;
   draft: boolean;
+  prerelease: boolean;
   published_at: string | null;
   assets: GithubReleaseAsset[];
 }
@@ -81,11 +83,17 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** Most recent release (drafts and non-semver tags excluded), or null when it is not newer than `currentVersion`. */
+/**
+ * Most recent release (drafts and non-semver tags excluded), or null when it is not
+ * newer than `currentVersion`. Pre-releases may hold builds still to test: they are
+ * offered only when the installed version is itself a GitHub pre-release; a version
+ * missing from the list (dev build, too old) counts as a normal release.
+ */
 export function pickLatestRelease(releases: GithubRelease[], currentVersion: string): GithubRelease | null {
+  const onPrerelease = releases.some((r) => r.prerelease && parseVersion(r.tag_name) && compareVersions(r.tag_name, currentVersion) === 0);
   let best: GithubRelease | null = null;
   for (const release of releases) {
-    if (release.draft || !parseVersion(release.tag_name)) continue;
+    if (release.draft || (release.prerelease && !onPrerelease) || !parseVersion(release.tag_name)) continue;
     if (!best || compareVersions(release.tag_name, best.tag_name) > 0) best = release;
   }
   if (!best || compareVersions(best.tag_name, currentVersion) <= 0) return null;
