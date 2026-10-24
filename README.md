@@ -14,13 +14,22 @@ A small always-on-top widget for Windows, macOS and Linux that tells you how fas
 - **Notifications** when a quota passes your alert threshold, or when today's use goes well over today's budget.
 - English and Italian interface.
 
-> Personal project in active development. Releases are pre-releases (`v0.x-beta`).
+> Personal project in active development (`v0.x-beta`).
 
 ---
 
 ## Install
 
-Download the package for your system from [Releases](https://github.com/suppressio/ia-hypermiler/releases): `.exe` (Windows), `.dmg` (macOS), `.AppImage` or `.deb` (Linux).
+Open the **[latest release](https://github.com/suppressio/ia-hypermiler/releases/latest)** and download, under *Assets*, the file for your system:
+
+| System | File |
+|---|---|
+| Windows | `ia-hypermiler-Setup-<version>.exe` |
+| macOS (Apple Silicon) | `ia-hypermiler-<version>-arm64.dmg` |
+| Linux, any distribution | `ia-hypermiler-<version>.AppImage` |
+| Debian, Ubuntu | `ia-hypermiler_<version>_amd64.deb` |
+
+Other versions, including pre-releases for testing, are on the [Releases](https://github.com/suppressio/ia-hypermiler/releases) page.
 
 The packages are not signed: Windows SmartScreen and macOS Gatekeeper show a warning the first time. The app checks for new versions at startup and every 24 hours and opens the right download in your browser.
 
