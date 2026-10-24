@@ -17,7 +17,10 @@ import { fetchJson } from './_http';
 import type { UpdateInfo } from '../types/index';
 
 const REPO = 'suppressio/ia-hypermiler';
-export const RELEASES_API_URL = `https://api.github.com/repos/${REPO}/releases?per_page=20`;
+// 100 = GitHub's page maximum, one request. Beyond it an installed pre-release is no
+// longer recognised (it then follows normal releases) and a normal release preceded by
+// 100 pre-releases is missed: years of margin at the current pace, no pagination.
+export const RELEASES_API_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`;
 /** Every URL opened by the "Download" button must be under this prefix (see main.ts). */
 export const TRUSTED_DOWNLOAD_PREFIX = `https://github.com/${REPO}/`;
 
