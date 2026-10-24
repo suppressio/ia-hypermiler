@@ -14,13 +14,22 @@ Un piccolo widget sempre in primo piano, per Windows, macOS e Linux, che ti dice
 - **Notifiche** quando una quota supera la tua soglia di allarme, o quando il consumo di oggi va molto oltre il budget di oggi.
 - Interfaccia in italiano e inglese.
 
-> Progetto personale in sviluppo attivo. Le versioni sono pre-release (`v0.x-beta`).
+> Progetto personale in sviluppo attivo (`v0.x-beta`).
 
 ---
 
 ## Installazione
 
-Scarica il pacchetto per il tuo sistema da [Releases](https://github.com/suppressio/ia-hypermiler/releases): `.exe` (Windows), `.dmg` (macOS), `.AppImage` o `.deb` (Linux).
+Apri l'**[ultima release](https://github.com/suppressio/ia-hypermiler/releases/latest)** e scarica, sotto *Assets*, il file per il tuo sistema:
+
+| Sistema | File |
+|---|---|
+| Windows | `ia-hypermiler-Setup-<versione>.exe` |
+| macOS (Apple Silicon) | `ia-hypermiler-<versione>-arm64.dmg` |
+| Linux, qualsiasi distribuzione | `ia-hypermiler-<versione>.AppImage` |
+| Debian, Ubuntu | `ia-hypermiler_<versione>_amd64.deb` |
+
+Le altre versioni, comprese le pre-release di test, sono nella pagina [Releases](https://github.com/suppressio/ia-hypermiler/releases).
 
 I pacchetti non sono firmati: Windows SmartScreen e macOS Gatekeeper mostrano un avviso la prima volta. L'app controlla le nuove versioni all'avvio e ogni 24 ore e apre nel browser il download giusto.
 
