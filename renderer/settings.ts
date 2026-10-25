@@ -130,12 +130,14 @@ function accounts(): AccountConfig[] {
   return Array.isArray(settings?.accounts) ? settings.accounts : [];
 }
 
+// A Claude account has nothing to connect since #140: it only carries the local insights.
 function isAccountConnected(account: AccountConfig): boolean {
   if (account.provider === 'codex') return account.session.capturedAt !== null;
-  return account.provider === 'claude' ? !!account.session.sessionKey : !!account.credentials.username;
+  return account.provider === 'claude' ? false : !!account.credentials.username;
 }
 
 function connectionLabel(account: AccountConfig): string {
+  if (account.provider === 'claude') return t('settings.accounts.statusClaudeLocalOnly');
   if (!isAccountConnected(account)) return t('settings.accounts.statusNotConnected');
   return account.provider === 'copilot' && account.credentials.username
     ? t('settings.accounts.statusConnectedAs', { user: account.credentials.username })
@@ -193,8 +195,8 @@ function renderAccountsTable(): void {
     actionsCell.appendChild(actionButton(isExpanded ? 'settings.accounts.close' : 'settings.accounts.configure', 'toggle-detail', account.id));
     if (isAccountConnected(account)) {
       actionsCell.appendChild(actionButton('settings.accounts.disconnect', 'disconnect', account.id));
-    } else if (account.provider === 'claude' || account.provider === 'codex') {
-      actionsCell.appendChild(actionButton('settings.accounts.connect', `connect-${account.provider}`, account.id));
+    } else if (account.provider === 'codex') {
+      actionsCell.appendChild(actionButton('settings.accounts.connect', 'connect-codex', account.id));
     }
     actionsCell.appendChild(actionButton('settings.accounts.remove', 'remove', account.id));
 
@@ -405,13 +407,6 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
       await window.hypermiler.connectCodex(id);
       await reloadAfterAccountAction(id);
       showSaveStatus(t('settings.accounts.connected', { name }));
-    } else if (action === 'connect-claude') {
-      setDetailStatus(id, t('settings.accounts.loginInProgress'));
-      const result = await window.hypermiler.connectClaude(id);
-      await reloadAfterAccountAction(id);
-      showSaveStatus(result.organizationId
-        ? t('settings.accounts.connected', { name })
-        : t('settings.accounts.connectedNoOrg', { name }));
     } else if (action === 'connect-copilot-pat') {
       const input = detailElement(id)?.querySelector<HTMLInputElement>('[data-role="token-input"]');
       const token = input?.value.trim() ?? '';

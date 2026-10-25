@@ -85,7 +85,7 @@ Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del fi
     { // --- provider: 'claude' ---
       authMethod: 'password' | 'google' | 'sso',
       session: {
-        sessionKey: string,        // cifrato
+        sessionKey: string,        // cifrato; sempre null da #140
         organizationId: string | null, // risolto automaticamente al login (GET /api/organizations)
         capturedAt: string,        // ISO date
         expiresAt: string | null,  // stimata ~30gg, da ri-validare
@@ -251,7 +251,7 @@ Aggiunte proposte in Sessione 2 (confermate e implementate):
 - `budget.ts` — esteso per multi-finestra, efficienza, previsionale, autonomia stimata (resta comunque un modulo puro, testabile con `budget.test.ts` come richiesto in `PLAN.md`).
 
 Aggiunte ulteriori in Giorno 2, Sessione 1 (services layer reale):
-- `main/claude-auth.ts` — cattura della sessione Claude via `BrowserWindow` di login embedded (classico o SSO), mai chiesto in chiaro all'utente.
+- `main/claude-auth.ts` — cancella le sessioni claude.ai salvate dalle versioni precedenti; l'app non accede più a claude.ai (#140).
 - `services/_http.ts` — helper HTTP condiviso tra i due service (timeout esplicito, errori leggibili, mai `null` silenzioso — regola CLAUDE.md).
 - Migrazione a TypeScript (feedback utente, dopo Giorno 2 Sessione 1): tutti i file convertiti a `.ts`, tipi condivisi in `types/index.ts`, test con `node:test` (`budget.test.ts`, `services/*.test.ts`, `tests/integration/*`). Dettagli in CLAUDE.md §"Build e test".
 - `store.history.lastGood.<accountId>` — cache dell'ultimo snapshot riuscito per servizio, usata come fallback quando una fetch fallisce (mostrato in UI con timestamp e indicazione "dato non aggiornato").

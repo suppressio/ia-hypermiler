@@ -163,13 +163,13 @@ export const en = {
   'settings.accounts.statusConnected': 'Connected',
   'settings.accounts.statusConnectedAs': 'Connected as {user}',
   'settings.accounts.statusNotConnected': 'Not connected',
+  'settings.accounts.statusClaudeLocalOnly': 'Local insights only',
   'settings.accounts.enabledAria': 'Account {name} active',
   'settings.accounts.detailTitle': 'Configure “{name}”',
   'settings.accounts.detailTitleNew': 'New {provider} account',
   'settings.accounts.removeConfirm': 'Remove the account "{name}"? The saved session will be deleted.',
   'settings.accounts.loginInProgress': 'Login in progress… (complete it in the window that opened)',
   'settings.accounts.connected': '{name} connected',
-  'settings.accounts.connectedNoOrg': '{name} connected (organization not detected)',
   'settings.accounts.connectedAs': '{name} connected as {user}',
   'settings.accounts.connectedOauthAs': '{name} connected (OAuth) as {user}',
   'settings.accounts.disconnected': '{name} disconnected',
@@ -187,12 +187,9 @@ export const en = {
   'settings.account.renewalDay': 'Renewal day (of the month)',
 
   // --- Settings: Claude detail ------------------------------------------------
-  'settings.claude.loginMethod': 'Login method',
-  'settings.claude.loginPassword': 'Email and password',
-  'settings.claude.loginSso': 'Company SSO',
+  'settings.claude.quotasUnavailable': 'Claude quotas are not available in this version: Anthropic does not allow third-party apps to sign in to claude.ai. This account shows the local insights only.',
   'settings.claude.localInsights': 'Attribute this machine’s Claude Code sessions to this account (local insights, experimental)',
   'settings.claude.localInsightsHint': 'Reads local Claude Code sessions (CLI and VS Code extension — same source) to show how much of your usage happens with a very large context or in very long sessions, which tools/MCP servers you use most and how many tokens you produce per point of quota. It only reads token counts and tool names — never message content. Local sessions do not say which account they belong to: enable it on one Claude account only, the one you use with Claude Code. Sessions older than about 30 days are no longer available.',
-  'settings.claude.loginHint': 'Login opens in a claude.ai window dedicated to this account (works with company SSO too): no cookie to paste by hand.',
 
   // --- Settings: Copilot detail -------------------------------------------------
   'settings.codex.loginHint': 'Login opens a chatgpt.com window. Only usage is read.',

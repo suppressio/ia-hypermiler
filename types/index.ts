@@ -60,7 +60,7 @@ export interface QuotaWindow {
   resetsAt: Date | string | null;
 }
 
-/** Raw data returned by a service (services/claude.ts, services/copilot.ts). */
+/** Raw data returned by a service (services/codex.ts, services/copilot.ts). */
 export interface RawAccountUsage {
   planTier: string | null;
   subscriptionRenewsAt: Date | string | null;
@@ -331,6 +331,8 @@ export interface AccountConfigBase {
 
 export interface ClaudeAccountSettings extends AccountConfigBase {
   provider: 'claude';
+  // authMethod and session are kept so stores of earlier versions stay valid; since
+  // #140 the app no longer signs in to claude.ai and the session is always empty.
   authMethod: 'password' | 'google' | 'sso';
   session: {
     sessionKey: string | null;
@@ -338,9 +340,8 @@ export interface ClaudeAccountSettings extends AccountConfigBase {
     capturedAt: string | null;
     expiresAt: string | null;
   };
-  // Dedicated Electron partition (`persist:account-<id>`): claude.ai cookies isolated
-  // per account. They all used to live in session.defaultSession — "Disconnect" did not
-  // clear them and the next login resumed the same session (issue #4).
+  // Dedicated Electron partition (`persist:account-<id>`) that held the claude.ai
+  // cookies before #140; still cleared on disconnect/removal.
   partition: string;
   // Claude Code sessions of THIS machine attributed to this account (opt-in, at most
   // one Claude account at a time) — see services/claudeLocalSessions.ts.
@@ -467,9 +468,9 @@ export interface AppSettings {
   advisorCache: { generatedAt: string | null; adviceText: string | null };
   meta: {
     notifiedToday: Record<string, boolean>;
-    // One-off copy of the claude.ai cookies from session.defaultSession into the
-    // partition of the migrated Claude account (see main.ts, migrateLegacyClaudeCookies).
-    claudeCookiesMigrated?: boolean;
+    // One-off removal of the claude.ai sessions stored by earlier versions (#140, see
+    // main.ts, purgeStoredClaudeSessions).
+    claudeSessionsPurged?: boolean;
   };
   diagnostics: DiagnosticsSettings;
   updates: UpdateSettings;
@@ -477,18 +478,6 @@ export interface AppSettings {
   // rescanning all local Claude Code sessions on every 30-minute refresh — see main.ts
   // LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
   localInsightsCache: { claudeCode: ClaudeLocalInsights | null };
-}
-
-/** Credenziali passate a services/claude.ts fetchUsage(). */
-export interface ClaudeCredentials {
-  sessionKey: string;
-  organizationId?: string | null;
-  // Full Cookie header (sessionKey + cf_clearance + any other Cloudflare/claude.ai
-  // cookie), read fresh from the account's Electron session at request time — see
-  // main/claude-auth.ts:buildClaudeCookieHeader(). When missing, only the sessionKey is
-  // sent (compatibility/tests), but without cf_clearance claude.ai answers with the
-  // Cloudflare challenge page instead of the data.
-  cookieHeader?: string | null;
 }
 
 /** Credenziali passate a services/copilot.ts fetchUsage(). */
