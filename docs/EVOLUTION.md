@@ -117,6 +117,14 @@ Reading against the rule above: CPU is idle (0.01% average, the cursor poll does
 
 **#99, 2026-10-22** (same Linux machine, X11/KDE, throw-away profile, tray-only PSS of the app's process tree): `app.disableHardwareAcceleration()` took it from ~378 to ~295 MB (−83 MB, −22%), almost all from the GPU process (172 → 97 MB: Chromium keeps a software GPU process). CPU still idle. The three skins render correctly, transparent-digital included (screenshots on the real display). Kept: noticeably lighter with no visible regression, though still above the ~250 MB rule; destroying the window on close is the next tuning step. Windows not checked yet (#98).
 
+**#98, 2026-10-25** (Windows, installed v0.4.17-beta, so hardware acceleration already off; **real profile** with accounts and network, not the throw-away one; tray-only for 60 min, 30 s samples; summed working set and CPU over all `ia-hypermiler` processes, measured with PowerShell `Get-Process` instead of `measure-resources.js` so no source checkout was needed):
+
+```
+SUMMARY tray: processes=4 avgMB=320 maxMB=346 avgCPU=0.05% maxCPU=0.6% samples=117
+```
+
+CPU is idle here too, even with real polling: one 0.6% spike over the hour, the rest below 0.2%. Memory slowly went down from ~347 to ~303 MB as Windows trimmed the working set of idle processes. Like on Linux, the summed working set counts shared pages once per process, so it overstates the footprint; it is not comparable with the Linux PSS figures above, only with the Linux summed working set (712 MB, before #99, throw-away profile). Reading against the rule: CPU well below 0.5%, memory above ~250 MB but by a modest margin → still **tuning**, not point 5. The remaining tuning step is the same as on Linux: destroy the window on close (~30-55 MB). Point 5 is only worth opening if that step leaves both platforms clearly above the rule.
+
 ## Update (2026-10-22): 2a done (#23)
 
 `core/usage.ts` holds fetch orchestration and snapshot computation: `createUsageCore(deps).buildUsageSnapshot(mode)` plus `computeAccountSnapshot`/`computeWindowSnapshot`/`resolvePeriodBounds` and the history draft. Everything Electron-bound is injected (`UsageCoreDeps`): the store (`UsageStore`: accounts, ui, history, last good result), the provider fetch, connection check, local insights, error wording, the format-drift hook, the clock and the logger. The per-account backoff state now lives inside the core instance. `main.ts` keeps windows, tray, IPC, timers, notifications, the local-insights utility process and the settings-store adapter. The code was moved without changes; `core/usage.test.ts` pins its behaviour on an in-memory store (first refresh, rise detection, stale fallback, backoff, manual cache, local insights, pruning, rolling-hours vs monthly windows). Next: 2b, a headless CLI over the same core. Not moved: the local insights cache policy (`computeLocalInsightsIfNeeded`, it starts an Electron utility process) and the notifications.
