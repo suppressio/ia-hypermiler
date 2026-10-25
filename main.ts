@@ -477,6 +477,7 @@ const usageCore = createUsageCore({
   },
   fetchUsage: providers.fetchUsage,
   isConnected: providers.isConnected,
+  quotasUnavailable: (cfg) => (cfg.provider === 'claude' ? t('error.claudeQuotasUnavailable') : null),
   localInsights: computeLocalInsightsIfNeeded,
   describeError: friendlyErrorMessage,
   onFetchError: maybeReportFormatDrift,
@@ -998,19 +999,30 @@ function registerIpcHandlers(): void {
 // fetched Claude quotas. Retried on the next start if anything fails.
 async function purgeStoredClaudeSessions(): Promise<void> {
   if (store.get('meta').claudeSessionsPurged === true) return;
-  try {
-    for (const cfg of getAccounts()) {
-      if (cfg.provider === 'claude') await clearClaudePartition(cfg.partition);
+  // The store part runs first and always: it cannot fail on a single partition.
+  const history = store.get('history');
+  const purged = purgeClaudeSessions(getAccounts(), history.lastGood);
+  store.set('accounts', purged.accounts);
+  store.set('history', { ...history, lastGood: purged.lastGood });
+  // Each cookie store separately: one failure must not skip the others.
+  let failures = 0;
+  const attempt = async (what: string, clear: () => Promise<unknown>) => {
+    try {
+      await clear();
+    } catch (err) {
+      failures += 1;
+      console.error(`[main] removing the claude.ai cookies of ${what} failed:`, (err as Error).message);
     }
-    await clearDefaultSessionClaudeCookies();
-    const history = store.get('history');
-    const purged = purgeClaudeSessions(getAccounts(), history.lastGood);
-    store.set('accounts', purged.accounts);
-    store.set('history', { ...history, lastGood: purged.lastGood });
+  };
+  for (const cfg of getAccounts()) {
+    if (cfg.provider === 'claude') await attempt(`account '${cfg.label}'`, () => clearClaudePartition(cfg.partition));
+  }
+  await attempt('the default session', clearDefaultSessionClaudeCookies);
+  if (failures === 0) {
     store.set('meta', { ...store.get('meta'), claudeSessionsPurged: true });
     console.log('[main] stored claude.ai sessions removed (#140)');
-  } catch (err) {
-    console.error('[main] removing the stored claude.ai sessions failed, retrying at the next start:', (err as Error).message);
+  } else {
+    console.error(`[main] ${failures} claude.ai cookie store(s) not cleared, retrying at the next start`);
   }
 }
 
