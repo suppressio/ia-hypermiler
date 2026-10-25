@@ -61,6 +61,7 @@ function harness(accounts: AccountConfig[], first: RawAccountUsage, extra: Parti
     store,
     fetchUsage: async (cfg) => { fetches.push(cfg.id); return answer.next(); },
     isConnected: (cfg) => cfg.provider === 'claude' && !!cfg.session.sessionKey,
+    quotasUnavailable: () => null,
     localInsights: async () => { localInsightsCalls.count += 1; return null as ClaudeLocalInsights | null; },
     describeError: (err) => `friendly: ${(err as Error).message}`,
     onFetchError: (provider, err) => { errors.push({ provider, err }); },
@@ -136,6 +137,25 @@ test('a rise since the last sample is reported; no rise is not', async () => {
   // One daily point per window and day, updated in place.
   assert.equal(h.history.dailyUsage.length, 1);
   assert.equal(at(h.history.dailyUsage, 0).used, 41);
+});
+
+test('an account without quotas is shown with its message, never fetched, keeps local insights (#140)', async () => {
+  const insights = { generatedAt: NOW.toISOString() } as unknown as ClaudeLocalInsights;
+  const h = harness([claudeAccount('a1', { localInsights: true })], usage(weeklyWindow(40)), {
+    quotasUnavailable: () => 'no quotas',
+    localInsights: async () => insights,
+  });
+  const first = await h.core.buildUsageSnapshot('scheduled');
+  await h.core.buildUsageSnapshot('manual');
+
+  assert.deepEqual(h.fetches, []);
+  assert.deepEqual(h.logs, []);
+  assert.deepEqual(h.errors, []);
+  const account = at(first.snapshot.accounts, 0);
+  assert.equal(account.lastError, 'no quotas');
+  assert.equal(account.windows.length, 0);
+  assert.equal(account.localInsights, insights);
+  assert.equal(h.history.lastGood, undefined);
 });
 
 test('disabled and not connected accounts are skipped', async () => {

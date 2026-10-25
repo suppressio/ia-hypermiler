@@ -37,7 +37,6 @@ export interface IpcInvokeChannels {
   'accounts:add': { args: [provider: ProviderId]; result: AccountId };
   'accounts:remove': { args: [id: AccountId]; result: NoResult };
   'accounts:connectCodex': { args: [id: AccountId]; result: NoResult };
-  'accounts:connectClaude': { args: [id: AccountId]; result: { organizationId: string | null } };
   'accounts:connectCopilot': { args: [id: AccountId, token: string, host: string]; result: { username: string } };
   'accounts:connectCopilotOAuth': { args: [id: AccountId, payload: CopilotOAuthPayload]; result: { username: string } };
   'accounts:disconnect': { args: [id: AccountId]; result: NoResult };
@@ -90,7 +89,6 @@ export interface HypermilerBridge {
   addAccount(provider: ProviderId): Promise<AccountId>;
   removeAccount(id: AccountId): Promise<void>;
   connectCodex(id: AccountId): Promise<NoResult>;
-  connectClaude(id: AccountId): Promise<{ organizationId: string | null }>;
   connectCopilot(id: AccountId, token: string, host: string): Promise<{ username: string }>;
   connectCopilotOAuth(id: AccountId, clientId: string, clientSecret: string, host: string): Promise<{ username: string }>;
   disconnectAccount(id: AccountId): Promise<void>;

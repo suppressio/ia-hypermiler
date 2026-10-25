@@ -68,7 +68,7 @@ ia-hypermiler/
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
 │   ├── trayBadge.ts             ← tray usage badge: account choice, tone, icon bitmap (+ test)
-│   ├── claude-auth.ts           ← Claude session capture via login BrowserWindow, one Electron partition per account
+│   ├── claude-auth.ts           ← cleanup of claude.ai sessions stored by earlier versions (no Claude sign-in since #140)
 │   ├── codex-auth.ts            ← ChatGPT login in a per-account partition, stock User-Agent
 │   ├── codex-session-cookie.ts  ← recognizes ChatGPT session cookies, including chunks (+ test)
 │   ├── providers.ts             ← provider-specific part of the account registry (connection, fetch, disconnect, secret redaction)
@@ -88,7 +88,6 @@ ia-hypermiler/
 ├── services/
 │   ├── _http.ts                 ← shared fetch helper (10s timeout, explicit errors)
 │   ├── _shape.ts                ← response → structure only (never values), FormatDriftError (+ test)
-│   ├── claude.ts                ← Claude usage fetch (+ test)
 │   ├── codex.ts                 ← ChatGPT session → ephemeral Bearer → Codex usage (+ test)
 │   ├── copilot.ts               ← Copilot usage fetch (+ test)
 │   ├── claudeLocalSessions.ts   ← insights from LOCAL Claude Code sessions, opt-in (+ test)
@@ -131,10 +130,10 @@ ia-hypermiler/
 - Think through every path on Windows, macOS and Linux before writing it.
 
 ### Service interface
-Every usage service (`services/claude.ts`, `services/copilot.ts`, `services/codex.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
+Every usage service (`services/copilot.ts`, `services/codex.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
 
 ```ts
-export async function fetchUsage(credentials: ClaudeCredentials | CopilotCredentials | CodexCredentials): Promise<RawAccountUsage> { ... }
+export async function fetchUsage(credentials: CopilotCredentials | CodexCredentials): Promise<RawAccountUsage> { ... }
 
 // RawAccountUsage = { planTier, subscriptionRenewsAt, quotaWindows: QuotaWindow[] }
 // QuotaWindow    = { id, label, periodType, periodLength, unit: 'percentage'|'count', used, total, resetsAt }
@@ -222,6 +221,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 ## What NOT to do
 
 - Do not invent API endpoints not documented in `docs/RESEARCH.md`.
+- Do not sign in to claude.ai or collect, store or forward claude.ai credentials or session tokens (#140): Anthropic forbids it for third-party apps ([Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)). Claude data may come only through Anthropic's own binaries and sign-in (#139).
 - Animations are allowed but must be switchable off in Settings, low-key, carry state, and off with `prefers-reduced-motion`. Keep them in the visible widget renderer only (never the tray), animate only `opacity`/`transform`, and stop timers when hidden. With animations disabled, only the refresh icon rotates during refresh; reduced motion uses a static refresh state. Not an animation: the tray badge's critical alert (#122) alternates the normal frame with the alert frame every 2 s while another view is over the threshold. It carries information that would otherwise stay hidden, changes state far below the WCAG flash limit (3/s), and does not follow `ui.animations` or reduced motion.
 - Do not expose secrets or credentials in any git-tracked file.
 - Do not use `any`. If a type is really dynamic use `unknown` with explicit narrowing.
@@ -286,7 +286,7 @@ from the spec may fail on a known deviation (`PACING.md` §9): say so in the PR,
 - `package.json` `author` must carry an email (Debian "Maintainer"): the GitHub noreply address is used, never a real one.
 
 ### Integration tests (real credentials)
-`tests/integration/*.integration.test.ts` call the real Claude/Copilot/Codex APIs but **skip themselves** without credentials. To enable them **locally**: copy `.env.test.example` to `.env.test` (gitignored), fill the variables, run `npm test`. **Never provide these credentials in chat**: the assisted environment does not need them.
+`tests/integration/*.integration.test.ts` call the real Copilot/Codex APIs but **skip themselves** without credentials. To enable them **locally**: copy `.env.test.example` to `.env.test` (gitignored), fill the variables, run `npm test`. **Never provide these credentials in chat**: the assisted environment does not need them.
 
 ---
 
@@ -328,6 +328,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
 - **ESM-only SDK in a CommonJS main process**: `require()` and even a TS-compiled `import()` fail with ERR_REQUIRE_ESM inside Electron → `new Function('s', 'return import(s)')` in `services/claudeLocalSessions.ts`.
 - **claude.ai behind Cloudflare**: `sessionKey` alone gets a 403 challenge; the full cookie header (incl. `cf_clearance`) + a browser User-Agent are needed. Usage field names are obfuscated and rotate → windows are recognized by value shape.
+- **Check the provider's terms, not only whether it works**: the claude.ai session capture worked for months, but Anthropic forbids third-party apps from collecting or storing claude.ai session tokens. Removed in #140 (stored sessions deleted at startup); before adding a source, read the provider's policy on third-party access.
 - **Copilot company seats**: the seat may live on a GitHub Enterprise Cloud tenant with data residency (`<tenant>.ghe.com`, API on `api.<tenant>.ghe.com`), not on github.com — there `copilot_internal/user` has token-based-billing `quota_snapshots` (`credits_used`, `entitlement`), read with VS Code's rules. A github.com account linked to an enterprise (`access_type_sku: enterprise_managed`) has no data at all → `CopilotUsageUnavailableError`, not a drift. Each Copilot account has a validated `host` (`services/githubHost.ts`): the token is only ever sent to github.com or a `.ghe.com` tenant.
 - **Logout reused the session**: cookies lived in `session.defaultSession` → one partition per Claude account, cleared on disconnect/remove/before login.
 - **`[hidden]` vs author `display`**: a class with `display:flex` overrides `hidden` → global `[hidden] { display: none !important }`.
@@ -339,6 +340,7 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 - **UTC day keys**: `toISOString().slice(0, 10)` is the UTC day, `new Date('YYYY-MM-DD')` is UTC midnight — both wrong for local working days → `localDateKey`/`parseDateKey`.
 
 ### Open items
+- Claude quotas are not read since #140; they return through an allowed source with the standalone core in Go (#139, milestone v0.6.0).
 - The testable core is extracted (`core/usage.ts`, #23). Next: the headless CLI on top of it (docs/EVOLUTION.md 2b); new orchestration/snapshot logic goes in `core/`, test-first, not in `main.ts`.
 - **Milestone v0.5.0** (GitHub): rename to "AIpermiler" (#9 — userData path, appId, repo, update-check prefix), AppStream metadata for Linux packages (#10), architecture review and simplifications (#12, includes the IPC contract and core extraction below). **Milestone v1.0.0** (out of beta): signed Windows/macOS installers (#11).
 - `agents/advisor.ts` is a stub.
