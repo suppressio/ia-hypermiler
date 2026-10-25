@@ -4,11 +4,13 @@
 
 Un piccolo widget sempre in primo piano, per Windows, macOS e Linux, che ti dice a che ritmo stai usando le quote di **Claude**, **GitHub Copilot** e **Codex** (abbonamento ChatGPT) e quanto puoi ancora usare oggi perché la quota arrivi al rinnovo.
 
+> **Le quote di Claude non sono disponibili in questa versione.** Anthropic non consente alle app di terzi di accedere a claude.ai né di salvarne la sessione ([Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)), ed era l'unico modo con cui questa app poteva leggerle. Un account Claude ora mostra solo gli insight locali di Claude Code. Le quote torneranno con una fonte consentita ([#139](https://github.com/suppressio/ia-hypermiler/issues/139)).
+
 <p align="center"><img src="docs/screenshots/widget-it.png" alt="Il widget di IA Hypermiler con dati di esempio" width="406"></p>
 
 <sub>Dati di esempio, non un account reale.</sub>
 
-- **Più account**, Claude, Copilot e Codex in qualsiasi combinazione (per esempio un account Claude personale e una licenza Copilot aziendale), ognuno con la sua sessione.
+- **Più account**, Copilot e Codex in qualsiasi combinazione (per esempio un account Codex personale e una licenza Copilot aziendale), ognuno con la sua sessione; un account Claude porta gli insight locali.
 - **I tuoi giorni lavorativi**: ogni account può seguire un suo orario (giornata intera, mezza o libera per ogni giorno della settimana), così i weekend non contano come tempo in cui avresti potuto usare la quota.
 - **Un budget per oggi**, ricalcolato ogni mattina da quanto resta.
 - **Notifiche** quando una quota supera la tua soglia di allarme, o quando il consumo di oggi va molto oltre il budget di oggi.
@@ -27,7 +29,7 @@ I pacchetti non sono firmati: Windows SmartScreen e macOS Gatekeeper mostrano un
 ## Primo avvio
 
 1. Apri **Impostazioni** (⚙ nel widget, o dall'icona nel tray) → **Aggiungi account**.
-2. **Claude**: *Connetti…* apre il login di claude.ai (email e password o SSO aziendale) in una finestra dedicata. L'app non ti chiede mai di incollare un cookie.
+2. **Claude**: nessun login. Aggiungi l'account solo per gli insight locali (vedi sotto); le sue quote non sono disponibili in questa versione.
    **Codex (ChatGPT)**: aggiungi un account con questo provider, clicca *Connetti…* e accedi nella finestra chatgpt.com, che si chiude da sola. Non servono Codex CLI né un'estensione IDE; viene letto solo l'utilizzo. *Disconnetti* cancella la sessione.
    **GitHub Copilot**: incolla un Personal Access Token (fine-grained con *Plan* in sola lettura, o classic senza scope), oppure accedi con una GitHub OAuth App. Per una licenza aziendale su un tenant `<nome>.ghe.com`, imposta prima il dominio GitHub.
 3. Facoltativo, per ogni account: il **calendario di lavoro** (ultima sezione dell'account) e, solo se il provider non lo comunica, il **giorno di rinnovo**.
@@ -135,7 +137,7 @@ Se li attivi su un account Claude, l'app legge le sessioni di Claude Code su que
 
 | Sezione | Cosa puoi impostare |
 |---|---|
-| **Account** | aggiungere, connettere, disconnettere (cancella la sessione salvata), attivare/disattivare; per account: nome, calendario di lavoro, giorno di rinnovo se il provider non lo comunica, metodo di login Claude e insight locali, dominio e autenticazione Copilot |
+| **Account** | aggiungere, connettere, disconnettere (cancella la sessione salvata), attivare/disattivare; per account: nome, calendario di lavoro, giorno di rinnovo se il provider non lo comunica, insight locali di Claude, dominio e autenticazione Copilot |
 | **Aspetto** | lingua, stile della finestra (chiaro, scuro, trasparente), intervallo del grafico (7 o 30 giorni), intervallo di aggiornamento, colore d'accento, animazioni della finestra (attive di default) |
 | **Notifiche** | soglia di allarme (%), usata anche per i colori |
 | **Aggiornamenti** | versione installata, controllo manuale e automatico; **Guida** apre questa pagina |
@@ -150,10 +152,10 @@ Le animazioni della finestra fanno risplendere e lampeggiare ogni 10 secondi i v
 
 ## Privacy e sicurezza
 
-- Sessioni e token sono salvati solo sul tuo computer, cifrati, e non vengono mai mostrati all'interfaccia né scritti nei log. I cookie Codex restano nella sessione isolata dell'account; il suo access token non viene mai salvato.
-- L'app parla solo con i provider (claude.ai, chatgpt.com, l'API GitHub del tuo dominio) e con GitHub Releases per il controllo aggiornamenti. Nient'altro viene inviato altrove.
+- Sessioni e token sono salvati solo sul tuo computer, cifrati, e non vengono mai mostrati all'interfaccia né scritti nei log. Le sessioni di claude.ai salvate dalle versioni precedenti vengono cancellate al primo avvio di questa versione. I cookie Codex restano nella sessione isolata dell'account; il suo access token non viene mai salvato.
+- L'app parla solo con i provider (chatgpt.com, l'API GitHub del tuo dominio) e con GitHub Releases per il controllo aggiornamenti. Nient'altro viene inviato altrove.
 - **Segnalare un problema**: Impostazioni → Diagnostica → *Crea report di diagnosi* salva un file di testo in Download e apre una bozza di issue su GitHub. Il file **contiene** i tuoi valori di consumo (percentuali, importi, date di reset) ma nessun nome, id o credenziale. Le issue di questo repository sono **pubbliche**: leggi il file prima di allegarlo, oppure descrivi il problema senza.
-- Claude e Codex usano endpoint interni non documentati che possono cambiare senza preavviso. Se un provider cambia il formato delle risposte, si apre una bozza di issue precompilata con la sola struttura (nomi e tipi dei campi, mai i valori). Puoi disattivarla nelle Impostazioni.
+- Codex usa endpoint interni non documentati che possono cambiare senza preavviso. Se un provider cambia il formato delle risposte, si apre una bozza di issue precompilata con la sola struttura (nomi e tipi dei campi, mai i valori). Puoi disattivarla nelle Impostazioni.
 
 ---
 

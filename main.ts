@@ -10,17 +10,16 @@ import { isPlainRecord } from './store/merge';
 import { applyCompact, createMainWindow, createSettingsWindow } from './main/windows';
 import { createTray } from './main/tray';
 import { badgeEntries, pickBadge, resolveLegacyView, sameChoice, trackAutoAccount } from './main/trayBadge';
-import { captureClaudeSession, buildClaudeCookieHeader, migrateDefaultSessionCookies } from './main/claude-auth';
+import { clearClaudePartition, clearDefaultSessionClaudeCookies } from './main/claude-auth';
 import { captureGithubOAuthToken } from './main/copilot-oauth';
 import * as providers from './main/providers';
 import * as refreshPolicy from './main/refreshPolicy';
 import type { RefreshMode } from './main/refreshPolicy';
-import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts } from './store/migrate';
+import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts, purgeClaudeSessions } from './store/migrate';
 import * as budget from './budget';
 import { createUsageCore, refreshIntervalMs } from './core/usage';
 import { captureCodexSession } from './main/codex-auth';
 import { CodexSignInRequiredError } from './services/codex';
-import * as claudeService from './services/claude';
 import * as copilotService from './services/copilot';
 import path from 'path';
 import { fetchLatestUpdate, guideUrl, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
@@ -248,6 +247,9 @@ function friendlyErrorMessage(err: unknown): string {
   }
   if (err instanceof copilotService.CopilotUsageUnavailableError) {
     return t('error.copilotEnterpriseManaged');
+  }
+  if (err instanceof providers.ClaudeUsageUnavailableError) {
+    return t('error.claudeQuotasUnavailable');
   }
   return error.message;
 }
@@ -857,27 +859,6 @@ function registerIpcHandlers(): void {
     runDetached('refresh usage', refreshAndBroadcast('forced'));
   });
 
-  handle('accounts:connectClaude', async (_event, rawId: unknown) => {
-    const id = requireString(rawId, 'Account');
-    const cfg = findAccount(id);
-    if (!cfg || cfg.provider !== 'claude') throw new Error(`Claude account not found: ${id}`);
-    const { sessionKey, capturedAt } = await captureClaudeSession(cfg.partition);
-    let organizationId: string | null = null;
-    try {
-      const cookieHeader = await buildClaudeCookieHeader(cfg.partition);
-      const orgs = await claudeService.listOrganizations(sessionKey, cookieHeader);
-      organizationId = orgs[0]?.id ?? null;
-    } catch (err) {
-      console.error('[main] could not resolve the Claude organizationId:', (err as Error).message);
-    }
-    updateAccount(id, (a) => (a.provider === 'claude'
-      ? { ...a, enabled: true, session: { sessionKey, organizationId, capturedAt, expiresAt: null } }
-      : a));
-    broadcastSettings();
-    runDetached('refresh usage', refreshAndBroadcast('forced'));
-    return { organizationId };
-  });
-
   handle('accounts:connectCopilot', async (_event, rawId: unknown, rawToken: unknown, rawHost: unknown) => {
     const id = requireString(rawId, 'Account');
     const token = requireString(rawToken, 'Token').trim();
@@ -1012,22 +993,24 @@ function registerIpcHandlers(): void {
   });
 }
 
-// Before per-account partitions (issue #4) claude.ai cookies lived in
-// session.defaultSession: once, we move them into the partition of the migrated
-// Claude account (id 'claude', see store/migrate.ts) so the user does not have to log
-// in again after the update.
-async function migrateLegacyClaudeCookies(): Promise<void> {
-  if (store.get('meta').claudeCookiesMigrated === true) return;
-  const legacy = findAccount('claude');
+// #140: once, remove every claude.ai session stored by earlier versions (account
+// partitions, the pre-#4 defaultSession cookies, the stored sessionKey) and the last
+// fetched Claude quotas. Retried on the next start if anything fails.
+async function purgeStoredClaudeSessions(): Promise<void> {
+  if (store.get('meta').claudeSessionsPurged === true) return;
   try {
-    if (legacy?.provider === 'claude') {
-      const moved = await migrateDefaultSessionCookies(legacy.partition);
-      console.log(`[main] moved ${moved} claude.ai cookies into the partition of account '${legacy.label}'`);
+    for (const cfg of getAccounts()) {
+      if (cfg.provider === 'claude') await clearClaudePartition(cfg.partition);
     }
-    store.set('meta.claudeCookiesMigrated', true);
+    await clearDefaultSessionClaudeCookies();
+    const history = store.get('history');
+    const purged = purgeClaudeSessions(getAccounts(), history.lastGood);
+    store.set('accounts', purged.accounts);
+    store.set('history', { ...history, lastGood: purged.lastGood });
+    store.set('meta', { ...store.get('meta'), claudeSessionsPurged: true });
+    console.log('[main] stored claude.ai sessions removed (#140)');
   } catch (err) {
-    // Not blocking: the account will show "session not valid" and reconnecting it is enough.
-    console.error('[main] Claude cookie migration failed:', (err as Error).message);
+    console.error('[main] removing the stored claude.ai sessions failed, retrying at the next start:', (err as Error).message);
   }
 }
 
@@ -1046,7 +1029,7 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers();
   applyMainLocale();
-  await migrateLegacyClaudeCookies();
+  await purgeStoredClaudeSessions();
 
   const win = createMainWindow(store);
   mainWindow = win;

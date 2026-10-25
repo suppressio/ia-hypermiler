@@ -2,20 +2,32 @@
 // docs/EVOLUTION.md point 3). main.ts works only on generic AccountConfig values and
 // delegates here everything that depends on the provider: connection state,
 // credentials for the service, disconnection, redaction of secrets towards the
-// renderer. The services (services/claude.ts, services/copilot.ts) are unchanged: the
-// fetchUsage(credentials) contract of CLAUDE.md is already the common base across
-// providers. Adding a provider = a new branch in each function below (the exhaustive
+// renderer. The services (services/codex.ts, services/copilot.ts) are unchanged: the
+// fetchUsage(credentials) contract of AGENTS.md is already the common base across
+// providers. Claude quotas are not read (#140): see ClaudeUsageUnavailableError. Adding a provider = a new branch in each function below (the exhaustive
 // `switch` on `provider` makes tsc fail when one is forgotten).
 
 import * as codexService from '../services/codex';
 import { buildCodexCookieHeader, codexUserAgent, clearCodexPartition } from './codex-auth';
-import * as claudeService from '../services/claude';
 import * as copilotService from '../services/copilot';
-import { buildClaudeCookieHeader, clearClaudePartition } from './claude-auth';
+import { clearClaudePartition } from './claude-auth';
 import { PROVIDER_DISPLAY_NAMES } from '../store/migrate';
 import type { AccountConfig, CodexAccountSettings, CodexCredentials, ProviderId, RawAccountUsage } from '../types/index';
 
 const SECRET_PLACEHOLDER = '••••••••';
+
+/**
+ * Claude quotas are not read (#140): Anthropic does not allow third-party apps to
+ * collect or store claude.ai session tokens (Claude Code legal and compliance page), and
+ * that was the only source. Claude accounts stay for the local insights; quotas return
+ * through an allowed source with the standalone core (#139).
+ */
+export class ClaudeUsageUnavailableError extends Error {
+  constructor() {
+    super('Claude quotas are not available in this version (#140)');
+    this.name = 'ClaudeUsageUnavailableError';
+  }
+}
 
 export function providerDisplayName(provider: ProviderId): string {
   return PROVIDER_DISPLAY_NAMES[provider];
@@ -24,7 +36,8 @@ export function providerDisplayName(provider: ProviderId): string {
 export function isConnected(cfg: AccountConfig): boolean {
   switch (cfg.provider) {
     case 'codex': return cfg.session.capturedAt !== null;
-    case 'claude': return !!cfg.session.sessionKey;
+    // Nothing to connect: the account exists for the local insights (#140).
+    case 'claude': return true;
     case 'copilot': return !!cfg.credentials.token;
   }
 }
@@ -42,12 +55,7 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
     case 'codex':
       return codexService.fetchUsage(await codexCredentials(cfg));
     case 'claude':
-      return claudeService.fetchUsage({
-        sessionKey: cfg.session.sessionKey as string,
-        organizationId: cfg.session.organizationId,
-        // Read fresh on every refresh (not persisted), from the account partition.
-        cookieHeader: await buildClaudeCookieHeader(cfg.partition),
-      });
+      throw new ClaudeUsageUnavailableError();
     case 'copilot':
       return copilotService.fetchUsage({
         token: cfg.credentials.token as string,
@@ -71,14 +79,7 @@ export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLa
         response: await codexService.fetchUsageResponse(await codexCredentials(cfg)),
       };
     case 'claude':
-      return {
-        endpointLabel: claudeService.USAGE_ENDPOINT_LABEL,
-        response: await claudeService.fetchUsageResponse({
-          sessionKey: cfg.session.sessionKey as string,
-          organizationId: cfg.session.organizationId,
-          cookieHeader: await buildClaudeCookieHeader(cfg.partition),
-        }),
-      };
+      throw new ClaudeUsageUnavailableError();
     case 'copilot':
       return {
         endpointLabel: copilotService.INTERNAL_USER_ENDPOINT_LABEL,

@@ -12,6 +12,7 @@ import {
   migrateTrayBadge,
   nextAccountLabel,
   normalizeAccounts,
+  purgeClaudeSessions,
 } from './migrate';
 import { at } from '../tests/support/at';
 
@@ -152,4 +153,20 @@ test('migrateTrayBadge: new preferences are idempotent, including unavailable vi
     const setting = { view, critical: false };
     assert.deepEqual(migrateTrayBadge(setting, {}), setting);
   }
+});
+
+test('purgeClaudeSessions: Claude accounts lose session and last quotas, the rest stays (#140)', () => {
+  const claude = { ...defaultClaudeAccount('c1'), enabled: true, localInsights: true,
+    session: { sessionKey: 'sk', organizationId: 'org', capturedAt: '2026-10-01T00:00:00Z', expiresAt: null } };
+  const copilot = defaultCopilotAccount('p1');
+  const usage = { planTier: null, subscriptionRenewsAt: null, quotaWindows: [], lastUpdatedAt: 'x' };
+  const lastGood = { c1: { ...usage, accountId: 'c1' }, p1: { ...usage, accountId: 'p1' } };
+  const result = purgeClaudeSessions([claude, copilot], lastGood);
+  assert.deepEqual(at(result.accounts, 0), { ...claude, session: { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null } });
+  assert.equal(at(result.accounts, 1), copilot);
+  assert.deepEqual(result.lastGood, { p1: lastGood.p1 });
+});
+
+test('purgeClaudeSessions: no lastGood stays undefined', () => {
+  assert.equal(purgeClaudeSessions([defaultClaudeAccount('c1')], undefined).lastGood, undefined);
 });

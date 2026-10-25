@@ -10,6 +10,7 @@ import type {
   CodexAccountSettings,
   CopilotAccountSettings,
   DayStatus,
+  HistorySettings,
   ProviderId,
   WorkSchedule,
   TrayBadgeSettings,
@@ -188,6 +189,27 @@ export function enforceSingleLocalInsights(accounts: AccountConfig[]): AccountCo
     seen = true;
     return a;
   });
+}
+
+/**
+ * #140 cleanup, pure part: Claude accounts lose the stored claude.ai session and their
+ * last fetched quotas (`history.lastGood`), which would otherwise be shown as stale data
+ * forever. Accounts, settings and the daily history stay. main.ts also clears the
+ * partitions (cookies) and records that the cleanup ran.
+ */
+export function purgeClaudeSessions(
+  accounts: AccountConfig[],
+  lastGood: HistorySettings['lastGood'],
+): { accounts: AccountConfig[]; lastGood: HistorySettings['lastGood'] } {
+  const claudeIds = new Set(accounts.filter((a) => a.provider === 'claude').map((a) => a.id));
+  const cleaned = accounts.map((a) => (a.provider === 'claude'
+    ? { ...a, session: { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null } }
+    : a));
+  if (!lastGood) return { accounts: cleaned, lastGood };
+  return {
+    accounts: cleaned,
+    lastGood: Object.fromEntries(Object.entries(lastGood).filter(([id]) => !claudeIds.has(id))),
+  };
 }
 
 /**
