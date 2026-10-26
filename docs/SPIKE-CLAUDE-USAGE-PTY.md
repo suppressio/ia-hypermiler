@@ -2,35 +2,33 @@
 
 # Spike #141 — Claude quotas from `claude /usage` in a PTY
 
-> Part of #139. Status: **inconclusive, needs one run on a signed-in machine.** The spike environment had Claude Code 2.1.288 but no Claude login (`claude auth status` → `loggedIn: false`), and signing in is not something an unattended agent can or should do. What follows separates what was **verified** from what is **still a hypothesis**.
+> Part of #139. Status: **done on Linux, go.** Windows (ConPTY) and macOS are still untested.
 
-## Verified (2026-10-26, Linux, Claude Code 2.1.288)
+## Setup
 
-- A PTY drive works: Python `pty.fork()` + `TIOCSWINSZ` (50×140) + `TERM=xterm-256color` starts the interactive TUI, which renders fully and accepts keystrokes. Output needs ANSI/OSC stripping (`scripts/spikes/claude-usage-pty.py`).
-- Cold start to a drawn UI takes a few seconds; the probe waits ~8 s before typing.
-- Without a login the TUI stops at the first-run flow (theme choice, then "Select login method"). `/usage` is never reachable there. So a probe must treat "not signed in" as its own state (the screen contains `Select login method`) and report it, not as a parse failure.
-- `--settings '{"disableAllHooks":true}'` is accepted at startup.
+First run (2026-10-26, unattended agent) had no Claude login and stopped at "Select login method". Rerun the same day on a signed-in Linux machine (Debian testing, Claude Code 2.1.311, claude.ai Max login), with `scripts/spikes/claude-usage-pty.py`: Python `pty.fork()`, 50×140 window, `TERM=xterm-256color`, `--settings '{"disableAllHooks":true}'`, cwd in a scratch folder, then type `/usage` + Enter and kill the process.
 
-## Not verified (to do on a signed-in machine)
+## Results
 
-Run `python3 scripts/spikes/claude-usage-pty.py --raw` and record:
-
-| Question | How to check |
+| Question | Answer |
 |---|---|
-| Fields shown (5h, 7d, per-model, extra usage, reset times) | read the `--raw` screen; then write the real parser (the current one is a guess) |
-| Does `/usage` consume quota or call a model? | note the status line / `/usage` numbers before and after several probes; also check there is no assistant turn in the session list |
-| Cost per probe | `time` the script; sample CPU of the `claude` process; note whether it leaves a session file behind |
-| Safe polling interval | depends on the cost above; start from the app's 30 min refresh, no faster than 5 min |
-| Windows (ConPTY), macOS | `pty` is POSIX only; in Go use a ConPTY library on Windows and `creack/pty` on Linux/macOS (new dependencies: ask first) |
-| Parse stability across versions | save the raw screen per Claude Code version; the parser must fail loudly (format drift, like `FormatDriftError`) when no window is recognized |
+| Does a PTY drive work? | Yes. The TUI starts, the slash menu opens, `/usage` opens the *Usage* tab of the settings panel. |
+| Fields shown | `Current session` (5h window) and `Current week (all models)`, each with `NN% used` and `Resets <time> (<IANA zone>)`, e.g. `Resets 12:10am (Europe/Rome)`, `Resets Oct 28, 10pm (Europe/Rome)`. Below: `Usage credits` (on/off), a local "what's contributing" breakdown (not needed). Per-model weekly lines did not show on this account; the parser keeps any `<label>` + `NN% used`, so they would be picked up. |
+| Does `/usage` consume quota or call a model? | No. The same panel shows `Total cost: $0.0000`, `0 input, 0 output` tokens, and 21% / 41% stayed identical over 5 probes. |
+| Does it leave a session file? | No: no transcript under `~/.claude/projects` for the probe folder (no message is sent). It does touch Claude's own state on startup (`.claude.json` backup, changelog cache, skills/plugin sync), as any start would. |
+| Cost per probe | ~8.6 s wall (3 s start wait) and ~1.9 s CPU (user+sys, Python + `claude`). At the app's 30 min refresh this is ~0.1% of one core. |
+| Polling interval | 30 min default, never below 5 min. A probe is a full Claude Code start, not a cheap HTTP call. |
+| Not signed in | Screen shows `Select login method`: report "not signed in", not a parse error. |
+| Gotchas | Strip `CLAUDE_CODE_*` from the child env when the app itself runs inside Claude Code (inherited markers change behaviour, e.g. "transcript saving is off"). `--no-session-persistence` is rejected outside `--print`. Strip ANSI/OSC; cursor moves glue words together (`21%used`), so match with `\s*`. |
+| Parse stability | It is a TUI, not an API. Keep a raw screen fixture per Claude Code version and fail loudly (format drift) when neither window is found. |
 
-## Proposed decision (provisional)
+## Decision
 
-- **Primary source:** `/usage` in a PTY, if the checks above show it costs no quota and well under a second of CPU per probe. The numbers come from the server, so they are right whatever client the user works in (including the VS Code extension, which does not run the status line).
+- **Primary source: `/usage` in a PTY.** The numbers come from the server, so they are right whatever client the user works in (including the VS Code extension, which does not run the status line).
 - **Fallback for terminal-only users:** status line forwarding (`rate_limits.five_hour` / `seven_day`), free and push-based, but not available in the VS Code extension (anthropics/claude-code#21943).
-- **Hard rules:** run only the unmodified `claude` binary with the user's own sign-in; never read its credential files; never ask the user to sign in inside our app (#140). Probe in a neutral working directory, with hooks disabled, and kill the process after each read.
-- **Risks to measure:** the panel is a TUI, not an API, so wording or layout can change between versions; a probe could leave session files that the local insights then count; a first-run or update prompt can block the PTY (needs a timeout and a clear "not ready" state).
+- **Hard rules:** run only the unmodified `claude` binary with the user's own sign-in; never read its credential files; never ask the user to sign in inside our app (#140). Scratch working directory, hooks disabled, process killed after each read, timeout with a clear "not ready" state (first-run or update prompts can block the PTY).
+- **Go core (#139):** `creack/pty` on Linux/macOS and a ConPTY library on Windows. Both are new dependencies: ask before adding. Windows and macOS need their own probe run.
 
 ## Prototype
 
-`scripts/spikes/claude-usage-pty.py` — throw-away, Python (no Go toolchain in the spike environment), POSIX only, not part of the build, lint or tests. The parser is untested against real output.
+`scripts/spikes/claude-usage-pty.py` — throw-away, Python, POSIX only, not part of the build, lint or tests. `--raw` prints the cleaned screen; extra `claude` flags go after `--`.

@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """THROW-AWAY spike for #141: read the `/usage` panel of an unmodified `claude` in a PTY.
 
-POSIX only (pty module). Needs `claude` already signed in. The panel parser is a guess:
-it was NOT validated against real output (the spike machine had no signed-in claude).
-Run with --raw to print the cleaned screen and write the parser from it.
-Usage: python3 scripts/spikes/claude-usage-pty.py [--raw] [--wait SECONDS]
+POSIX only (pty module). Needs `claude` already signed in. Parser checked against Claude Code 2.1.311
+(Linux); run with --raw to see the cleaned screen when a new version breaks it.
+Usage: python3 scripts/spikes/claude-usage-pty.py [--raw] [--wait SECONDS] [-- EXTRA CLAUDE FLAGS]
 """
 import fcntl, os, pty, re, select, struct, sys, termios, time
 
 ANSI = re.compile(rb"\x1b\[[0-9;?<>]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][A-Z0-9]")
 
 
-def probe(wait_start=8.0, total=30.0):
+FLAGS = ["--settings", '{"disableAllHooks":true}']
+
+
+def probe(wait_start=8.0, total=30.0, flags=FLAGS):
     pid, fd = pty.fork()
     if pid == 0:
+        # Drop markers inherited from a parent Claude Code session, they change its behaviour.
+        for k in [k for k in os.environ if k.startswith("CLAUDE_CODE_")]:
+            del os.environ[k]
         os.environ["TERM"] = "xterm-256color"
-        # Side-effect free: no hooks; plain UI.
-        os.execvp("claude", ["claude", "--settings", '{"disableAllHooks":true}'])
+        os.execvp("claude", ["claude", *flags])
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 140, 0, 0))
     buf, t0, sent = b"", time.time(), False
     try:
@@ -64,7 +68,8 @@ def parse(screen):
 
 if __name__ == "__main__":
     wait = float(sys.argv[sys.argv.index("--wait") + 1]) if "--wait" in sys.argv else 8.0
-    screen, secs = probe(wait)
+    flags = FLAGS + sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else FLAGS
+    screen, secs = probe(wait, flags=flags)
     if "--raw" in sys.argv:
         print(screen)
     print(parse(screen), f"({secs:.1f}s)")

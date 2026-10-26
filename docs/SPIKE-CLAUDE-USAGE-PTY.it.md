@@ -2,35 +2,33 @@
 
 # Spike #141 — Quote di Claude da `claude /usage` in un PTY
 
-> Parte di #139. Stato: **inconcludente, serve un'esecuzione su una macchina con il login fatto.** L'ambiente dello spike aveva Claude Code 2.1.288 ma nessun login (`claude auth status` → `loggedIn: false`), e un agente non presidiato non può né deve accedere. Qui sotto sono separate le cose **verificate** da quelle ancora **ipotesi**.
+> Parte di #139. Stato: **completato su Linux, si procede.** Windows (ConPTY) e macOS non ancora provati.
 
-## Verificato (2026-10-26, Linux, Claude Code 2.1.288)
+## Setup
 
-- Pilotare un PTY funziona: Python `pty.fork()` + `TIOCSWINSZ` (50×140) + `TERM=xterm-256color` avvia la TUI interattiva, che si disegna per intero e accetta i tasti. L'output va ripulito da sequenze ANSI/OSC (`scripts/spikes/claude-usage-pty.py`).
-- Dall'avvio a freddo alla UI disegnata passano alcuni secondi; la sonda aspetta ~8 s prima di scrivere.
-- Senza login la TUI si ferma al primo avvio (scelta del tema, poi "Select login method"): `/usage` non è raggiungibile. Una sonda deve quindi trattare "non connesso" come stato a sé (lo schermo contiene `Select login method`) e segnalarlo, non come errore di parsing.
-- `--settings '{"disableAllHooks":true}'` è accettato all'avvio.
+La prima esecuzione (2026-10-26, agente non presidiato) non aveva il login di Claude e si fermava su "Select login method". Ripetuto lo stesso giorno su una macchina Linux con login (Debian testing, Claude Code 2.1.311, login claude.ai Max), con `scripts/spikes/claude-usage-pty.py`: Python `pty.fork()`, finestra 50×140, `TERM=xterm-256color`, `--settings '{"disableAllHooks":true}'`, cwd in una cartella temporanea, poi `/usage` + Invio e il processo viene terminato.
 
-## Non verificato (da fare su una macchina con login)
+## Risultati
 
-Lanciare `python3 scripts/spikes/claude-usage-pty.py --raw` e annotare:
-
-| Domanda | Come verificare |
+| Domanda | Risposta |
 |---|---|
-| Campi mostrati (5h, 7d, per modello, extra usage, reset) | leggere lo schermo `--raw`; poi scrivere il vero parser (quello attuale è una supposizione) |
-| `/usage` consuma quota o chiama un modello? | annotare i numeri della status line / di `/usage` prima e dopo varie sonde; controllare che non ci sia alcun turno dell'assistente nell'elenco sessioni |
-| Costo per sonda | `time` sullo script; CPU del processo `claude`; vedere se lascia un file di sessione |
-| Intervallo di polling sicuro | dipende dal costo sopra; partire dai 30 min dell'app, mai sotto i 5 min |
-| Windows (ConPTY), macOS | `pty` è solo POSIX; in Go una libreria ConPTY su Windows e `creack/pty` su Linux/macOS (nuove dipendenze: chiedere prima) |
-| Stabilità del parsing tra versioni | salvare lo schermo grezzo per ogni versione di Claude Code; il parser deve fallire in modo esplicito (format drift, come `FormatDriftError`) se non riconosce alcuna finestra |
+| Il PTY funziona? | Sì. La TUI parte, il menu slash si apre, `/usage` apre la scheda *Usage* del pannello impostazioni. |
+| Campi mostrati | `Current session` (finestra 5h) e `Current week (all models)`, ognuno con `NN% used` e `Resets <ora> (<fuso IANA>)`, es. `Resets 12:10am (Europe/Rome)`, `Resets Oct 28, 10pm (Europe/Rome)`. Sotto: `Usage credits` (on/off) e un riepilogo locale "what's contributing" (non serve). Le righe settimanali per modello non comparivano su questo account; il parser tiene qualsiasi `<etichetta>` + `NN% used`, quindi verrebbero lette. |
+| `/usage` consuma quota o chiama un modello? | No. Lo stesso pannello mostra `Total cost: $0.0000`, `0 input, 0 output` token, e 21% / 41% sono rimasti identici su 5 sonde. |
+| Lascia un file di sessione? | No: nessuna trascrizione in `~/.claude/projects` per la cartella della sonda (non viene inviato nessun messaggio). All'avvio tocca lo stato di Claude (backup di `.claude.json`, cache del changelog, sync di skill/plugin), come qualunque avvio. |
+| Costo per sonda | ~8,6 s reali (3 s di attesa iniziale) e ~1,9 s di CPU (user+sys, Python + `claude`). Con l'aggiornamento ogni 30 min dell'app è ~0,1% di un core. |
+| Intervallo di polling | 30 min di default, mai sotto i 5 min. Una sonda è un avvio completo di Claude Code, non una chiamata HTTP leggera. |
+| Senza login | Lo schermo mostra `Select login method`: segnalare "non connesso", non un errore di parsing. |
+| Insidie | Togliere `CLAUDE_CODE_*` dall'ambiente del figlio quando l'app gira dentro Claude Code (i marcatori ereditati cambiano il comportamento, es. "transcript saving is off"). `--no-session-persistence` è rifiutato fuori da `--print`. Ripulire ANSI/OSC; i movimenti del cursore incollano le parole (`21%used`), quindi usare `\s*`. |
+| Stabilità del parsing | È una TUI, non un'API. Tenere uno schermo grezzo di riferimento per versione di Claude Code e fallire in modo esplicito (format drift) se nessuna delle due finestre viene trovata. |
 
-## Decisione proposta (provvisoria)
+## Decisione
 
-- **Fonte primaria:** `/usage` in un PTY, se i controlli sopra mostrano nessun consumo di quota e ben meno di un secondo di CPU per sonda. I numeri vengono dal server, quindi sono giusti qualunque client usi l'utente (anche l'estensione VS Code, che non esegue la status line).
+- **Fonte primaria: `/usage` in un PTY.** I numeri vengono dal server, quindi sono giusti qualunque client usi l'utente (anche l'estensione VS Code, che non esegue la status line).
 - **Ripiego per chi usa solo il terminale:** inoltro della status line (`rate_limits.five_hour` / `seven_day`), gratuito e in push, ma assente nell'estensione VS Code (anthropics/claude-code#21943).
-- **Regole ferme:** eseguire solo il binario `claude` non modificato con il login dell'utente; non leggere mai i suoi file di credenziali; non chiedere mai di accedere dentro la nostra app (#140). Sonda in una cartella neutra, hook disattivati, processo terminato dopo ogni lettura.
-- **Rischi da misurare:** il pannello è una TUI, non un'API, quindi testi o layout possono cambiare tra versioni; una sonda potrebbe lasciare file di sessione che gli insight locali poi contano; un avviso di primo avvio o di aggiornamento può bloccare il PTY (servono timeout e uno stato "non pronto" chiaro).
+- **Regole ferme:** eseguire solo il binario `claude` non modificato con il login dell'utente; non leggere mai i suoi file di credenziali; non chiedere mai di accedere dentro la nostra app (#140). Cartella di lavoro temporanea, hook disattivati, processo terminato dopo ogni lettura, timeout con uno stato "non pronto" chiaro (avvisi di primo avvio o di aggiornamento possono bloccare il PTY).
+- **Core in Go (#139):** `creack/pty` su Linux/macOS e una libreria ConPTY su Windows. Sono dipendenze nuove: chiedere prima di aggiungerle. Windows e macOS richiedono una sonda a parte.
 
 ## Prototipo
 
-`scripts/spikes/claude-usage-pty.py` — usa e getta, Python (nell'ambiente dello spike non c'è Go), solo POSIX, fuori da build, lint e test. Il parser non è provato su output reale.
+`scripts/spikes/claude-usage-pty.py` — usa e getta, Python, solo POSIX, fuori da build, lint e test. `--raw` stampa lo schermo ripulito; i flag extra per `claude` vanno dopo `--`.
