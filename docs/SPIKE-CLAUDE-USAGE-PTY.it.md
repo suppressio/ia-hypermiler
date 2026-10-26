@@ -18,8 +18,9 @@ La prima esecuzione (2026-10-26, agente non presidiato) non aveva il login di Cl
 | Lascia un file di sessione? | No: nessuna trascrizione in `~/.claude/projects` per la cartella della sonda (non viene inviato nessun messaggio). All'avvio tocca lo stato di Claude (backup di `.claude.json`, cache del changelog, sync di skill/plugin), come qualunque avvio. |
 | Costo per sonda | ~8,6 s reali (3 s di attesa iniziale) e ~1,9 s di CPU (user+sys, Python + `claude`). Con l'aggiornamento ogni 30 min dell'app è ~0,1% di un core. |
 | Intervallo di polling | 30 min di default, mai sotto i 5 min. Una sonda è un avvio completo di Claude Code, non una chiamata HTTP leggera. |
+| Offline / refresh fallito | Il pannello mostra gli ultimi numeri in cache con `Showing last-known usage as of 3m ago (could not refresh)`: tenere i valori ma segnarli come non aggiornati. |
 | Senza login | Lo schermo mostra `Select login method`: segnalare "non connesso", non un errore di parsing. |
-| Insidie | Togliere `CLAUDE_CODE_*` dall'ambiente del figlio quando l'app gira dentro Claude Code (i marcatori ereditati cambiano il comportamento, es. "transcript saving is off"). `--no-session-persistence` è rifiutato fuori da `--print`. Ripulire ANSI/OSC; i movimenti del cursore incollano le parole (`21%used`), quindi usare `\s*`. |
+| Insidie | Togliere `CLAUDE_CODE_*` dall'ambiente del figlio quando l'app gira dentro Claude Code (i marcatori ereditati cambiano il comportamento, es. "transcript saving is off"). `--no-session-persistence` è rifiutato fuori da `--print`. Ripulire ANSI/OSC; i movimenti del cursore possono eliminare ogni spazio (`Currentsession`, `21%used`, `Resets12:10am`), quindi non contare mai su spazi o `\b` tra le parole. |
 | Stabilità del parsing | È una TUI, non un'API. Tenere uno schermo grezzo di riferimento per versione di Claude Code e fallire in modo esplicito (format drift) se nessuna delle due finestre viene trovata. |
 
 ## Decisione

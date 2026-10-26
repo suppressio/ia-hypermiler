@@ -59,7 +59,7 @@ def parse(screen):
         m = re.search(r"(\d{1,3}(?:\.\d+)?)\s*%\s*used", line)
         if m:
             out.append({"label": label, "usedPercent": float(m.group(1)), "resets": None})
-        elif out and out[-1]["resets"] is None and re.match(r"Resets?\b", line):
+        elif out and out[-1]["resets"] is None and re.match(r"Resets?\s*\S", line):
             out[-1]["resets"] = line
         elif line:
             label = line
@@ -72,4 +72,6 @@ if __name__ == "__main__":
     screen, secs = probe(wait, flags=flags)
     if "--raw" in sys.argv:
         print(screen)
-    print(parse(screen), f"({secs:.1f}s)")
+    # Offline the panel shows cached numbers: "Showing last-known usage as of 3m ago (could not refresh)".
+    stale = re.search(r"could\s*not\s*refresh", screen) is not None
+    print(parse(screen), f"stale={stale}", f"({secs:.1f}s)")

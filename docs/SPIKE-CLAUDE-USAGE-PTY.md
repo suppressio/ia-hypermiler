@@ -18,8 +18,9 @@ First run (2026-10-26, unattended agent) had no Claude login and stopped at "Sel
 | Does it leave a session file? | No: no transcript under `~/.claude/projects` for the probe folder (no message is sent). It does touch Claude's own state on startup (`.claude.json` backup, changelog cache, skills/plugin sync), as any start would. |
 | Cost per probe | ~8.6 s wall (3 s start wait) and ~1.9 s CPU (user+sys, Python + `claude`). At the app's 30 min refresh this is ~0.1% of one core. |
 | Polling interval | 30 min default, never below 5 min. A probe is a full Claude Code start, not a cheap HTTP call. |
+| Offline / refresh failed | The panel shows the last cached numbers plus `Showing last-known usage as of 3m ago (could not refresh)`: keep the values but mark them stale. |
 | Not signed in | Screen shows `Select login method`: report "not signed in", not a parse error. |
-| Gotchas | Strip `CLAUDE_CODE_*` from the child env when the app itself runs inside Claude Code (inherited markers change behaviour, e.g. "transcript saving is off"). `--no-session-persistence` is rejected outside `--print`. Strip ANSI/OSC; cursor moves glue words together (`21%used`), so match with `\s*`. |
+| Gotchas | Strip `CLAUDE_CODE_*` from the child env when the app itself runs inside Claude Code (inherited markers change behaviour, e.g. "transcript saving is off"). `--no-session-persistence` is rejected outside `--print`. Strip ANSI/OSC; cursor moves can drop every space (`Currentsession`, `21%used`, `Resets12:10am`), so never rely on spaces or `\b` between words. |
 | Parse stability | It is a TUI, not an API. Keep a raw screen fixture per Claude Code version and fail loudly (format drift) when neither window is found. |
 
 ## Decision
