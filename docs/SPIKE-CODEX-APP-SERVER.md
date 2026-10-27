@@ -55,7 +55,7 @@ What we gain: no ChatGPT cookie, no Electron login window or partition, no Cloud
 - **Primary Codex source for the Go core: one-shot `codex app-server` over stdio**, `initialize` → `initialized` → `account/read` → `account/rateLimits/read`, kill after the read, 10 s timeout, stdout lines parsed as JSON, `stderr` drained and never logged.
 - **Hard rules:** run only the unmodified `codex` binary with the user's own login; never read or copy `auth.json`; never pass `--analytics-default-enabled`; do not call `account/login/*`, `account/logout` or `account/rateLimitResetCredit/consume`; signed-out → a "sign in with Codex" state, not an error.
 - **No cookie fallback in the Go core.** The chatgpt.com cookie route (#82) stays only in today's Electron app until the Go core replaces it.
-- **To do before shipping:** probe Windows and macOS (discovery, `.cmd` shim, no console window flashing, kill the whole process tree: with `shell: true`, `child.kill()` in the prototype kills only the shell), an extension-only login, a Pro/Team account (extra buckets, `individualLimit`), and the offline case.
+- **To do before shipping:** (#158) probe Windows and macOS (discovery, `.cmd` shim, no console window flashing, kill the whole process tree: with `shell: true`, `child.kill()` in the prototype kills only the shell), an extension-only login, a Pro/Team account (extra buckets, `individualLimit`), and the offline case.
 
 ## Prototype
 
