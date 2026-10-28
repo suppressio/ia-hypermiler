@@ -2,6 +2,7 @@ name: CI
 
 # Lint and tests on every PR to next and on every push to it, Linux only: the
 # cross-platform packaging matrix stays in build.yml (tags and manual runs).
+# The go-checks job gates the Go core (gocore/) the same way.
 "on":
   pull_request:
     branches:
@@ -34,3 +35,39 @@ jobs:
 
       - name: Build + test
         run: npm test
+
+  go-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gocore
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: gocore/go.mod
+          cache-dependency-path: gocore/go.mod
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test -race
+        run: go test -race ./...
+
+      - name: golangci-lint (includes the import rules)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5
+          working-directory: gocore

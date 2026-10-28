@@ -61,6 +61,7 @@ ia-hypermiler/
 ├── build/                       ← electron-builder resources (icons) — TRACKED, not an output (packages go to release/)
 ├── main.ts                      ← Electron main process: wiring only (lifecycle, windows, tray, IPC, timers, notifications, update checks)
 ├── preload.ts                   ← contextBridge renderer ↔ main
+├── gocore/                      ← Go core module (#145): go.mod, .golangci.yml (strict lint + depguard import rules); CI job `go-checks`
 ├── core/
 │   └── usage.ts                 ← fetch orchestration + snapshot computation (createUsageCore, computeAccountSnapshot…): store, provider fetch, local insights, clock and error reporting injected, no Electron (+ usage.test.ts)
 ├── main/

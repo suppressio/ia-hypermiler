@@ -43,6 +43,19 @@ Codex richiede sia `HYPERMILER_TEST_CODEX_COOKIE_HEADER` sia `HYPERMILER_TEST_CO
 
 `.env.test` è già in `.gitignore` e viene caricato automaticamente da Node (`--env-file-if-exists`), senza dipendenze aggiuntive.
 
+## Controlli del core Go
+
+Il core Go sta in `gocore/` (modulo a sé, `go.mod` fissa la versione di Go; per ora niente nella build di Electron ne dipende). Servono Go 1.24+ e [golangci-lint](https://golangci-lint.run/) v2. Da `gocore/`:
+
+```bash
+gofmt -l .           # non deve stampare nulla
+go vet ./...
+go test -race ./...
+golangci-lint run    # config rigorosa in .golangci.yml, include le regole di import di depguard
+```
+
+Il job `go-checks` in `.github/workflows/ci.yml` esegue gli stessi controlli su ogni PR verso `next` e la fa fallire come `lint-test`. Le regole di import (quale pacchetto può importare quale) sono la sezione `depguard` di `gocore/.golangci.yml`; una violazione è un errore di lint.
+
 ## Packaging
 
 ```bash
