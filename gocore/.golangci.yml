@@ -33,6 +33,10 @@ linters:
             - "!$test"
           allow:
             - $gostd
+    misspell:
+      # The module path holds the owner's GitHub login, not a typo of "suppressor".
+      ignore-rules:
+        - suppressio
     nolintlint:
       require-explanation: true
       require-specific: true
