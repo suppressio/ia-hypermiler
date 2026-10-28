@@ -33,6 +33,18 @@ linters:
             - "!$test"
           allow:
             - $gostd
+          # $gostd alone would let I/O in; the more specific deny wins.
+          deny:
+            - pkg: os
+              desc: pacing is pure, no I/O
+            - pkg: io/fs
+              desc: pacing is pure, no I/O
+            - pkg: net
+              desc: pacing is pure, no I/O
+            - pkg: syscall
+              desc: pacing is pure, no I/O
+            - pkg: unsafe
+              desc: pacing is pure, no I/O
     misspell:
       # The module path holds the owner's GitHub login, not a typo of "suppressor".
       ignore-rules:
