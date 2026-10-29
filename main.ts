@@ -751,13 +751,6 @@ function broadcastSettings(): void {
 
 function registerIpcHandlers(): void {
   handle('view:get', () => getTrayViewState());
-  handle('view:set', (_event, raw: unknown) => {
-    if (!isPlainRecord(raw)) throw new Error('View: invalid choice');
-    const entry = getTrayViewState().entries.find(e => e.enabled && raw.mode === e.view.mode
-      && (e.view.mode !== 'manual' || (raw.accountId === e.view.accountId && raw.windowId === e.view.windowId)));
-    if (!entry) throw new Error('View: unavailable choice');
-    return setTrayView(entry.view);
-  });
   handle('settings:get', () => redactSecretsForRenderer(store.store));
 
   handle('settings:set', (_event, patch: unknown) => {

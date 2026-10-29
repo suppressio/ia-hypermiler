@@ -59,7 +59,8 @@ test('a panel click with the badge Off browses locally and leaves the badge Off'
   assert.deepEqual({ ...state.localView }, { accountId: 'b', windowId: '5h' });
   state.view = { ...off, selection: { view: { mode: 'auto' }, critical: true } };
   choose({ accountId: 'a', windowId: 'weekly' });
-  assert.deepEqual(sent.map(c => ({ ...(c as object) })), [{ mode: 'manual', accountId: 'a', windowId: 'weekly' }]);
+  assert.deepEqual(sent, [], 'a panel click never changes the tray selection');
+  assert.deepEqual({ ...state.localView }, { accountId: 'a', windowId: 'weekly' });
 });
 
 test('Manual shows the selected window even when the badge shows another one', () => {
@@ -87,9 +88,13 @@ test('an account without windows opens locally in Manual until the selection cha
   assert.equal((run('selectAccount')(state.latestSnapshot) as { accountId: string }).accountId, 'c');
   run('applyView')(view('manual', { accountId: 'a', windowId: '5h' }));
   assert.equal(state.localOverride, true, 'a refresh with the same selection keeps the account open');
-  // Clicking the persisted Manual view again closes the windowless account.
+  // In Manual a click is a local override until the selection changes; nothing is sent.
   run('choosePanelView')({ accountId: 'a', windowId: '5h' });
+  assert.equal(state.localOverride, true);
+  assert.deepEqual(sent, []);
+  run('applyView')(view('manual', { accountId: 'b', windowId: '5h' }));
   assert.equal(state.localOverride, false);
+  run('applyView')(view('manual', { accountId: 'a', windowId: '5h' }));
   run('applyView')(view('manual', { accountId: 'a', windowId: '5h' }));
   assert.equal((run('selectAccount')(state.latestSnapshot) as { accountId: string }).accountId, 'a');
   run('choosePanelView')({ accountId: 'c', windowId: null });

@@ -698,21 +698,13 @@ function applyView(updated: TrayViewState): void {
   if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
 }
 
-// A panel click selects that view as Manual, except with the badge Off (the user turned
-// the badge off) or on an account without windows (no view to select): then the panel
-// only browses locally.
+// A panel click only moves the panel's local view, in every mode: the tray selection
+// (Off/Auto/Manual and the Manual view) changes only from the tray menu or Settings. In
+// Manual the override holds until the selection changes.
 function choosePanelView(view: PanelView): void {
-  const mode = state.view?.selection.view.mode;
-  if (mode === 'off' || view.windowId === null) {
-    state.localView = view;
-    state.localOverride = mode === 'manual';
-    if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
-    return;
-  }
-  // An explicit choice ends the local override, also when it is the selection already
-  // persisted (main answers with an unchanged view:update, which renders the panel).
-  state.localOverride = false;
-  runGuarded(window.hypermiler.setView({ mode: 'manual', accountId: view.accountId, windowId: view.windowId }));
+  state.localView = view;
+  state.localOverride = state.view?.selection.view.mode === 'manual';
+  if (state.latestSnapshot) renderSnapshot(state.latestSnapshot);
 }
 
 function selectAccount(snapshot: UsageSnapshot): AccountSnapshot | undefined {
