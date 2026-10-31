@@ -43,6 +43,7 @@ ia-hypermiler/
 ├── README.md / README.it.md     ← user guide only: what the app does, install, how to read every indicator (EN primary, IT secondary)
 ├── docs/                        ← every other document, EN + .it.md
 │   ├── DEVELOPMENT.md           ← build from source, tests, packaging, CI, project structure and status
+│   ├── CORE-CLI.md              ← Go CLI and transport-neutral JSON contract v1 (#26)
 │   ├── ARCHITECTURE.md          ← app design: data model, windows, widget, tray, updates, i18n
 │   ├── PACING.md                ← the pacing model: definitions, edge cases, invariants, state, example tables (source of truth for budget.ts)
 │   ├── RESEARCH.md              ← what the Claude/Copilot APIs really expose (Day 1 + addenda)
@@ -63,12 +64,15 @@ ia-hypermiler/
 ├── preload.ts                   ← contextBridge renderer ↔ main
 ├── gocore/                      ← Go core module (#145), strict lint + depguard; CI job `go-checks`
 │   ├── cmd/hypermiler/          ← one binary, subcommand entry point
+│   ├── contract/v1/             ← shared normative JSON fixtures (Go + future TypeScript client)
 │   └── internal/
 │       ├── buildinfo/           ← binary name and build-time version
 │       ├── cli/                 ← command dispatch and exit codes
 │       ├── config/              ← OS config directory and development override
 │       ├── logging/             ← stderr text logger and level selection
-│       └── pacing/              ← pure pacing model
+│       ├── pacing/              ← pure pacing model
+│       ├── provider/            ← provider interface and per-run registry factories
+│       └── usage/               ← usage model, JSON contract, errors and text rendering
 ├── core/
 │   └── usage.ts                 ← fetch orchestration + snapshot computation (createUsageCore, computeAccountSnapshot…): store, provider fetch, local insights, clock and error reporting injected, no Electron (+ usage.test.ts)
 ├── main/

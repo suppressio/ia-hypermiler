@@ -11,7 +11,7 @@ import (
 	"github.com/suppressio/ia-hypermiler/gocore/internal/cli"
 )
 
-func TestRun(t *testing.T) {
+func TestRun(t *testing.T) { // uses t.Setenv; paralleltest recognizes this constraint
 	t.Setenv("HYPERMILER_LOG_LEVEL", "warn")
 	wantVersion := fmt.Sprintf("%s %s (%s/%s)\n", buildinfo.Name, buildinfo.Version, runtime.GOOS, runtime.GOARCH)
 	tests := []struct {
@@ -28,7 +28,8 @@ func TestRun(t *testing.T) {
 		{"version help", []string{"version", "--help"}, cli.ExitOK, "", true},
 		{"no arguments", nil, cli.ExitUsage, "", true},
 		{"unknown command", []string{"unknown"}, cli.ExitUsage, "", true},
-		{"usage is not implemented", []string{"usage"}, cli.ExitUsage, "", true},
+		{"missing provider", []string{"usage"}, cli.ExitUsage, "", true},
+		{"no real provider registered", []string{"usage", "codex"}, cli.ExitUsage, "", true},
 		{"serve is not implemented", []string{"serve"}, cli.ExitUsage, "", true},
 		{"unknown flag", []string{"version", "--unknown"}, cli.ExitUsage, "", true},
 		{"unexpected argument", []string{"version", "extra"}, cli.ExitUsage, "", true},
@@ -63,7 +64,7 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestRunLogsToStderr(t *testing.T) {
+func TestRunLogsToStderr(t *testing.T) { // uses t.Setenv; paralleltest recognizes this constraint
 	t.Setenv("HYPERMILER_LOG_LEVEL", "debug")
 	var stdout, stderr bytes.Buffer
 	if code := cli.Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); code != cli.ExitOK {
