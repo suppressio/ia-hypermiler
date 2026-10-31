@@ -25,6 +25,10 @@ type Error struct {
 	Message  string
 	Endpoint string
 	Shape    any
+	// Reason optionally names a known case inside the code (e.g.
+	// "enterprise_managed_seat"), so a client can explain it in the user's language
+	// without parsing Message. Additive in v1: absent when empty.
+	Reason string
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -35,14 +39,16 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 		return json.Marshal(struct {
 			Code     Code   `json:"code"`
 			Message  string `json:"message"`
+			Reason   string `json:"reason,omitempty"`
 			Endpoint string `json:"endpoint"`
 			Shape    any    `json:"shape"`
-		}{e.Code, e.Message, e.Endpoint, e.Shape})
+		}{e.Code, e.Message, e.Reason, e.Endpoint, e.Shape})
 	}
 	return json.Marshal(struct {
 		Code    Code   `json:"code"`
 		Message string `json:"message"`
-	}{e.Code, e.Message})
+		Reason  string `json:"reason,omitempty"`
+	}{e.Code, e.Message, e.Reason})
 }
 
 // ClassifyError preserves provider errors and recognizes wrapped deadlines.
