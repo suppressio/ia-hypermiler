@@ -177,7 +177,7 @@ test('resolveCoreBinary: override, packaged resources, development core-bin', ()
 const node = process.execPath;
 
 test('execFileRunner: stdout and exit code of a non-zero exit, stdin delivered and closed', async () => {
-  const script = "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{process.stdout.write(JSON.stringify({got:s}));process.exit(1)})";
+  const script = "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{process.stdout.write(JSON.stringify({got:s}));process.exitCode=1})";
   assert.deepEqual(await execFileRunner(node, ['-e', script], 'synthetic-secret', 10000), { exitCode: 1, stdout: '{"got":"synthetic-secret"}' });
   // Without a secret stdin is still closed: a binary that reads it does not hang.
   assert.deepEqual(await execFileRunner(node, ['-e', script], null, 10000), { exitCode: 1, stdout: '{"got":""}' });
