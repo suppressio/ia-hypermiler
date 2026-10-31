@@ -1,12 +1,12 @@
 name: CI
 
-# Lint and tests on every PR to next and on every push to it, Linux only: the
+# Lint and tests on every PR and on every push to next, Linux only: the
 # cross-platform packaging matrix stays in build.yml (tags and manual runs).
-# The go-checks job gates the Go core (gocore/) the same way.
+# The go-checks job gates the Go core (gocore/) the same way. Every PR, not only
+# those to next: a stacked PR (based on the branch of the previous one) gets
+# its checks too, before the stack reaches next.
 "on":
   pull_request:
-    branches:
-      - next
   push:
     branches:
       - next
