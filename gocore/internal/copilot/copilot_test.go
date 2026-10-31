@@ -357,17 +357,23 @@ func TestTokens(t *testing.T) {
 	gh := newFakeGitHub(t, map[string]reply{"/user": {body: `{"login":"octo"}`}})
 	store := &secrets.Memory{}
 	p := provider(t, gh.URL, store)
-	if _, err := p.SetToken(context.Background(), "wrong-token"); asUsageError(t, err).Code != usage.CodeSignedOut {
+	if _, err := p.SetToken(context.Background(), "wrong-token", true); asUsageError(t, err).Code != usage.CodeSignedOut {
 		t.Fatalf("rejected token: %v", err)
 	}
 	if _, err := store.Get(secrets.CopilotKey("copilot-1")); !errors.Is(err, secrets.ErrNotFound) {
 		t.Fatal("a rejected token was stored")
 	}
-	username, err := p.SetToken(context.Background(), token+"\n")
+	username, err := p.SetToken(context.Background(), token+"\n", true)
 	if err != nil || username != "octo" {
 		t.Fatalf("SetToken = %q, %v", username, err)
 	}
 	if v, _ := store.Get(secrets.CopilotKey("copilot-1")); v != token {
+		t.Fatalf("stored %q", v)
+	}
+	if u, err := p.SetToken(context.Background(), "unchecked-token", false); err != nil || u != "" || len(gh.paths()) != 2 {
+		t.Fatalf("SetToken unverified = %q, %v, calls %v", u, err, gh.paths())
+	}
+	if v, _ := store.Get(secrets.CopilotKey("copilot-1")); v != "unchecked-token" {
 		t.Fatalf("stored %q", v)
 	}
 	if err := p.DeleteToken(context.Background()); err != nil {
@@ -530,7 +536,7 @@ func TestKeyringBoundedByTheDeadline(t *testing.T) {
 	}
 	ctx2, cancel2 := short()
 	defer cancel2()
-	if _, err := p.SetToken(ctx2, token); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := p.SetToken(ctx2, token, true); !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("SetToken = %v; want a deadline", err)
 	}
 	ctx3, cancel3 := short()

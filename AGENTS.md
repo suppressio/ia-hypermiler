@@ -83,6 +83,7 @@ ia-hypermiler/
 ├── main/
 │   ├── ipc.ts                   ← typed handle/listen/sendToRenderer wrappers keyed on types/ipc.ts
 │   ├── core.ts                  ← the app's one core client (binary resolved per call)
+│   ├── coreRequests.ts          ← provider flags of the core commands from an account config (pure, + test)
 │   ├── coreClient.ts            ← runs the bundled core CLI (execFile, no shell, timeout, --json, secrets on stdin) and parses contract v1 against gocore/contract/v1 (+ test)
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
@@ -90,7 +91,6 @@ ia-hypermiler/
 │   ├── claude-auth.ts           ← cleanup of claude.ai sessions stored by earlier versions (no Claude sign-in since #140)
 │   ├── providers.ts             ← provider-specific part of the account registry (connection, fetch, disconnect, secret redaction)
 │   ├── refreshPolicy.ts         ← adaptive refresh pace, per-account backoff, manual-refresh cache (+ test)
-│   ├── copilot-oauth.ts         ← GitHub OAuth App login (loopback PKCE), experimental alternative to the PAT (+ test)
 │   └── i18n/                    ← main-process strings (tray, notifications, dialogs, OAuth page): en.ts, it.ts, index.ts (+ test)
 ├── renderer/
 │   ├── index.html, style.css, app.ts           ← widget
@@ -105,7 +105,6 @@ ia-hypermiler/
 ├── services/
 │   ├── _http.ts                 ← shared fetch helper (10s timeout, explicit errors)
 │   ├── _shape.ts                ← response → structure only (never values), FormatDriftError (+ test)
-│   ├── copilot.ts               ← Copilot usage fetch (+ test)
 │   ├── claudeLocalSessions.ts   ← insights from LOCAL Claude Code sessions, opt-in (+ test)
 │   ├── claudeLocalSessions.worker.ts ← utility-process entry: the scan runs off the main process
 │   ├── updates.ts               ← new-version check via the GitHub Releases list (+ test)
@@ -122,8 +121,6 @@ ia-hypermiler/
 ├── budget.ts                    ← pure budget/efficiency/projection/verdict/tip/yield logic (+ budget.test.ts)
 ├── tests/
 │   ├── support/at.ts            ← at(array, i) helper for tests under noUncheckedIndexedAccess
-│   └── integration/             ← real-API tests, active only with local credentials (see .env.test.example)
-├── .env.test.example            ← template for integration-test variables (never commit .env.test)
 ├── dist/                        ← tsc output + copied assets (gitignored)
 └── package.json
 ```
@@ -135,7 +132,7 @@ ia-hypermiler/
 ### Electron security
 - `nodeIntegration` always `false`, `contextIsolation` always `true`.
 - The renderer never has direct access to Node.js: everything goes through `preload.ts` via `contextBridge`.
-- API keys and session cookies live only in the main process and in encrypted `electron-store` — never in the renderer, never in localStorage. `settings:get`/`settings:set` redact secrets towards the renderer (`providers.redactSecrets`) and preserve the real values on write (`providers.preserveSecrets`).
+- No provider secret in the app: the Copilot token lives in the OS keyring, owned by the Go core (#179; it reaches the core on stdin, never argv), Codex keeps nothing secret (#178). The Copilot OAuth client secret is typed in Settings and goes to the core on stdin, never saved. Whatever secret is still in the store (a Copilot token of an earlier version, until moved) stays in the main process — never in the renderer, never in localStorage. `settings:get`/`settings:set` redact secrets towards the renderer (`providers.redactSecrets`) and preserve the real values on write (`providers.preserveSecrets`).
 - IPC channels and payload types are declared once in `types/ipc.ts`; main registers through `main/ipc.ts` (`handle`/`listen`/`sendToRenderer`), the preload through typed helpers on the same maps. A new channel = one entry there. The renderer tsconfig has `rootDir: "."` so it can import `types/`; those files must stay runtime-free (the renderer build re-emits them as ES modules over the CommonJS ones).
 - Every value coming from the renderer through IPC is `unknown` and is validated in the handler (`requireString`/`requireBoolean`/`requireOneOf` in `main.ts`). `settings:set` accepts only renderer-editable sections (`accounts`, `ui`, `diagnostics`, `updates`) and normalizes the patch before writing.
 - URLs opened with `shell.openExternal` come from the main process (store/constants), never from the renderer; update URLs must start with the project repository prefix.
@@ -146,16 +143,14 @@ ia-hypermiler/
 - Think through every path on Windows, macOS and Linux before writing it.
 
 ### Service interface
-Every TypeScript usage service (`services/copilot.ts`; Codex is read by the Go core since #178 and Copilot follows in #179) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
+Every provider is read by the Go core CLI since #179 (no TypeScript usage service left): `main/core.ts` runs `hypermiler usage <provider> --json` and gets `RawAccountUsage` (contract v1, docs/CORE-CLI.md; full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
 
 ```ts
-export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAccountUsage> { ... }
-
 // RawAccountUsage = { planTier, subscriptionRenewsAt, quotaWindows: QuotaWindow[] }
 // QuotaWindow    = { id, label, periodType, periodLength, unit: 'percentage'|'count', used, total, resetsAt }
 ```
 
-When a service cannot get the data it **throws an explicit error** with a readable message — never returns `null`/`undefined` silently. No `dailyHistory` from services: none of these providers exposes it, the daily history is built locally by `main.ts` in `store.history.dailyUsage` on every successful refresh. A provider read by the core (Codex) returns the same `RawAccountUsage` through `main/core.ts` (`hypermiler usage <provider> --json`, docs/CORE-CLI.md); its adapter lives in `gocore/internal/`. Adding a provider = an adapter in the core (or, until the migration ends, a service with `fetchUsage`) + a branch in every function of `main/providers.ts` (exhaustive switches make tsc fail if one is forgotten) + a detail template in `settings.html` + dictionary keys.
+A failure is an explicit error (contract error codes → `CoreProviderError`, `FormatDriftError`, `CoreBinaryError`…) — never `null`/`undefined` silently. No `dailyHistory` from providers: the daily history is built locally by `core/usage.ts` in `store.history.dailyUsage` on every successful refresh. Adding a provider = an adapter in `gocore/internal/` (registered in `provider.Default()`, fixtures, docs/CORE-CLI.md) + a branch in every function of `main/providers.ts` (exhaustive switches make tsc fail if one is forgotten) and in `main/coreRequests.ts` + a detail template in `settings.html` + dictionary keys.
 
 ### Error handling
 - Every network call has an explicit timeout (max 10 seconds) — use `services/_http.ts`.
@@ -242,7 +237,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 - Animations are allowed but must be switchable off in Settings, low-key, carry state, and off with `prefers-reduced-motion`. Keep them in the visible widget renderer only (never the tray), animate only `opacity`/`transform`, and stop timers when hidden. With animations disabled, only the refresh icon rotates during refresh; reduced motion uses a static refresh state. Not an animation: the tray badge's critical alert (#122) alternates the normal frame with the alert frame every 2 s while another view is over the threshold. It carries information that would otherwise stay hidden, changes state far below the WCAG flash limit (3/s), and does not follow `ui.animations` or reduced motion.
 - Do not expose secrets or credentials in any git-tracked file.
 - Do not use `any`. If a type is really dynamic use `unknown` with explicit narrowing.
-- Do not paste real credentials (sessionKey, PAT/token) in chat, commits, issues or logs — not even for tests. See "Integration tests" below.
+- Do not paste real credentials (sessionKey, PAT/token) in chat, commits, issues or logs — not even for tests.
 - Do not fix pacing numbers in isolation until the refactoring (#75) is done: a wrong value found in use becomes an issue and a case in `docs/PACING.md` (with its expected value).
 - Do not make unrequested architectural refactors: if you see a structural problem, report it before fixing it.
 - Do not write user-visible text outside the i18n dictionaries, and do not write code comments in Italian.
@@ -302,8 +297,8 @@ from the spec may fail on a known deviation (`PACING.md` §9): say so in the PR,
 - **No code signing** (`CSC_IDENTITY_AUTO_DISCOVERY: false`): Gatekeeper/SmartScreen warn at install time.
 - `package.json` `author` must carry an email (Debian "Maintainer"): the GitHub noreply address is used, never a real one.
 
-### Integration tests (real credentials)
-`tests/integration/*.integration.test.ts` call the real Copilot/Codex APIs but **skip themselves** without credentials. To enable them **locally**: copy `.env.test.example` to `.env.test` (gitignored), fill the variables, run `npm test`. **Never provide these credentials in chat**: the assisted environment does not need them.
+### Integration tests
+None since #179: the provider reads moved to the Go core, whose adapters are tested against fakes. Real accounts are checked by hand with the core binary (`hypermiler usage <provider>`); **never provide credentials in chat**: the assisted environment does not need them.
 
 ---
 

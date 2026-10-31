@@ -28,8 +28,9 @@ type Validator interface {
 
 // TokenManager keeps the account's token in the OS keyring (`token set|delete`).
 type TokenManager interface {
-	// SetToken checks the token with the provider, stores it and returns the user name.
-	SetToken(ctx context.Context, token string) (string, error)
+	// SetToken checks the token with the provider (unless verify is false), stores it
+	// and returns the user name ("" when not verified).
+	SetToken(ctx context.Context, token string, verify bool) (string, error)
 	DeleteToken(ctx context.Context) error
 }
 

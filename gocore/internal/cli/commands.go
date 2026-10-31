@@ -104,7 +104,12 @@ func runToken(env Env, args []string, jsonMode bool) int {
 		return usageError(env, jsonMode, "token needs set or delete")
 	}
 	action := args[0]
-	cmd, code, ok := parseProviderCommand(env, "token "+action, args[1:], jsonMode, 25*time.Second, 2*time.Minute, nil)
+	var noVerify *bool
+	cmd, code, ok := parseProviderCommand(env, "token "+action, args[1:], jsonMode, 25*time.Second, 2*time.Minute, func(_ provider.Provider, fs *flag.FlagSet) {
+		if action == "set" {
+			noVerify = fs.Bool("no-verify", false, "Store the token without checking it with the provider (username empty)")
+		}
+	})
 	if !ok {
 		return code
 	}
@@ -131,7 +136,7 @@ func runToken(env Env, args []string, jsonMode bool) int {
 	if message != "" {
 		return usageError(env, cmd.json, message)
 	}
-	username, err := manager.SetToken(ctx, token)
+	username, err := manager.SetToken(ctx, token, !*noVerify)
 	if err != nil {
 		if ctx.Err() != nil {
 			err = ctx.Err()

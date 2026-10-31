@@ -1,7 +1,7 @@
 // main.ts — Electron main process
-// Day 2, Session 1: real data from services/claude.ts and services/copilot.ts instead
-// of the Day 1 mock. When a fetch fails, the last known data is shown with its
-// timestamp (never a blank screen, see AGENTS.md).
+// Usage comes from the Go core CLI (main/core.ts) for Codex and Copilot (#178, #179).
+// When a fetch fails, the last known data is shown with its timestamp (never a blank
+// screen, see AGENTS.md).
 
 import { app, dialog, BrowserWindow, Notification, shell, Menu, screen, session, utilityProcess } from 'electron';
 import store, { DEFAULTS } from './store/index';
@@ -11,21 +11,20 @@ import { applyCompact, createMainWindow, createSettingsWindow } from './main/win
 import { createTray } from './main/tray';
 import { badgeEntries, pickBadge, resolveLegacyView, sameChoice, trackAutoAccount } from './main/trayBadge';
 import { clearClaudePartition, clearDefaultSessionClaudeCookies } from './main/claude-auth';
-import { captureGithubOAuthToken } from './main/copilot-oauth';
 import * as providers from './main/providers';
 import * as refreshPolicy from './main/refreshPolicy';
 import type { RefreshMode } from './main/refreshPolicy';
 import { defaultAccountFor, enforceSingleCodexAccount, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts, purgeClaudeSessions } from './store/migrate';
 import * as budget from './budget';
 import { createUsageCore, refreshIntervalMs } from './core/usage';
-import * as copilotService from './services/copilot';
 import path from 'path';
 import { fetchLatestUpdate, guideUrl, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
-import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost';
+import { DEFAULT_GITHUB_HOST, githubOAuthBase, normalizeGithubHost } from './services/githubHost';
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
 import { CoreBinaryError, CoreOutputError, CoreProviderError, CoreTimeoutError } from './main/coreClient';
 import { core } from './main/core';
+import { copilotAccountFlags } from './main/coreRequests';
 import { buildFormatDriftIssueUrl, buildReportIssueUrl, shortError } from './diagnostics/githubIssue';
 import { buildDiagnosticReport, neutralize } from './diagnostics/report';
 import type { ReportAccount } from './diagnostics/report';
@@ -250,8 +249,10 @@ function friendlyErrorMessage(err: unknown): string {
   if (error.status === 401 || error.status === 403) {
     return t('error.sessionExpired', { detail: error.message });
   }
-  if (err instanceof copilotService.CopilotUsageUnavailableError) {
-    return t('error.copilotEnterpriseManaged');
+  if (err instanceof CoreProviderError && err.provider === 'copilot') {
+    if (err.reason === 'enterprise_managed_seat') return t('error.copilotEnterpriseManaged');
+    if (err.code === 'signed_out') return t('error.copilotSignedOut');
+    if (err.reason === 'keyring_unavailable') return t('error.keyringUnavailable', { detail: err.message });
   }
   if (err instanceof providers.ClaudeUsageUnavailableError) {
     return t('error.claudeQuotasUnavailable');
@@ -487,7 +488,13 @@ const usageCore = createUsageCore({
   },
   fetchUsage: providers.fetchUsage,
   isConnected: providers.isConnected,
-  accountNotice: (err) => (err instanceof CoreProviderError && err.code === 'signed_out' && err.provider === 'codex' ? t('error.codexSignedOut') : null),
+  // Signed out is a state, not a failure: Codex (sign in with Codex), Copilot (reconnect).
+  accountNotice: (err) => {
+    if (!(err instanceof CoreProviderError) || err.code !== 'signed_out') return null;
+    if (err.provider === 'codex') return t('error.codexSignedOut');
+    if (err.provider === 'copilot') return t('error.copilotSignedOut');
+    return null;
+  },
   quotasUnavailable: (cfg) => (cfg.provider === 'claude' ? t('error.claudeQuotasUnavailable') : null),
   localInsights: computeLocalInsightsIfNeeded,
   describeError: friendlyErrorMessage,
@@ -862,9 +869,13 @@ function registerIpcHandlers(): void {
     const id = requireString(rawId, 'Account');
     const token = requireString(rawToken, 'Token').trim();
     const host = requireGithubHost(rawHost);
-    const username = await copilotService.resolveUsername(token, host);
+    const cfg = findAccount(id);
+    if (!cfg || cfg.provider !== 'copilot') throw new Error(`Copilot account not found: ${id}`);
+    // The core checks the token with GitHub and keeps it in the OS keyring (#179): it
+    // goes on the core's stdin, never in argv, and is not written to the store.
+    const username = await core.tokenSet({ provider: 'copilot', flags: copilotAccountFlags({ ...cfg, host }), token, verify: true });
     updateAccount(id, (a) => (a.provider === 'copilot'
-      ? { ...a, enabled: true, authMethod: 'pat', host, credentials: { token, username } }
+      ? { ...a, enabled: true, authMethod: 'pat', host, credentials: { token: null, username } }
       : a));
     broadcastSettings();
     runDetached('refresh usage', refreshAndBroadcast('forced'));
@@ -882,10 +893,27 @@ function registerIpcHandlers(): void {
       clientSecret: requireString(payloadRecord.clientSecret, 'Client Secret'),
       host: requireGithubHost(payloadRecord.host),
     };
-    const { accessToken } = await captureGithubOAuthToken(payload);
-    const username = await copilotService.resolveUsername(accessToken, payload.host);
+    const cfg = findAccount(id);
+    if (!cfg || cfg.provider !== 'copilot') throw new Error(`Copilot account not found: ${id}`);
+    // The core runs the PKCE loopback and keeps the token in the OS keyring (#179); the
+    // app only opens the authorization URL it announces, checked against the host.
+    const authorizePrefix = `${githubOAuthBase(payload.host)}/authorize?`;
+    const username = await core.login({
+      provider: 'copilot',
+      flags: [...copilotAccountFlags({ ...cfg, host: payload.host }), '--client-id', payload.clientId, '--locale', getLocale()],
+      clientSecret: payload.clientSecret,
+      onAuthorize: (url) => {
+        if (!url.startsWith(authorizePrefix)) {
+          console.error('[main] the core announced an unexpected sign-in URL; not opened');
+          return;
+        }
+        shell.openExternal(url).catch((err: unknown) => {
+          console.error('[main] could not open the GitHub sign-in page:', err);
+        });
+      },
+    });
     updateAccount(id, (a) => (a.provider === 'copilot'
-      ? { ...a, enabled: true, authMethod: 'oauth', host: payload.host, credentials: { token: accessToken, username }, oauthApp: { clientId: payload.clientId } }
+      ? { ...a, enabled: true, authMethod: 'oauth', host: payload.host, credentials: { token: null, username }, oauthApp: { clientId: payload.clientId } }
       : a));
     broadcastSettings();
     runDetached('refresh usage', refreshAndBroadcast('forced'));
@@ -1032,6 +1060,24 @@ async function purgeStoredCodexSessions(): Promise<void> {
   }
 }
 
+// #179: the Copilot token of an earlier version, kept in the encrypted store, is handed
+// to the core once (stdin, unchecked: it was checked when connected, and startup must
+// not wait on GitHub) and then removed from the store. A failure (keyring not reachable,
+// core missing) keeps it in the store and retries at the next start; meanwhile the core
+// cannot read it, so the account shows the error.
+async function moveCopilotTokensToKeyring(): Promise<void> {
+  for (const cfg of getAccounts()) {
+    if (cfg.provider !== 'copilot' || !cfg.credentials.token) continue;
+    try {
+      await core.tokenSet({ provider: 'copilot', flags: copilotAccountFlags(cfg), token: cfg.credentials.token, verify: false });
+      updateAccount(cfg.id, (a) => (a.provider === 'copilot' ? { ...a, credentials: { ...a.credentials, token: null } } : a));
+      console.log(`[main] Copilot token of account '${cfg.label}' moved to the OS keyring (#179)`);
+    } catch (err) {
+      console.error(`[main] moving the Copilot token of account '${cfg.label}' to the OS keyring failed, retrying at the next start:`, friendlyErrorMessage(err));
+    }
+  }
+}
+
 async function purgeStoredClaudeSessions(): Promise<void> {
   if (store.get('meta').claudeSessionsPurged === true) return;
   // The store part runs first and always: it cannot fail on a single partition.
@@ -1078,6 +1124,7 @@ app.whenReady().then(async () => {
   applyMainLocale();
   await purgeStoredClaudeSessions();
   await purgeStoredCodexSessions();
+  await moveCopilotTokensToKeyring();
 
   const win = createMainWindow(store);
   mainWindow = win;

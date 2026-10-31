@@ -44,7 +44,9 @@ A reduced scope (only the most relevant window per service, e.g. only `seven_day
 
 ## 1. Settings — data schema
 
-Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the file on disk in `store/normalize.ts`). Claude sessions and Copilot tokens stay encrypted through `electron-store`'s `encryptionKey`. Codex stores nothing secret (#178). Secrets never reach the renderer.
+Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the file on disk in `store/normalize.ts`). The encrypted store (`electron-store`'s `encryptionKey`) holds no provider secret any more: the Copilot token is in the OS keyring, owned by the Go core (#179), and Codex stores nothing secret (#178). Secrets never reach the renderer.
+
+**Copilot:** read through the Go core CLI since #179 (`hypermiler usage copilot --account <id> --host … --scope …`). Connecting goes through the core too: a PAT is handed to `token set` on stdin, the OAuth App sign-in is `login` (PKCE loopback in the core; the app only opens the authorization URL the core announces, checked against the account's host). The core keeps the token in the OS keyring; disconnect and removal call `token delete`. `main.ts moveCopilotTokensToKeyring` hands over a token stored by an earlier version once, then clears it from the store.
 
 **Codex:** read through the Go core CLI since #178: `main/providers.ts` asks `main/core.ts` (`hypermiler usage codex [--codex-bin <path>]`, contract in [CORE-CLI](CORE-CLI.md)), and the core runs `codex app-server` with the user's own Codex sign-in. No login window, partition cookies or token in the app. Signed out is the `signed_out` code, shown as a sign-in hint (`error.codexSignedOut`). The account `partition` only remains so the chatgpt.com cookies of the old login route (#82) are cleared once at startup.
 
@@ -99,7 +101,8 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
     } | { // --- provider: 'copilot' ---
       authMethod: 'pat' | 'oauth',  // chooses which connection panel to show; updated from the last successful connection
       accountScope: 'personal' | 'organization', // chooses the endpoints read (personal plan vs company seat)
-      credentials: { token: string, username: string | null },  // encrypted token (PAT or OAuth App access token — see main/copilot-oauth.ts)
+      credentials: { token: string | null, username: string | null },  // token: null since #179 (it lives in the core's OS keyring,
+                                 // entry copilot/<id>); only a token of an earlier version waits here until moved
       oauthApp: { clientId: string | null },  // not a secret; the client secret is never persisted
       manualQuota: number, // the billing API does not expose the plan total: value entered by the user
       experimentalWarningAcknowledged: boolean,

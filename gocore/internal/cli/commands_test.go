@@ -33,12 +33,15 @@ func (p *accountProvider) Validate() error {
 	return nil
 }
 
-func (p *accountProvider) SetToken(_ context.Context, token string) (string, error) {
+func (p *accountProvider) SetToken(_ context.Context, token string, verify bool) (string, error) {
 	p.gotSecret = token
 	if p.err != nil {
 		return "", p.err
 	}
 	p.tokens[p.account] = token
+	if !verify {
+		return "", nil
+	}
 	return "octo", nil
 }
 
@@ -80,6 +83,14 @@ func TestAccountCommandFixtures(t *testing.T) {
 		code, out, errOut := run(t, []string{"token", "set", "fake", "--account", "a1", "--json"}, strings.NewReader("synthetic-pat\n"), accountFactory(p))
 		if code != cli.ExitOK || out != string(fixture(t, "account-connected")) || p.tokens["a1"] != "synthetic-pat" {
 			t.Fatalf("exit=%d out=%q err=%q tokens=%v", code, out, errOut, p.tokens)
+		}
+	})
+	t.Run("token set --no-verify stores without a user name", func(t *testing.T) {
+		t.Parallel()
+		p := &accountProvider{}
+		code, out, _ := run(t, []string{"token", "set", "fake", "--account", "a1", "--no-verify", "--json"}, strings.NewReader("legacy"), accountFactory(p))
+		if code != cli.ExitOK || out != `{"schemaVersion":1,"provider":"fake","username":""}`+"\n" || p.tokens["a1"] != "legacy" {
+			t.Fatalf("exit=%d out=%q", code, out)
 		}
 	})
 	t.Run("token delete prints account-deleted", func(t *testing.T) {

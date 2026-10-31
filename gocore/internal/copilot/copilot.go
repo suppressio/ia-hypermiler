@@ -172,15 +172,19 @@ func (p *Provider) RawResponse(ctx context.Context) (string, []byte, error) {
 }
 
 // SetToken checks a token with GitHub (GET /user) and stores it: a PAT pasted in
-// Settings, or the token Electron kept before #179, handed over once on stdin.
-func (p *Provider) SetToken(ctx context.Context, token string) (string, error) {
+// Settings. verify false stores it unchecked: the token Electron kept before #179,
+// moved at startup without a network call (it was already checked when connected).
+func (p *Provider) SetToken(ctx context.Context, token string, verify bool) (string, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return "", errors.New("empty token")
 	}
-	username, err := Username(ctx, p.client, p.apiEndpoints().API, token)
-	if err != nil {
-		return "", classify(err, token)
+	username := ""
+	if verify {
+		var err error
+		if username, err = Username(ctx, p.client, p.apiEndpoints().API, token); err != nil {
+			return "", classify(err, token)
+		}
 	}
 	if err := secrets.Set(ctx, p.store, secrets.CopilotKey(p.account), token); err != nil {
 		return "", keyringError(err)
