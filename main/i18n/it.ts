@@ -47,6 +47,7 @@ export const it: Record<MainMessageKey, string> = {
   'error.codexSignedOut': 'Accedi a Codex su questo computer (CLI: `codex login`, oppure l\'estensione Codex di VS Code): l\'app legge l\'utilizzo tramite il tuo accesso a Codex e non salva sessioni di ChatGPT.',
   'error.copilotSignedOut': 'Account Copilot non collegato, o GitHub non accetta più il suo token: ricollegalo dalle Impostazioni.',
   'error.keyringUnavailable': 'Il portachiavi di sistema, dove si tiene il token di Copilot, non è raggiungibile (su Linux serve GNOME Keyring o KWallet nella sessione desktop). ({detail})',
+  'error.accountRemovedDuringSignIn': 'L\'account è stato rimosso durante l\'accesso: il suo token non è stato conservato.',
   'error.coreMissing': 'Il core di IA Hypermiler non si avvia: reinstalla l\'app (in sviluppo usa `npm start`, che lo compila, o imposta HYPERMILER_CORE_BIN). ({detail})',
   'error.coreTimeout': 'Il core di IA Hypermiler non ha risposto in tempo; restano gli ultimi valori e il prossimo aggiornamento riprova.',
   'error.coreBadOutput': 'Il core di IA Hypermiler ha dato una risposta che questa versione non sa leggere: aggiorna l\'app o segnalalo. ({detail})',

@@ -873,7 +873,9 @@ function registerIpcHandlers(): void {
     if (!cfg || cfg.provider !== 'copilot') throw new Error(`Copilot account not found: ${id}`);
     // The core checks the token with GitHub and keeps it in the OS keyring (#179): it
     // goes on the core's stdin, never in argv, and is not written to the store.
-    const username = await core.tokenSet({ provider: 'copilot', flags: copilotAccountFlags({ ...cfg, host }), token, verify: true });
+    const flags = copilotAccountFlags({ ...cfg, host });
+    const username = await core.tokenSet({ provider: 'copilot', flags, token, verify: true });
+    await dropTokenIfAccountRemoved(id, flags);
     updateAccount(id, (a) => (a.provider === 'copilot'
       ? { ...a, enabled: true, authMethod: 'pat', host, credentials: { token: null, username } }
       : a));
@@ -898,9 +900,10 @@ function registerIpcHandlers(): void {
     // The core runs the PKCE loopback and keeps the token in the OS keyring (#179); the
     // app only opens the authorization URL it announces, checked against the host.
     const authorizePrefix = `${githubOAuthBase(payload.host)}/authorize?`;
+    const accountFlags = copilotAccountFlags({ ...cfg, host: payload.host });
     const username = await core.login({
       provider: 'copilot',
-      flags: [...copilotAccountFlags({ ...cfg, host: payload.host }), '--client-id', payload.clientId, '--locale', getLocale()],
+      flags: [...accountFlags, '--client-id', payload.clientId, '--locale', getLocale()],
       clientSecret: payload.clientSecret,
       onAuthorize: (url) => {
         if (!url.startsWith(authorizePrefix)) {
@@ -912,6 +915,7 @@ function registerIpcHandlers(): void {
         });
       },
     });
+    await dropTokenIfAccountRemoved(id, accountFlags);
     updateAccount(id, (a) => (a.provider === 'copilot'
       ? { ...a, enabled: true, authMethod: 'oauth', host: payload.host, credentials: { token: null, username }, oauthApp: { clientId: payload.clientId } }
       : a));
@@ -1058,6 +1062,15 @@ async function purgeStoredCodexSessions(): Promise<void> {
   } else {
     console.error(`[main] ${String(failures)} Codex cookie store(s) not cleared, retrying at the next start`);
   }
+}
+
+// The account can be removed while its sign-in is still open in the browser (or a token
+// check is running): the core has just stored a token nobody could delete any more.
+// Remove it and fail the connection.
+async function dropTokenIfAccountRemoved(id: AccountId, flags: string[]): Promise<void> {
+  if (findAccount(id)?.provider === 'copilot') return;
+  await core.tokenDelete({ provider: 'copilot', flags });
+  throw new Error(t('error.accountRemovedDuringSignIn'));
 }
 
 // #179: the Copilot token of an earlier version, kept in the encrypted store, is handed
