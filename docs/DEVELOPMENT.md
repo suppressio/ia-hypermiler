@@ -2,7 +2,7 @@
 
 # Development
 
-How to build IA Hypermiler from source, test it and package it. For what the app does and how to read it, see the [README](../README.md).
+> How to build IA Hypermiler from source, test it and package it. For what the app does and how to read it, see the [README](../README.md).
 
 ## Requirements
 
@@ -54,7 +54,16 @@ go test -race ./...
 golangci-lint run    # strict config in .golangci.yml, includes the depguard import rules
 ```
 
-The `go-checks` job in `.github/workflows/ci.yml` runs the same checks on every PR to `next` and fails the PR like `lint-test`. Import rules (which package may import which) are the `depguard` section of `gocore/.golangci.yml`; a violation is a lint failure.
+The `go-checks` job in `.github/workflows/ci.yml` runs the same checks on every PR to `next` and fails the PR like `lint-test`. After the tests, its `cross-compile` step builds `./cmd/hypermiler` for Linux amd64/arm64, Windows amd64 and macOS arm64/amd64 with `CGO_ENABLED=0`, `-trimpath` and `-ldflags "-s -w"`, printing each size from a temporary directory. Import rules (which package may import which) are the `depguard` section of `gocore/.golangci.yml`; a violation is a lint failure.
+
+`cmd/hypermiler/main.go` only calls `internal/cli.Run`: one binary with subcommands, currently `version` and `help` (`-h`/`--help` also work). `usage` (#26) and `serve` (#31) are future commands, with no stubs. Exit codes are 0 for success, 1 reserved for provider errors (#26), and 2 for invalid arguments. `internal/buildinfo` owns the single `Name` constant (currently `hypermiler`, pending #9) and the build-time `Version` (default `dev`). `internal/config` locates/creates the config directory, `internal/logging` builds the logger, and `internal/pacing` holds the pure pacing model. Build and run from `gocore/`:
+
+```bash
+go build -trimpath -ldflags "-s -w -X github.com/suppressio/ia-hypermiler/gocore/internal/buildinfo.Version=dev" ./cmd/hypermiler
+./hypermiler version
+```
+
+`config.Dir()` joins `os.UserConfigDir()` with `buildinfo.Name`; `config.Ensure()` creates it with mode `0o700` (owner-only on Unix), writing no files. `HYPERMILER_CONFIG_DIR` overrides the directory for tests/development and must be an absolute path when nonempty. `HYPERMILER_LOG_LEVEL` accepts `debug`, `info`, `warn` or `error`, defaulting to `warn`; an invalid value falls back to `warn` and emits one warning. Logs go to stderr; stdout is reserved for command output and the future JSON contract (#26). Help/version do not create a config directory. Resource measurements are in [EVOLUTION](EVOLUTION.md#update-2026-10-31-go-core-resource-budget-145).
 
 ## Packaging
 

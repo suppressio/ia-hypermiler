@@ -66,6 +66,18 @@ jobs:
       - name: go test -race
         run: go test -race ./...
 
+      - name: cross-compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$(mktemp -d)"
+          trap 'rm -rf "$output_dir"' EXIT
+          for target in linux/amd64 linux/arm64 windows/amd64 darwin/arm64 darwin/amd64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w" -o "$output_dir/${target/\//-}" ./cmd/hypermiler
+            ls -l "$output_dir/${target/\//-}"
+          done
+
       - name: golangci-lint (includes the import rules)
         uses: golangci/golangci-lint-action@v9
         with:
