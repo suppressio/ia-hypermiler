@@ -12,7 +12,7 @@
 The original concept in `CLAUDE.md` (`{ used, total, resetDate }`) assumes **a single counter per service**. Research shows that is not enough:
 
 - **Claude**: 2-3 concurrent, independent quota windows — `five_hour` (rolling 5h), `seven_day` (rolling 7 days, all models), `seven_day_opus` (rolling 7 days, Opus only). Each has its own `utilization` (%) and its own `resets_at`. There is no "monthly token total" to read from the account: the monthly renewal exists only as the **subscription billing date**, unrelated to the usage windows.
-- **Codex (ChatGPT)**: percentages over rolling 5-hour and 7-day windows, identified by `limit_window_seconds`, never by primary/secondary position. Reported code-review or additional limits stay separate; `renderer/windowLabel.ts` translates their labels.
+- **Codex (ChatGPT)**: percentages over rolling 5-hour and 7-day windows, read by the Go core from `codex app-server` (#148) and identified by `windowDurationMins`, never by primary/secondary position.
 - **Copilot**: a discrete counter (`premium_requests` + `ai_credit`) tied to the monthly billing cycle — here the original "used/total/resetDate" model works as is.
 
 **Proposal (adopted):** generalize the service interface from a single counter to a **list of "quota windows"** (`quotaWindows`) per account, each with its own period type (`rolling-hours`, `rolling-days`, `billing-cycle`) and unit (`percentage` for Claude and Codex, `count` for Copilot). The requested "tokens/day" indicator is therefore redefined as **"% of quota used per working day"** for Claude, and "premium requests used per working day" for Copilot — still normalizing everything to a percentage for visual comparison in the widget when a single aggregated number must be shown.
@@ -44,9 +44,9 @@ A reduced scope (only the most relevant window per service, e.g. only `seven_day
 
 ## 1. Settings — data schema
 
-Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the file on disk in `store/normalize.ts`). Claude sessions and Copilot tokens stay encrypted through `electron-store`'s `encryptionKey`; Codex cookies stay in the account partition. Secrets never reach the renderer.
+Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the file on disk in `store/normalize.ts`). Claude sessions and Copilot tokens stay encrypted through `electron-store`'s `encryptionKey`. Codex stores nothing secret (#178). Secrets never reach the renderer.
 
-**Codex:** `main/providers.ts` connects the registry to `main/codex-auth.ts` (login) and `services/codex.ts` (usage). Login uses a persistent per-account partition and the stock Electron User-Agent; `main/codex-session-cookie.ts` recognizes the session cookie. Disconnect, removal and a new login clear cookies and storage. On each refresh, Node `fetch` through `services/_http.ts` calls `https://chatgpt.com/api/auth/session` with the partition cookies and its User-Agent, then `https://chatgpt.com/backend-api/wham/usage` with the returned Bearer. The access token is never stored or sent to the renderer; only `capturedAt` is kept in the store. `session.fetch` is the planned fallback if Cloudflare refuses Node (see `RESEARCH.md` §6).
+**Codex:** read through the Go core CLI since #178: `main/providers.ts` asks `main/core.ts` (`hypermiler usage codex [--codex-bin <path>]`, contract in [CORE-CLI](CORE-CLI.md)), and the core runs `codex app-server` with the user's own Codex sign-in. No login window, partition cookies or token in the app. Signed out is the `signed_out` code, shown as a sign-in hint (`error.codexSignedOut`). The account `partition` only remains so the chatgpt.com cookies of the old login route (#82) are cleared once at startup.
 
 ```js
 {
@@ -94,8 +94,8 @@ Extends `store/index.ts` (defaults in `store/defaults.ts`, normalization of the 
                                  // cleared by Disconnect/Remove and before every login (issue #4)
       localInsights: boolean,    // local Claude Code sessions attributed to this account (max 1)
     } | { // --- provider: 'codex' ---
-      partition: string,         // persist:account-<id>
-      session: { capturedAt: string | null },
+      partition: string,         // persist:account-<id>, held the old chatgpt.com cookies (cleared once, #178)
+      binaryPath: string | null, // absolute path of codex, or null: the core finds it
     } | { // --- provider: 'copilot' ---
       authMethod: 'pat' | 'oauth',  // chooses which connection panel to show; updated from the last successful connection
       accountScope: 'personal' | 'organization', // chooses the endpoints read (personal plan vs company seat)

@@ -57,11 +57,15 @@ export class CoreOutputError extends Error {
 /** A provider error reported by the core with one of the stable codes. */
 export class CoreProviderError extends Error {
   readonly code: CoreErrorCode;
+  // The provider id the core answered for: the same code reads differently per provider
+  // (signed_out is "sign in with Codex" for Codex).
+  readonly provider: string;
 
-  constructor(code: CoreErrorCode, message: string) {
+  constructor(code: CoreErrorCode, message: string, provider: string) {
     super(message);
     this.name = 'CoreProviderError';
     this.code = code;
+    this.provider = provider;
   }
 }
 
@@ -242,7 +246,7 @@ function errorCode(value: unknown): CoreErrorCode {
   return ERROR_CODES.find((code) => code === value) ?? 'unavailable';
 }
 
-function providerError(doc: Record<string, unknown>): Error {
+function providerError(doc: Record<string, unknown>, provider: string): Error {
   const error = doc.error;
   if (!isRecord(error) || typeof error.message !== 'string') throw new CoreOutputError('Core document: error needs a code and a message');
   const code = errorCode(error.code);
@@ -250,7 +254,7 @@ function providerError(doc: Record<string, unknown>): Error {
     // Same path as a TypeScript service's drift: main.ts opens the report draft (shape only).
     return new FormatDriftError(error.message, typeof error.endpoint === 'string' ? error.endpoint : 'core', error.shape ?? null);
   }
-  return new CoreProviderError(code, error.message);
+  return new CoreProviderError(code, error.message, provider);
 }
 
 /**
@@ -265,7 +269,7 @@ export function parseUsageRun(run: CoreRun, provider: string): CoreUsageResult {
     throw new CoreOutputError(`Core rejected the arguments${message}`);
   }
   if (doc.provider !== provider) throw new CoreOutputError(`Core document is for another provider (expected ${provider})`);
-  if (run.exitCode === 1 && 'error' in doc) throw providerError(doc);
+  if (run.exitCode === 1 && 'error' in doc) throw providerError(doc, provider);
   if (run.exitCode !== 0 || 'error' in doc) {
     throw new CoreOutputError(`Core exited with code ${String(run.exitCode)} without a matching document`);
   }
@@ -279,6 +283,18 @@ export function parseUsageRun(run: CoreRun, provider: string): CoreUsageResult {
     staleReason = { code: errorCode(reason.code), message: reason.message };
   }
   return { usage: parseUsage(doc.usage), fetchedAt: doc.fetchedAt, stale: doc.stale, staleReason };
+}
+
+/**
+ * The usage of a fresh result. A stale one (the provider gave last known values)
+ * becomes the error of its reason: the app keeps and shows its own last data as stale
+ * with that reason, the same path as a failed read, instead of storing old values as
+ * a fresh sample.
+ */
+export function requireFresh(result: CoreUsageResult, provider: string): RawAccountUsage {
+  if (!result.stale) return result.usage;
+  const reason = result.staleReason ?? { code: 'unavailable', message: 'Core returned stale values' };
+  throw new CoreProviderError(reason.code, reason.message, provider);
 }
 
 export function parseVersionRun(run: CoreRun): CoreVersion {

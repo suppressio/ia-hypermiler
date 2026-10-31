@@ -12,7 +12,7 @@
 Il concept originale in `CLAUDE.md` (`{ used, total, resetDate }`) assume **un solo contatore per servizio**. La ricerca mostra che non basta:
 
 - **Claude**: 2-3 finestre di quota concorrenti e indipendenti — `five_hour` (rolling 5h), `seven_day` (rolling 7gg, tutti i modelli), `seven_day_opus` (rolling 7gg, solo Opus). Ognuna ha una propria `utilization` (%) e un proprio `resets_at`. Non c'è un "totale token mensile" da leggere dall'account: il rinnovo mensile esiste solo come **data di fatturazione dell'abbonamento**, scollegata dalle finestre di utilizzo.
-- **Codex (ChatGPT)**: percentuali su finestre rolling di 5 ore e 7 giorni, riconosciute da `limit_window_seconds`, mai dalla posizione primary/secondary. Eventuali limiti di revisione codice o aggiuntivi restano separati; `renderer/windowLabel.ts` ne traduce le etichette.
+- **Codex (ChatGPT)**: percentuali su finestre rolling di 5 ore e 7 giorni, lette dal core Go da `codex app-server` (#148) e riconosciute da `windowDurationMins`, mai dalla posizione primary/secondary.
 - **Copilot**: un contatore discreto (`premium_requests` + `ai_credit`) legato al ciclo di fatturazione mensile — qui il modello "used/total/resetDate" originale funziona bene così com'è.
 
 **Proposta:** generalizzare l'interfaccia dei service da un singolo contatore a una **lista di "finestre di quota"** (`quotaWindows`) per account, ciascuna con il proprio tipo di periodo (`rolling-hours`, `rolling-days`, `billing-cycle`) e la propria unità di misura (`percentage` per Claude e Codex, `count` per Copilot). L'indicatore "Token/gg" richiesto va quindi ridefinito come **"% di quota consumata per giorno lavorativo"** per Claude, e come "richieste premium consumate/giorno lavorativo" per Copilot — normalizzando comunque tutto a una percentuale per il confronto visivo nel widget quando serve mostrare un unico numero aggregato.
@@ -44,9 +44,9 @@ Se preferisci restare più semplici e trattare solo la finestra più rilevante p
 
 ## 1. Impostazioni (settings) — schema dati
 
-Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del file su disco in `store/normalize.ts`). Sessioni Claude e token Copilot restano cifrati via `encryptionKey` di `electron-store`; i cookie Codex restano nella partition dell’account. I segreti non arrivano mai al renderer.
+Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del file su disco in `store/normalize.ts`). Sessioni Claude e token Copilot restano cifrati via `encryptionKey` di `electron-store`. Codex non salva nulla di segreto (#178). I segreti non arrivano mai al renderer.
 
-**Codex:** `main/providers.ts` collega il registro a `main/codex-auth.ts` (login) e `services/codex.ts` (utilizzo). Il login usa una partition persistente per account e lo User-Agent originale di Electron; `main/codex-session-cookie.ts` riconosce il cookie di sessione. Disconnessione, rimozione e nuovo login cancellano cookie e storage. A ogni refresh, Node `fetch` tramite `services/_http.ts` chiama `https://chatgpt.com/api/auth/session` con i cookie della partition e il suo User-Agent, poi `https://chatgpt.com/backend-api/wham/usage` con il Bearer ricevuto. L’access token non viene mai salvato né inviato al renderer; nello store resta solo `capturedAt`. `session.fetch` è il ripiego previsto se Cloudflare rifiutasse Node (vedi `RESEARCH.md` §6).
+**Codex:** letto tramite la CLI del core Go da #178: `main/providers.ts` interroga `main/core.ts` (`hypermiler usage codex [--codex-bin <percorso>]`, contratto in [CORE-CLI](CORE-CLI.it.md)), e il core esegue `codex app-server` con l'accesso a Codex dell'utente. Niente finestra di login, cookie di partition o token nell'app. Senza accesso arriva il codice `signed_out`, mostrato come indicazione per accedere (`error.codexSignedOut`). La `partition` dell'account resta solo perché i cookie chatgpt.com della vecchia route di login (#82) vengano cancellati una volta all'avvio.
 
 ```js
 {
@@ -94,8 +94,8 @@ Estende `store/index.ts` (default in `store/defaults.ts`, normalizzazione del fi
                                  // cancellati da Disconnetti/Rimuovi e prima di ogni login (issue #4)
       localInsights: boolean,    // sessioni Claude Code locali attribuite a questo account (max 1)
     } | { // --- provider: 'codex' ---
-      partition: string,         // persist:account-<id>
-      session: { capturedAt: string | null },
+      partition: string,         // persist:account-<id>, conteneva i vecchi cookie chatgpt.com (cancellati una volta, #178)
+      binaryPath: string | null, // percorso assoluto di codex, o null: lo trova il core
     } | { // --- provider: 'copilot' ---
       authMethod: 'pat' | 'oauth',  // sceglie quale pannello di connessione mostrare; aggiornato dall'ultima connessione riuscita
       accountScope: 'personal' | 'organization', // sceglie gli endpoint letti (piano personale o seat aziendale)

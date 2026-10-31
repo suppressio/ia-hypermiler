@@ -40,7 +40,6 @@ export const it: Record<MainMessageKey, string> = {
   'notify.updateAvailable': 'È disponibile la versione {version}: apri Impostazioni → Aggiornamenti per scaricarla.',
 
   'startup.failedTitle': 'IA Hypermiler non è riuscita ad avviarsi',
-  'login.codexWindowTitle': 'Accedi a ChatGPT (Codex)',
 
   'oauth.successTitle': 'Accesso GitHub completato',
   'oauth.successMessage': 'Autenticazione riuscita.',
@@ -51,6 +50,7 @@ export const it: Record<MainMessageKey, string> = {
 
   'error.sessionExpired': "Sessione scaduta o non valida — riconnetti l'account da Impostazioni. ({detail})",
   'error.invalidGithubHost': 'Dominio GitHub non supportato: usa github.com oppure il dominio aziendale <nome>.ghe.com.',
+  'error.codexSignedOut': 'Accedi a Codex su questo computer (CLI: `codex login`, oppure l\'estensione Codex di VS Code): l\'app legge l\'utilizzo tramite il tuo accesso a Codex e non salva sessioni di ChatGPT.',
   'error.coreMissing': 'Il core di IA Hypermiler non si avvia: reinstalla l\'app (in sviluppo usa `npm start`, che lo compila, o imposta HYPERMILER_CORE_BIN). ({detail})',
   'error.coreTimeout': 'Il core di IA Hypermiler non ha risposto in tempo; restano gli ultimi valori e il prossimo aggiornamento riprova.',
   'error.coreBadOutput': 'Il core di IA Hypermiler ha dato una risposta che questa versione non sa leggere: aggiorna l\'app o segnalalo. ({detail})',

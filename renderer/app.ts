@@ -938,13 +938,17 @@ function renderSnapshot(snapshot: UsageSnapshot): void {
   } else if (account.planTier === 'free') {
     label = t('widget.freePlan');
   }
-  if (account.stale) {
+  if (account.stale && account.notice && !account.lastUpdatedAt) {
+    // A state the user has to act on (e.g. sign in with Codex, #178), not a failed sync.
+    label = account.notice;
+  } else if (account.stale) {
     // Never a successful sync so far: the account IS connected but the very first
     // fetch failed — not to be confused with "not connected".
     label = account.lastUpdatedAt
       ? t('widget.stale', { label, time: formatDateTime(account.lastUpdatedAt) })
       : t('widget.firstSyncFailed');
-    if (account.lastError) label = t('widget.withError', { label, error: account.lastError });
+    const reason = account.lastError ?? account.notice;
+    if (reason) label = t('widget.withError', { label, error: reason });
   }
   byId('current-label').textContent = label;
   // The compact view hides the account tabs: the label carries the account name there (style.css).

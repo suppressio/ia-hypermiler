@@ -304,6 +304,9 @@ export interface AccountSnapshot extends RawAccountUsage {
   lastUpdatedAt?: string;
   stale?: boolean;
   lastError?: string;
+  // A state of the account the user has to act on (e.g. "sign in with Codex", #178),
+  // shown in place of an error; never set together with lastError.
+  notice?: string;
 }
 
 export interface UsageSnapshot {
@@ -370,8 +373,13 @@ export interface CopilotAccountSettings extends AccountConfigBase {
 
 export interface CodexAccountSettings extends AccountConfigBase {
   provider: 'codex';
+  // Electron partition (`persist:account-<id>`) that held the chatgpt.com cookies
+  // before #178; cleared once at startup (main.ts purgeStoredCodexSessions).
   partition: string;
-  session: { capturedAt: string | null };
+  // Absolute path of the codex binary, or null to let the core find it (CLI on PATH,
+  // npm global, VS Code extension; docs/CORE-CLI.md). Usage is read through the
+  // user's own Codex sign-in by the core (#148), never through a stored session.
+  binaryPath: string | null;
 }
 
 export type AccountConfig = ClaudeAccountSettings | CopilotAccountSettings | CodexAccountSettings;
@@ -471,6 +479,9 @@ export interface AppSettings {
     // One-off removal of the claude.ai sessions stored by earlier versions (#140, see
     // main.ts, purgeStoredClaudeSessions).
     claudeSessionsPurged?: boolean;
+    // One-off removal of the chatgpt.com cookies stored before Codex moved to the core
+    // (#178, main.ts purgeStoredCodexSessions).
+    codexSessionsPurged?: boolean;
   };
   diagnostics: DiagnosticsSettings;
   updates: UpdateSettings;
@@ -490,9 +501,4 @@ export interface CopilotCredentials {
    * to fall back to github.com silently, sending a tenant token there (v0.4.4/0.4.5).
    */
   host: string;
-}
-
-export interface CodexCredentials {
-  cookieHeader: string;
-  userAgent: string;
 }

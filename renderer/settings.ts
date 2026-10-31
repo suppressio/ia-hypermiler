@@ -130,16 +130,17 @@ function accounts(): AccountConfig[] {
   return Array.isArray(settings?.accounts) ? settings.accounts : [];
 }
 
-// A Claude account has nothing to connect since #140: it only carries the local insights.
+// Claude (#140) and Codex (#178) have nothing to connect: Claude only carries the local
+// insights, Codex is read through the Codex sign-in of this computer.
 function isAccountConnected(account: AccountConfig): boolean {
-  if (account.provider === 'codex') return account.session.capturedAt !== null;
-  return account.provider === 'claude' ? false : !!account.credentials.username;
+  return account.provider === 'copilot' && !!account.credentials.username;
 }
 
 function connectionLabel(account: AccountConfig): string {
   if (account.provider === 'claude') return t('settings.accounts.statusClaudeLocalOnly');
+  if (account.provider === 'codex') return t('settings.accounts.statusCodexSignIn');
   if (!isAccountConnected(account)) return t('settings.accounts.statusNotConnected');
-  return account.provider === 'copilot' && account.credentials.username
+  return account.credentials.username
     ? t('settings.accounts.statusConnectedAs', { user: account.credentials.username })
     : t('settings.accounts.statusConnected');
 }
@@ -195,8 +196,6 @@ function renderAccountsTable(): void {
     actionsCell.appendChild(actionButton(isExpanded ? 'settings.accounts.close' : 'settings.accounts.configure', 'toggle-detail', account.id));
     if (isAccountConnected(account)) {
       actionsCell.appendChild(actionButton('settings.accounts.disconnect', 'disconnect', account.id));
-    } else if (account.provider === 'codex') {
-      actionsCell.appendChild(actionButton('settings.accounts.connect', 'connect-codex', account.id));
     }
     actionsCell.appendChild(actionButton('settings.accounts.remove', 'remove', account.id));
 
@@ -331,14 +330,6 @@ function applyAccountDetailState(index: number): void {
   if (!detail) return;
   applyScheduleLock(account, detail);
   applyRenewalLock(account, detail);
-  if (account.provider === 'codex') {
-    const status = detail.querySelector<HTMLElement>('[data-role="detail-status"]');
-    if (status) status.textContent = connectionLabel(account);
-    const connect = detail.querySelector<HTMLButtonElement>('[data-action="connect-codex"]');
-    if (connect) connect.textContent = t(isAccountConnected(account) ? 'settings.accounts.reconnect' : 'settings.accounts.connect');
-    const disconnect = detail.querySelector<HTMLButtonElement>('[data-action="disconnect"]');
-    if (disconnect) disconnect.hidden = !isAccountConnected(account);
-  }
   if (account.provider !== 'copilot') return;
   const isOrg = account.accountScope === 'organization';
   (detail.querySelector('[data-role="org-warning"]') as HTMLElement).hidden = !isOrg;
@@ -402,12 +393,7 @@ async function runAccountAction(action: string, id: AccountId, button: HTMLButto
 
   button.disabled = true;
   try {
-    if (action === 'connect-codex') {
-      setDetailStatus(id, t('settings.accounts.loginInProgress'));
-      await window.hypermiler.connectCodex(id);
-      await reloadAfterAccountAction(id);
-      showSaveStatus(t('settings.accounts.connected', { name }));
-    } else if (action === 'connect-copilot-pat') {
+    if (action === 'connect-copilot-pat') {
       const input = detailElement(id)?.querySelector<HTMLInputElement>('[data-role="token-input"]');
       const token = input?.value.trim() ?? '';
       if (!token) {

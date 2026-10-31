@@ -2,17 +2,17 @@
 // docs/EVOLUTION.md point 3). main.ts works only on generic AccountConfig values and
 // delegates here everything that depends on the provider: connection state,
 // credentials for the service, disconnection, redaction of secrets towards the
-// renderer. The services (services/codex.ts, services/copilot.ts) are unchanged: the
-// fetchUsage(credentials) contract of AGENTS.md is already the common base across
-// providers. Claude quotas are not read (#140): see ClaudeUsageUnavailableError. Adding a provider = a new branch in each function below (the exhaustive
+// renderer. Copilot is read by services/copilot.ts (fetchUsage(credentials), the
+// contract of AGENTS.md); Codex by the Go core CLI (main/core.ts, #178), which uses the
+// user's own Codex sign-in: nothing to connect and no secret in the app. Claude quotas are not read (#140): see ClaudeUsageUnavailableError. Adding a provider = a new branch in each function below (the exhaustive
 // `switch` on `provider` makes tsc fail when one is forgotten).
 
-import * as codexService from '../services/codex';
-import { buildCodexCookieHeader, codexUserAgent, clearCodexPartition } from './codex-auth';
 import * as copilotService from '../services/copilot';
+import { core } from './core';
+import { requireFresh } from './coreClient';
 import { clearClaudePartition } from './claude-auth';
 import { PROVIDER_DISPLAY_NAMES } from '../store/migrate';
-import type { AccountConfig, CodexAccountSettings, CodexCredentials, ProviderId, RawAccountUsage } from '../types/index';
+import type { AccountConfig, CodexAccountSettings, ProviderId, RawAccountUsage } from '../types/index';
 
 const SECRET_PLACEHOLDER = '••••••••';
 
@@ -35,25 +35,27 @@ export function providerDisplayName(provider: ProviderId): string {
 
 export function isConnected(cfg: AccountConfig): boolean {
   switch (cfg.provider) {
-    case 'codex': return cfg.session.capturedAt !== null;
+    // Nothing to connect: the core uses the Codex sign-in of this computer (#178).
+    case 'codex': return true;
     // Nothing to connect: the account exists for the local insights (#140).
     case 'claude': return true;
     case 'copilot': return !!cfg.credentials.token;
   }
 }
 
-async function codexCredentials(cfg: CodexAccountSettings): Promise<CodexCredentials> {
-  return {
-    cookieHeader: await buildCodexCookieHeader(cfg.partition),
-    userAgent: codexUserAgent(cfg.partition),
-  };
+/** Label of the Codex source in the diagnostic report. */
+export const CODEX_CORE_ENDPOINT_LABEL = 'core: codex app-server account/rateLimits/read';
+
+// Provider flags of `hypermiler usage codex`: only the optional binary path.
+function codexCoreRequest(cfg: CodexAccountSettings): { provider: string; flags: string[] } {
+  return { provider: 'codex', flags: cfg.binaryPath ? ['--codex-bin', cfg.binaryPath] : [] };
 }
 
 /** Calls the provider service's fetchUsage with the account credentials. */
 export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
   switch (cfg.provider) {
     case 'codex':
-      return codexService.fetchUsage(await codexCredentials(cfg));
+      return requireFresh(await core.usage(codexCoreRequest(cfg)), 'codex');
     case 'claude':
       throw new ClaudeUsageUnavailableError();
     case 'copilot':
@@ -74,10 +76,9 @@ export async function fetchUsage(cfg: AccountConfig): Promise<RawAccountUsage> {
 export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLabel: string; response: unknown }> {
   switch (cfg.provider) {
     case 'codex':
-      return {
-        endpointLabel: codexService.USAGE_ENDPOINT_LABEL,
-        response: await codexService.fetchUsageResponse(await codexCredentials(cfg)),
-      };
+      // The core's reading (contract v1 document), not the raw app-server answer: the
+      // core never forwards it. Redacted like any response by the report.
+      return { endpointLabel: CODEX_CORE_ENDPOINT_LABEL, response: await core.usage(codexCoreRequest(cfg)) };
     case 'claude':
       throw new ClaudeUsageUnavailableError();
     case 'copilot':
@@ -100,9 +101,9 @@ export async function fetchRawResponse(cfg: AccountConfig): Promise<{ endpointLa
  */
 export async function disconnect(cfg: AccountConfig): Promise<AccountConfig> {
   switch (cfg.provider) {
+    // Nothing stored to remove: signing out of Codex is done in Codex itself.
     case 'codex':
-      await clearCodexPartition(cfg.partition);
-      return { ...cfg, enabled: false, session: { capturedAt: null } };
+      return { ...cfg, enabled: false };
     case 'claude':
       await clearClaudePartition(cfg.partition);
       return { ...cfg, enabled: false, session: { sessionKey: null, organizationId: null, capturedAt: null, expiresAt: null } };
@@ -136,7 +137,7 @@ export function preserveSecrets(incoming: AccountConfig, current: AccountConfig 
   switch (incoming.provider) {
     case 'codex': {
       const cur = current as typeof incoming;
-      return { ...incoming, partition: cur.partition, session: { ...cur.session } };
+      return { ...incoming, partition: cur.partition };
     }
     case 'claude': {
       const cur = current as typeof incoming;

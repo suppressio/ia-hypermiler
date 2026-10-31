@@ -10,7 +10,7 @@ A small always-on-top widget for Windows, macOS and Linux that tells you how fas
 
 <sub>Example data, not a real account.</sub>
 
-- **Several accounts**, any mix of Copilot and Codex (e.g. a personal Codex account and a company Copilot seat), each with its own session; a Claude account carries the local insights.
+- **Several accounts**, any mix of Copilot and Codex (e.g. a personal Codex account and a company Copilot seat); a Claude account carries the local insights.
 - **Your working days**: each account can follow its own schedule (full, half or day off per day of the week), so weekends do not count as time you could have spent the quota.
 - **A budget for today**, recomputed every morning from what is left.
 - **Notifications** when a quota passes your alert threshold, or when today's use goes well over today's budget.
@@ -39,7 +39,7 @@ The packages are not signed: Windows SmartScreen and macOS Gatekeeper show a war
 
 1. Open **Settings** (⚙ in the widget, or from the tray icon) → **Add account**.
 2. **Claude**: no login. Add the account only for the local insights (see below); its quotas are not available in this version.
-   **Codex (ChatGPT)**: add an account with this provider, click *Connect…* and sign in in the chatgpt.com window, which closes by itself. No Codex CLI or IDE extension is needed; only usage is read. *Disconnect* clears the session.
+   **Codex (ChatGPT)**: needs Codex signed in on this computer, the [Codex CLI](https://developers.openai.com/codex/cli) (`codex login`) or the Codex extension of VS Code. Add an account with this provider: it reads the usage at once, through your own Codex sign-in, with no login window and no ChatGPT session stored by the app. If Codex is installed somewhere unusual, set its path in the account (*Codex binary*). Signed out, the account says so and tells you where to sign in.
    **GitHub Copilot**: paste a Personal Access Token (fine-grained, *Plan* read-only, or classic with no scope), or sign in with a GitHub OAuth App. For a company seat on a `<name>.ghe.com` tenant, set the GitHub domain first.
 3. Optional, per account: the **work schedule** (last section of the account) and, only when the provider does not report it, the **renewal day**.
 
@@ -51,7 +51,7 @@ The tray badge shows one account and limit window as a coloured number (green, o
 
 All the values below are about the quota window shown, usually the one needing attention most. With several accounts there is one tab per account; with several quota windows (e.g. Claude's 5-hour and weekly limits) a list above the main value shows each one with a short verdict. Click a row to see that window.
 
-Codex shows the **5-hour limit** and **Weekly limit**, both rolling. As with the other rolling windows, the 5-hour limit reads in hours: time to reset, projection at reset and autonomy at the current pace, with daily indicators hidden. The weekly limit reads per working day. Other windows, such as code review, appear with their own label only if ChatGPT reports them.
+Codex shows the **5-hour limit** and **Weekly limit**, both rolling. As with the other rolling windows, the 5-hour limit reads in hours: time to reset, projection at reset and autonomy at the current pace, with daily indicators hidden. The weekly limit reads per working day.
 
 ### Compact view
 
@@ -161,10 +161,10 @@ Window animations make the red values glow and blink every 10 seconds when the d
 
 ## Privacy and security
 
-- Sessions and tokens are stored only on your computer, encrypted, and are never shown to the interface or written to logs. The claude.ai sessions saved by earlier versions are deleted at the first start of this version. Codex session cookies stay in its isolated account session; its access token is never saved.
-- The app talks only to the providers (chatgpt.com, the GitHub API of your domain) and to GitHub Releases for the update check. Nothing is sent anywhere else.
+- Tokens are stored only on your computer, encrypted, and are never shown to the interface or written to logs. The claude.ai sessions saved by earlier versions are deleted at the first start, and so are the chatgpt.com cookies of the old Codex login: Codex is now read through your own Codex sign-in, of which the app stores nothing.
+- The app talks only to the GitHub API of your domain, to Codex on this computer (which talks to ChatGPT itself) and to GitHub Releases for the update check. Nothing is sent anywhere else.
 - **Reporting a problem**: Settings → Diagnostics → *Create diagnostic report (GitHub)* saves a text file in Downloads and opens a GitHub issue draft. The file **does** contain your usage values (percentages, amounts, reset dates) but no names, ids or credentials. Issues on this repository are **public**: read the file before attaching it, or describe the problem without it.
-- Codex uses undocumented internal endpoints that may change without notice. If a provider changes its response format, a pre-filled issue draft opens with the structure only (field names and types, never values). You can turn this off in Settings.
+- Codex is read through `codex app-server`, a command Codex marks as experimental, so it may change. If a provider changes its response format, a pre-filled issue draft opens with the structure only (field names and types, never values). You can turn this off in Settings.
 
 ---
 
