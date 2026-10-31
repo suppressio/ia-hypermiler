@@ -134,3 +134,19 @@ CPU bassa anche qui, pur con il polling reale: quasi tutti i campioni pari o sot
 La pagina [Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) di Anthropic dice che gli sviluppatori di terze parti non possono offrire il login a Claude.ai nelle loro app e *"may not collect, store, or intermediate Claude.ai credentials or session tokens — sign-in to a Claude account must complete through Anthropic's own flow"*, con possibili provvedimenti senza preavviso. Catturare il `sessionKey` da una finestra di login incorporata, l'unico modo con cui questa app leggeva le quote di Claude, è proprio quel caso. #140 lo rimuove: niente login a Claude, niente fetch da claude.ai, e le sessioni salvate dalle versioni precedenti vengono cancellate al primo avvio. Gli account Claude restano per gli insight locali, che leggono solo file locali di Claude Code.
 
 Riusare i token OAuth di Claude Code è vietato dalla stessa regola. Esistono due fonti consentite, entrambe tramite il binario non modificato di Anthropic e il suo login: il JSON della status line (`rate_limits.five_hour` / `seven_day`), che Claude Code **non** esegue nell'estensione VS Code (provato il 2026-10-25, segnalato in anthropics/claude-code#21943), e il pannello `/usage` di `claude` avviato in uno pseudo-terminale (spike #141). Tornano con il core autonomo in Go (#139, milestone v0.6.0), che è anche la risposta al punto 5: un core piccolo sempre attivo con la UI Electron come client opzionale.
+
+## Aggiornamento (2026-10-31): budget di risorse del core Go (#145)
+
+Misurato su Linux, `uname -m`: `x86_64`, con `go version go1.27.3 linux/amd64`. Lo scheletro espone soltanto `version` e `help`, senza provider o chiamate di rete.
+
+| Target | Dimensione stripped (MB) |
+|---|---:|
+| linux/amd64 | 2,7 |
+| linux/arm64 | 2,7 |
+| windows/amd64 | 2,9 |
+| darwin/arm64 | 2,6 |
+| darwin/amd64 | 2,8 |
+
+Per una singola esecuzione di `hypermiler version` su linux/amd64, mediane su 10 esecuzioni: **1,46 ms di wall time** e **6,4 MB di max RSS** (6.380 KiB; intervallo 6.188-6.472). Metodo: ogni target compilato da `gocore/` con `CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> go build -trimpath -ldflags "-s -w" ./cmd/hypermiler`, versione lasciata a `dev`, dimensione = byte del file / 1.000.000. Wall time da `time.perf_counter()` attorno a `subprocess.run([binary, "version"])` in Python, un processo Python nuovo per ogni esecuzione. Max RSS da `busybox time -v` (un padre che fa fork, quindi il figlio eredita prima dell'`exec` solo i ~1,7 MB di busybox; un padre Python riporterebbe invece i propri ~14 MB).
+
+Questa è la baseline con cui confrontare ogni passo successivo: gli adapter #148/#149 aggiungeranno un processo avviato e tempo di rete.

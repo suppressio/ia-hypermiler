@@ -2,7 +2,7 @@
 
 # Sviluppo
 
-Come compilare IA Hypermiler dai sorgenti, testarlo e creare i pacchetti. Per cosa fa l'app e come leggerla, vedi il [README](../README.it.md).
+> Come compilare IA Hypermiler dai sorgenti, testarlo e creare i pacchetti. Per cosa fa l'app e come leggerla, vedi il [README](../README.it.md).
 
 ## Requisiti
 
@@ -54,7 +54,16 @@ go test -race ./...
 golangci-lint run    # config rigorosa in .golangci.yml, include le regole di import di depguard
 ```
 
-Il job `go-checks` in `.github/workflows/ci.yml` esegue gli stessi controlli su ogni PR verso `next` e la fa fallire come `lint-test`. Le regole di import (quale pacchetto può importare quale) sono la sezione `depguard` di `gocore/.golangci.yml`; una violazione è un errore di lint.
+Il job `go-checks` in `.github/workflows/ci.yml` esegue gli stessi controlli su ogni PR verso `next` e la fa fallire come `lint-test`. Dopo i test, lo step `cross-compile` compila `./cmd/hypermiler` per Linux amd64/arm64, Windows amd64 e macOS arm64/amd64 con `CGO_ENABLED=0`, `-trimpath` e `-ldflags "-s -w"`, stampando ogni dimensione da una directory temporanea. Le regole di import (quale pacchetto può importare quale) sono la sezione `depguard` di `gocore/.golangci.yml`; una violazione è un errore di lint.
+
+`cmd/hypermiler/main.go` chiama soltanto `internal/cli.Run`: un binario con sottocomandi, per ora `version` e `help` (funzionano anche `-h`/`--help`). `usage` (#26) e `serve` (#31) sono comandi futuri, senza stub. Gli exit code sono 0 per il successo, 1 riservato agli errori dei provider (#26) e 2 per argomenti non validi. `internal/buildinfo` contiene l'unica costante `Name` (ora `hypermiler`, in attesa di #9) e la `Version` impostata in compilazione (default `dev`). `internal/config` individua/crea la directory di configurazione, `internal/logging` costruisce il logger e `internal/pacing` contiene il modello puro di pacing. Compilazione e avvio da `gocore/`:
+
+```bash
+go build -trimpath -ldflags "-s -w -X github.com/suppressio/ia-hypermiler/gocore/internal/buildinfo.Version=dev" ./cmd/hypermiler
+./hypermiler version
+```
+
+`config.Dir()` unisce `os.UserConfigDir()` e `buildinfo.Name`; `config.Ensure()` la crea con permessi `0o700` (solo proprietario su Unix), senza scrivere file. `HYPERMILER_CONFIG_DIR` sostituisce la directory per test/sviluppo e deve essere un percorso assoluto quando non vuota. `HYPERMILER_LOG_LEVEL` accetta `debug`, `info`, `warn` o `error`, con default `warn`; un valore non valido ripiega su `warn` ed emette un solo warning. I log vanno su stderr; stdout è riservato all'output dei comandi e al futuro contratto JSON (#26). Help/version non creano la directory di configurazione. Le misure delle risorse sono in [EVOLUTION](EVOLUTION.it.md#aggiornamento-2026-10-31-budget-di-risorse-del-core-go-145).
 
 ## Packaging
 

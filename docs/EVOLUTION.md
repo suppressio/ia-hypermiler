@@ -134,3 +134,19 @@ CPU is low here too, even with real polling: almost all samples at or below 0.2%
 Anthropic's [Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) page says that third-party developers may not offer Claude.ai sign-in in their apps, and *"may not collect, store, or intermediate Claude.ai credentials or session tokens — sign-in to a Claude account must complete through Anthropic's own flow"*, with enforcement possible without notice. Capturing `sessionKey` from an embedded login window, the only way this app read Claude quotas, is exactly that case. #140 removes it: no Claude sign-in, no claude.ai fetch, and the sessions stored by earlier versions are deleted at the first start. Claude accounts stay for the local insights, which read only local Claude Code files.
 
 Reusing Claude Code's own OAuth tokens is forbidden by the same rule. Two allowed sources exist, both through Anthropic's unmodified binary and sign-in: the status line JSON (`rate_limits.five_hour` / `seven_day`), which Claude Code does **not** run in the VS Code extension (tested 2026-10-25, reported in anthropics/claude-code#21943), and the `/usage` panel of `claude` run in a pseudo-terminal (spike #141). They come back with the standalone core in Go (#139, milestone v0.6.0), which is also the answer to point 5: a small always-on core with the Electron UI as an optional client.
+
+## Update (2026-10-31): Go core resource budget (#145)
+
+Measured on Linux, `uname -m`: `x86_64`, with `go version go1.27.3 linux/amd64`. The skeleton exposes only `version` and `help`, with no providers or network calls.
+
+| Target | Stripped size (MB) |
+|---|---:|
+| linux/amd64 | 2.7 |
+| linux/arm64 | 2.7 |
+| windows/amd64 | 2.9 |
+| darwin/arm64 | 2.6 |
+| darwin/amd64 | 2.8 |
+
+For one `hypermiler version` run on linux/amd64, medians over 10 runs: **1.46 ms wall time** and **6.4 MB max RSS** (6,380 KiB; range 6,188-6,472). Method: each target built from `gocore/` with `CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> go build -trimpath -ldflags "-s -w" ./cmd/hypermiler`, version left at `dev`, size = file bytes / 1,000,000. Wall time from `time.perf_counter()` around `subprocess.run([binary, "version"])` in Python, one fresh Python process per run. Max RSS from `busybox time -v` (a parent that forks, so the child inherits only busybox's own ~1.7 MB before `exec`; a Python parent would report its own ~14 MB instead).
+
+This is the baseline to compare every later step against: adapters #148/#149 will add a spawned process and network time.

@@ -61,7 +61,14 @@ ia-hypermiler/
 ├── build/                       ← electron-builder resources (icons) — TRACKED, not an output (packages go to release/)
 ├── main.ts                      ← Electron main process: wiring only (lifecycle, windows, tray, IPC, timers, notifications, update checks)
 ├── preload.ts                   ← contextBridge renderer ↔ main
-├── gocore/                      ← Go core module (#145): go.mod, .golangci.yml (strict lint + depguard import rules); CI job `go-checks`
+├── gocore/                      ← Go core module (#145), strict lint + depguard; CI job `go-checks`
+│   ├── cmd/hypermiler/          ← one binary, subcommand entry point
+│   └── internal/
+│       ├── buildinfo/           ← binary name and build-time version
+│       ├── cli/                 ← command dispatch and exit codes
+│       ├── config/              ← OS config directory and development override
+│       ├── logging/             ← stderr text logger and level selection
+│       └── pacing/              ← pure pacing model
 ├── core/
 │   └── usage.ts                 ← fetch orchestration + snapshot computation (createUsageCore, computeAccountSnapshot…): store, provider fetch, local insights, clock and error reporting injected, no Electron (+ usage.test.ts)
 ├── main/
