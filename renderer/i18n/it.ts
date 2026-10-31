@@ -175,7 +175,7 @@ export const it: Record<MessageKey, string> = {
   'settings.claude.localInsights': 'Attribuisci a questo account le sessioni Claude Code di questa macchina (insight locali, sperimentale)',
   'settings.claude.localInsightsHint': 'Legge le sessioni Claude Code locali (CLI ed estensione VS Code — stessa sorgente) per mostrare quanto del tuo utilizzo avviene a contesto molto ampio o in sessioni molto lunghe, quali tool/server MCP usi di più e quanti token produci per ogni punto di quota. Legge solo conteggi di token e nomi di tool — mai il contenuto dei messaggi. Le sessioni locali non dicono a quale account appartengono: attivalo su un solo account Claude, quello che usi con Claude Code. Le sessioni più vecchie di circa 30 giorni non sono più disponibili.',
 
-  'settings.codex.signInHint': 'L’utilizzo viene letto tramite Codex con accesso su questo computer (Codex CLI o l’estensione di VS Code). Accedi lì; l’app non salva sessioni di ChatGPT.',
+  'settings.codex.signInHint': 'L’utilizzo viene letto tramite Codex con accesso su questo computer (Codex CLI o l’estensione di VS Code). Accedi lì; l’app non salva sessioni di ChatGPT. Un solo account Codex può essere attivo, perché c’è un solo accesso a Codex per computer.',
   'settings.codex.binaryPath': 'Programma Codex (facoltativo)',
   'settings.codex.binaryPathHint': 'Lascia vuoto: l’app trova Codex da sola (CLI nel PATH, installazione npm globale, estensione di VS Code). Compilalo solo se Codex è installato altrove: il percorso completo del programma codex.',
   'settings.codex.binaryPathPlaceholder': 'Trovato automaticamente',

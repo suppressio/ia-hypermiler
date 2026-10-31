@@ -352,6 +352,18 @@ function enforceSingleLocalInsightsDraft(keepIndex: number): void {
   });
 }
 
+// At most one enabled Codex account: the core reads the one Codex sign-in of this
+// computer (enforceSingleCodexAccount in store/migrate.ts does the same on save).
+function enforceSingleCodexDraft(keepIndex: number): void {
+  if (accounts()[keepIndex]?.provider !== 'codex') return;
+  accounts().forEach((account, index) => {
+    if (index === keepIndex || account.provider !== 'codex' || !account.enabled) return;
+    account.enabled = false;
+    const el = document.querySelector<HTMLInputElement>(`[data-field="accounts.${index}.enabled"]`);
+    if (el) el.checked = false;
+  });
+}
+
 // After an action performed by the main process (connect/disconnect/add/remove)
 // the real store state is needed for the touched account — but unsaved draft
 // changes on OTHER accounts and sections must not be lost (the form used to be
@@ -538,6 +550,7 @@ function bindEvents(): void {
     if (accountMatch) {
       const index = Number(accountMatch[1]);
       if (accountMatch[2] === 'localInsights' && value === true) enforceSingleLocalInsightsDraft(index);
+      if (accountMatch[2] === 'enabled' && value === true) enforceSingleCodexDraft(index);
       applyAccountDetailState(index);
     }
     // No saving or side effect here: the change stays a draft in the form until
