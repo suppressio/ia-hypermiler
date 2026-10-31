@@ -42,7 +42,7 @@ func (p *accountProvider) SetToken(_ context.Context, token string) (string, err
 	return "octo", nil
 }
 
-func (p *accountProvider) DeleteToken() error {
+func (p *accountProvider) DeleteToken(context.Context) error {
 	delete(p.tokens, p.account)
 	return p.err
 }

@@ -112,8 +112,13 @@ func runToken(env Env, args []string, jsonMode bool) int {
 	if !ok {
 		return unsupported(env, cmd, "tokens")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), cmd.timeout)
+	defer cancel()
 	if action == "delete" {
-		if err := manager.DeleteToken(); err != nil {
+		if err := manager.DeleteToken(ctx); err != nil {
+			if ctx.Err() != nil {
+				err = ctx.Err()
+			}
 			return providerFailure(env, cmd, err, "")
 		}
 		if cmd.json {
@@ -126,8 +131,6 @@ func runToken(env Env, args []string, jsonMode bool) int {
 	if message != "" {
 		return usageError(env, cmd.json, message)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), cmd.timeout)
-	defer cancel()
 	username, err := manager.SetToken(ctx, token)
 	if err != nil {
 		if ctx.Err() != nil {

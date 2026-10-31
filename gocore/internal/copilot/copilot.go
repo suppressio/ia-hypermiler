@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -85,8 +86,8 @@ func (p *Provider) Validate() error {
 		return errors.New("--scope must be personal or organization")
 	}
 	if p.manualQuota != "" {
-		if q, err := strconv.ParseFloat(p.manualQuota, 64); err != nil || q < 0 {
-			return errors.New("--manual-quota must be a number ≥ 0")
+		if q, err := strconv.ParseFloat(p.manualQuota, 64); err != nil || q < 0 || math.IsNaN(q) || math.IsInf(q, 0) {
+			return errors.New("--manual-quota must be a finite number ≥ 0")
 		}
 	}
 	return nil
@@ -100,8 +101,8 @@ func (p *Provider) apiEndpoints() github.Endpoints {
 	return e
 }
 
-func (p *Provider) token() (string, error) {
-	token, err := p.store.Get(secrets.CopilotKey(p.account))
+func (p *Provider) token(ctx context.Context) (string, error) {
+	token, err := secrets.Get(ctx, p.store, secrets.CopilotKey(p.account))
 	if errors.Is(err, secrets.ErrNotFound) {
 		return "", &usage.Error{Code: usage.CodeSignedOut, Reason: ReasonNotConnected, Message: "Copilot: account not connected — connect it from Settings"}
 	}
@@ -111,13 +112,18 @@ func (p *Provider) token() (string, error) {
 	return token, nil
 }
 
-func keyringError(err error) *usage.Error {
+// keyringError: an unreachable keyring, or one that did not answer in time (a pending
+// unlock prompt) — then the deadline wins and the error is a timeout.
+func keyringError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
 	return &usage.Error{Code: usage.CodeUnavailable, Reason: ReasonKeyringUnavailable, Message: "Copilot: the OS keyring is not available: " + err.Error()}
 }
 
 // Fetch reads the usage with the stored token.
 func (p *Provider) Fetch(ctx context.Context, _ string) (usage.Usage, error) {
-	token, err := p.token()
+	token, err := p.token(ctx)
 	if err != nil {
 		return usage.Usage{}, err
 	}
@@ -153,7 +159,7 @@ func classify(err error, token string) error {
 // RawResponse is the copilot_internal/user answer, for the diagnostic report (the
 // client redacts it); the main source for both scopes.
 func (p *Provider) RawResponse(ctx context.Context) (string, []byte, error) {
-	token, err := p.token()
+	token, err := p.token(ctx)
 	if err != nil {
 		return "", nil, err
 	}
@@ -176,15 +182,15 @@ func (p *Provider) SetToken(ctx context.Context, token string) (string, error) {
 	if err != nil {
 		return "", classify(err, token)
 	}
-	if err := p.store.Set(secrets.CopilotKey(p.account), token); err != nil {
+	if err := secrets.Set(ctx, p.store, secrets.CopilotKey(p.account), token); err != nil {
 		return "", keyringError(err)
 	}
 	return username, nil
 }
 
 // DeleteToken removes the account's token (disconnect, account removal).
-func (p *Provider) DeleteToken() error {
-	if err := p.store.Delete(secrets.CopilotKey(p.account)); err != nil {
+func (p *Provider) DeleteToken(ctx context.Context) error {
+	if err := secrets.Delete(ctx, p.store, secrets.CopilotKey(p.account)); err != nil {
 		return keyringError(err)
 	}
 	return nil

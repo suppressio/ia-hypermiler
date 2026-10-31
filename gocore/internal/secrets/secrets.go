@@ -5,6 +5,7 @@
 package secrets
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -34,6 +35,48 @@ func ValidAccount(id string) bool { return accountID.MatchString(id) }
 
 // CopilotKey is the keyring entry of a Copilot account's token.
 func CopilotKey(account string) string { return "copilot/" + account }
+
+// Get reads key within ctx. The keyring calls take no context and can wait on an
+// unlock prompt with no end, so the call runs aside and the caller stops waiting at the
+// deadline (the CLI process exits right after, ending the pending call).
+func Get(ctx context.Context, store Store, key string) (string, error) {
+	type result struct {
+		value string
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		value, err := store.Get(key)
+		done <- result{value, err}
+	}()
+	select {
+	case r := <-done:
+		return r.value, r.err
+	case <-ctx.Done():
+		return "", fmt.Errorf("OS keyring did not answer: %w", ctx.Err())
+	}
+}
+
+// Set writes key within ctx (see Get).
+func Set(ctx context.Context, store Store, key, value string) error {
+	return within(ctx, func() error { return store.Set(key, value) })
+}
+
+// Delete removes key within ctx (see Get).
+func Delete(ctx context.Context, store Store, key string) error {
+	return within(ctx, func() error { return store.Delete(key) })
+}
+
+func within(ctx context.Context, call func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- call() }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("OS keyring did not answer: %w", ctx.Err())
+	}
+}
 
 // OSKeyring is the real store, under the service name of the binary.
 type OSKeyring struct{}
