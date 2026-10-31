@@ -331,6 +331,7 @@ func TestValidateAndHost(t *testing.T) {
 	t.Parallel()
 	for _, args := range [][]string{
 		{}, {"--account", "a/b"}, {"--account", "a", "--host", "evil.com"}, {"--account", "a", "--scope", "team"}, {"--account", "a", "--manual-quota", "-1"}, {"--account", "a", "--manual-quota", "x"},
+		{"--account", "a", "--manual-quota", "NaN"}, {"--account", "a", "--manual-quota", "+Inf"}, {"--account", "a", "--manual-quota", "inf"},
 	} {
 		p := copilot.New(&secrets.Memory{})
 		fs := flag.NewFlagSet("t", flag.ContinueOnError)
@@ -369,7 +370,7 @@ func TestTokens(t *testing.T) {
 	if v, _ := store.Get(secrets.CopilotKey("copilot-1")); v != token {
 		t.Fatalf("stored %q", v)
 	}
-	if err := p.DeleteToken(); err != nil {
+	if err := p.DeleteToken(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Get(secrets.CopilotKey("copilot-1")); !errors.Is(err, secrets.ErrNotFound) {
@@ -504,4 +505,79 @@ func TestLoginFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+// blockingStore never answers until released: a keyring waiting on an unlock prompt.
+type blockingStore struct{ release chan struct{} }
+
+func (b blockingStore) Get(string) (string, error) { <-b.release; return token, nil }
+func (b blockingStore) Set(string, string) error   { <-b.release; return nil }
+func (b blockingStore) Delete(string) error        { <-b.release; return nil }
+
+func TestKeyringBoundedByTheDeadline(t *testing.T) {
+	t.Parallel()
+	store := blockingStore{release: make(chan struct{})}
+	defer close(store.release)
+	gh := newFakeGitHub(t, map[string]reply{"/user": {body: `{"login":"octo"}`}})
+	p := provider(t, gh.URL, store)
+	short := func() (context.Context, context.CancelFunc) {
+		return context.WithTimeout(context.Background(), 50*time.Millisecond)
+	}
+	ctx, cancel := short()
+	defer cancel()
+	if _, err := p.Fetch(ctx, ""); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Fetch = %v; want a deadline", err)
+	}
+	ctx2, cancel2 := short()
+	defer cancel2()
+	if _, err := p.SetToken(ctx2, token); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("SetToken = %v; want a deadline", err)
+	}
+	ctx3, cancel3 := short()
+	defer cancel3()
+	if err := p.DeleteToken(ctx3); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("DeleteToken = %v; want a deadline", err)
+	}
+}
+
+func TestLoginDeadlineDuringExchange(t *testing.T) {
+	t.Parallel()
+	exchangeStarted := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login/oauth/access_token" {
+			close(exchangeStarted)
+			// The server notices a client that went away only once the body is read.
+			_, _ = io.Copy(io.Discard, r.Body)
+			// GitHub never answers in time: the request must be cancelled at the deadline.
+			select {
+			case <-r.Context().Done():
+			case <-time.After(5 * time.Second):
+				t.Error("the code exchange was not cancelled at the login deadline")
+			}
+			return
+		}
+		_, _ = io.WriteString(w, `{"login":"octo"}`)
+	}))
+	defer server.Close()
+	store := &secrets.Memory{}
+	p := provider(t, server.URL, store, "--client-id", "x")
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, err := p.Login(ctx, "s", func(authorize string) error {
+		u, _ := url.Parse(authorize)
+		go func() {
+			resp, err := http.Get(u.Query().Get("redirect_uri") + "?code=c&state=" + url.QueryEscape(u.Query().Get("state")))
+			if err == nil {
+				_ = resp.Body.Close()
+			}
+		}()
+		return nil
+	})
+	<-exchangeStarted
+	if asUsageError(t, err).Code != usage.CodeTimeout {
+		t.Fatalf("Login = %v; want a timeout", err)
+	}
+	if _, err := store.Get(secrets.CopilotKey("copilot-1")); !errors.Is(err, secrets.ErrNotFound) {
+		t.Fatal("a token was stored after the login deadline")
+	}
 }

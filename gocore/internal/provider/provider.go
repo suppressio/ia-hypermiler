@@ -30,7 +30,7 @@ type Validator interface {
 type TokenManager interface {
 	// SetToken checks the token with the provider, stores it and returns the user name.
 	SetToken(ctx context.Context, token string) (string, error)
-	DeleteToken() error
+	DeleteToken(ctx context.Context) error
 }
 
 // Loginer signs in through the provider's own OAuth flow (`login`).

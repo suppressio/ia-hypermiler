@@ -128,7 +128,13 @@ func (p *Provider) Login(ctx context.Context, clientSecret string, announce func
 			finish(loginResult{err: &usage.Error{Code: usage.CodeUnavailable, Message: "GitHub OAuth callback validation failed"}})
 			return
 		}
-		username, err := p.completeLogin(r.Context(), endpoints.OAuth, clientID, clientSecret, code, pair.Verifier, redirectURI)
+		// The exchange stops when the request ends or the login deadline passes: a
+		// token is never stored after Login has answered (timeout).
+		work, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		stop := context.AfterFunc(ctx, cancel)
+		defer stop()
+		username, err := p.completeLogin(work, endpoints.OAuth, clientID, clientSecret, code, pair.Verifier, redirectURI)
 		if err != nil {
 			_, _ = fmt.Fprint(w, page(lang, text.failed, err.Error()))
 			finish(loginResult{err: err})
@@ -158,6 +164,12 @@ func (p *Provider) Login(ctx context.Context, clientSecret string, announce func
 	case r := <-results:
 		return r.username, r.err
 	case <-ctx.Done():
+		// A callback that completed at the same moment wins: its token is stored.
+		select {
+		case r := <-results:
+			return r.username, r.err
+		default:
+		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return "", &usage.Error{Code: usage.CodeTimeout, Message: "GitHub login timed out: no authorization in time"}
 		}
@@ -190,7 +202,7 @@ func (p *Provider) completeLogin(ctx context.Context, oauthBase, clientID, clien
 	if err != nil {
 		return "", classify(err, token)
 	}
-	if err := p.store.Set(secrets.CopilotKey(p.account), token); err != nil {
+	if err := secrets.Set(ctx, p.store, secrets.CopilotKey(p.account), token); err != nil {
 		return "", keyringError(err)
 	}
 	return username, nil
