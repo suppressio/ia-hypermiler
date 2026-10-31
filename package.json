@@ -8,14 +8,15 @@
     "build:main": "tsc -p tsconfig.json",
     "build:renderer": "tsc -p tsconfig.renderer.json && tsc -p tsconfig.renderer.test.json",
     "copy-assets": "node scripts/copy-assets.js",
+    "build:core": "node scripts/build-core.js",
     "build": "npm run clean && npm run build:main && npm run build:renderer && npm run copy-assets",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
-    "start": "npm run build && electron .",
+    "start": "npm run build && node scripts/build-core.js --dev && electron .",
     "test": "npm run build && cd dist && node --env-file-if-exists=../.env.test --test",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit && tsc -p tsconfig.renderer.test.json --noEmit",
     "coverage": "npm run build && cd dist && node --test --experimental-test-coverage --test-coverage-exclude=\"**/*.test.js\" --test-coverage-exclude=\"tests/**\"",
-    "package": "npm run build && electron-builder",
+    "package": "npm run build && npm run build:core && electron-builder",
     "package:test": "node scripts/test-build.js"
   },
   "author": "Daniele 'suppressio' <82306300+suppressio@users.noreply.github.com>",
@@ -46,6 +47,16 @@
     "electronLanguages": [
       "en-US",
       "it"
+    ],
+    "extraResources": [
+      {
+        "from": "core-bin",
+        "to": "core",
+        "filter": [
+          "hypermiler",
+          "hypermiler.exe"
+        ]
+      }
     ],
     "files": [
       "dist/**/*",

@@ -52,6 +52,9 @@ export const en = {
 
   'error.sessionExpired': 'Session expired or invalid — reconnect the account from Settings. ({detail})',
   'error.invalidGithubHost': 'GitHub domain not supported: use github.com or your company domain <name>.ghe.com.',
+  'error.coreMissing': 'The IA Hypermiler core cannot be started: reinstall the app (in development run `npm start`, which builds it, or set HYPERMILER_CORE_BIN). ({detail})',
+  'error.coreTimeout': 'The IA Hypermiler core did not answer in time; the last values stay shown and the next refresh retries.',
+  'error.coreBadOutput': 'The IA Hypermiler core gave an answer this version cannot read: update the app or report it. ({detail})',
   'error.reportNoAccounts': 'Connect at least one account before reporting the responses.',
   'report.confirmTitle': "Create a diagnostic report?",
   'report.confirmDetail': "The report reads the usage of {accounts} connected account(s) and saves one text file in your Downloads folder with:\n• the usage responses of Claude/GitHub, with real values (percentages, amounts, dates)\n• the settings that affect pacing (scope, renewal day, work schedule)\n• how the app read the data (windows, verdicts, budgets)\n• the last 7 days of history and today's samples\n• the last errors and warnings of the app\n• system facts: time zone, screens and scaling, memory/CPU used by the app, its internal timings, number of cores and RAM\n\nNever included: account names, credentials, cookies, ids, your company domain, free text, CPU/GPU model, computer or user name.\n\nNothing is sent: the folder opens and a GitHub issue draft opens in the browser. You decide whether to attach the file and submit it.",

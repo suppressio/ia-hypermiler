@@ -58,6 +58,7 @@ const bridge: HypermilerBridge = {
 
   // Updates (issue #5): the URL to open is decided by the main process, never by the renderer.
   getAppVersion: () => invoke('app:getVersion'),
+  getCoreStatus: () => invoke('core:getStatus'),
   checkForUpdates: () => invoke('updates:check'),
   downloadUpdate: () => invoke('updates:download'),
   openReleaseNotes: () => invoke('updates:openReleaseNotes'),

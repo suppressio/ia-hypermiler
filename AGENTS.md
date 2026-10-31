@@ -58,6 +58,7 @@ ia-hypermiler/
 ├── types/ipc.ts                 ← IPC contract: every channel with its argument/result types + HypermilerBridge (runtime-free)
 ├── scripts/
 │   ├── copy-assets.js           ← copies renderer html/css into dist/renderer/ + writes dist/renderer/package.json {type: module}
+│   ├── build-core.js            ← builds the Go core CLI into core-bin/ (gitignored; electron-builder extraResources → <resources>/core/), --target to cross-compile, --dev honours HYPERMILER_CORE_BIN
 │   └── generate-icons.js        ← one-off "gauge" icon generator (build/icon.png, build/icons/*, renderer/assets/*.png)
 ├── build/                       ← electron-builder resources (icons) — TRACKED, not an output (packages go to release/)
 ├── main.ts                      ← Electron main process: wiring only (lifecycle, windows, tray, IPC, timers, notifications, update checks)
@@ -78,6 +79,7 @@ ia-hypermiler/
 │   └── usage.ts                 ← fetch orchestration + snapshot computation (createUsageCore, computeAccountSnapshot…): store, provider fetch, local insights, clock and error reporting injected, no Electron (+ usage.test.ts)
 ├── main/
 │   ├── ipc.ts                   ← typed handle/listen/sendToRenderer wrappers keyed on types/ipc.ts
+│   ├── coreClient.ts            ← runs the bundled core CLI (execFile, no shell, timeout, --json, secrets on stdin) and parses contract v1 against gocore/contract/v1 (+ test)
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
 │   ├── trayBadge.ts             ← tray usage badge: account choice, tone, icon bitmap (+ test)
@@ -282,18 +284,18 @@ from the spec may fail on a known deviation (`PACING.md` §9): say so in the PR,
 ## Build and test
 
 - `npm run build` — compiles the three TS configs and copies html/css into `dist/renderer/` (`scripts/copy-assets.js`). Output always in `dist/`, never committed.
-- `npm start` — build + `electron .`
+- `npm start` — build + Go core (`scripts/build-core.js --dev`, needs Go, skipped when `HYPERMILER_CORE_BIN` points to a core) + `electron .`
 - `npm run lint` — ESLint, must be zero findings.
 - `npm run typecheck` — `tsc --noEmit` on every config.
 - `npm test` — build + `cd dist && node --env-file-if-exists=../.env.test --test`. **Not** `node --test dist` from the root: on Node 22 a bare directory argument fails with MODULE_NOT_FOUND. Unit tests mock `fetch`/SDK and never touch the network; renderer tests run as ES modules thanks to `dist/renderer/package.json`.
 - `npm run coverage` — tests with Node's built-in coverage (counts only files imported by at least one test).
-- `npm run package` — build + electron-builder (installers in `release/`, **not** `dist/`).
+- `npm run package` — build + Go core (`npm run build:core`) + electron-builder (installers in `release/`, **not** `dist/`). The core ships in `<resources>/core/` (`extraResources`).
 - `npm run package:test` — LOCAL test build (`scripts/test-build.js`): lint + tests like CI, then `.deb` and Windows packages in `release/test/`, version `<version>.dev.<timestamp>`, never published. Windows: NSIS `.exe` only with Wine (or on Windows), otherwise a ready-to-run `.zip`. The preferred way to try changes: no pipeline run; the user shares the files over the local network.
 
 ### CI — cross-platform build (GitHub Actions)
 `.github/workflows/build.yml` builds on macos/windows/ubuntu in parallel:
 - **Trigger:** a pushed tag starting with `v` (e.g. `v0.4.0-beta`) → **release** (`-rc` tags excluded); a manual run (`gh workflow run build.yml`, or Actions → Run workflow) → **test build**: version `<package.json version>.dev.<run number>`, packages only as run artifacts (`-test` suffix, 14 days), `--publish=never`, so no release and no update notification. No packaging on every push/PR: `.github/workflows/ci.yml` runs only lint + tests on Linux for every PR to `next` and every push to it. Workflow: work lands on `next` (staging), try test builds on the real machines (preferably local, `npm run package:test`), release `next` → `main` with agent-ops `release` once verified, then tag `main` (see *Branches*).
-- **Each job:** `npm ci` → `npm run lint` → `npm test` → `npx electron-builder --<mac|win|linux> --publish=always`.
+- **Each job:** setup Go → `npm ci` → `npm run lint` → `npm test` → `npm run build:core` (native, for the runner's OS/arch) → `npx electron-builder --<mac|win|linux> --publish=always`.
 - **Output:** packages attached to the GitHub Release of the tag (`contents: write` permission) and uploaded as run artifacts (14 days). Release notes are written by hand (EN + IT) after the run.
 - **No code signing** (`CSC_IDENTITY_AUTO_DISCOVERY: false`): Gatekeeper/SmartScreen warn at install time.
 - `package.json` `author` must carry an email (Debian "Maintainer"): the GitHub noreply address is used, never a real one.
