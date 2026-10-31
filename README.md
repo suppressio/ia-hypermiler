@@ -39,7 +39,7 @@ The packages are not signed: Windows SmartScreen and macOS Gatekeeper show a war
 
 1. Open **Settings** (⚙ in the widget, or from the tray icon) → **Add account**.
 2. **Claude**: no login. Add the account only for the local insights (see below); its quotas are not available in this version.
-   **Codex (ChatGPT)**: needs Codex signed in on this computer, the [Codex CLI](https://developers.openai.com/codex/cli) (`codex login`) or the Codex extension of VS Code. Add an account with this provider: it reads the usage at once, through your own Codex sign-in, with no login window and no ChatGPT session stored by the app. If Codex is installed somewhere unusual, set its path in the account (*Codex binary*). Signed out, the account says so and tells you where to sign in.
+   **Codex (ChatGPT)**: needs Codex signed in on this computer, the [Codex CLI](https://developers.openai.com/codex/cli) (`codex login`) or the Codex extension of VS Code. Add an account with this provider: it reads the usage at once, through your own Codex sign-in, with no login window and no ChatGPT session stored by the app. If Codex is installed somewhere unusual, set its path in the account (*Codex binary*). Signed out, the account says so and tells you where to sign in. Only one Codex account can be active, since there is one Codex sign-in per computer (#188 tracks one sign-in per account).
    **GitHub Copilot**: paste a Personal Access Token (fine-grained, *Plan* read-only, or classic with no scope), or sign in with a GitHub OAuth App. For a company seat on a `<name>.ghe.com` tenant, set the GitHub domain first.
 3. Optional, per account: the **work schedule** (last section of the account) and, only when the provider does not report it, the **renewal day**.
 

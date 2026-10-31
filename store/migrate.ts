@@ -193,6 +193,22 @@ export function migrateAccounts(rawAccounts: unknown, legacyLocalInsightsEnabled
  * sessions do not say which account they belong to. If more have it (patch from the
  * renderer), the first in order wins.
  */
+/**
+ * At most one enabled Codex account (#178): the core reads the one Codex sign-in of
+ * this computer, so two enabled accounts would show the same data under two names (and
+ * accounts migrated from separate ChatGPT logins would all get it). The first enabled
+ * one is kept; reading another login per account is #188.
+ */
+export function enforceSingleCodexAccount(accounts: AccountConfig[]): AccountConfig[] {
+  let seen = false;
+  return accounts.map((a) => {
+    if (a.provider !== 'codex' || !a.enabled) return a;
+    if (seen) return { ...a, enabled: false };
+    seen = true;
+    return a;
+  });
+}
+
 export function enforceSingleLocalInsights(accounts: AccountConfig[]): AccountConfig[] {
   let seen = false;
   return accounts.map((a) => {
@@ -256,7 +272,7 @@ export function normalizeAccounts(rawAccounts: unknown[], inheritedSchedule?: un
       result.push({ ...cfg, id, provider: 'copilot', host, workSchedule: scheduleFor(raw, inheritedSchedule) });
     }
   }
-  return enforceSingleLocalInsights(result);
+  return enforceSingleCodexAccount(enforceSingleLocalInsights(result));
 }
 
 /** Migrates the old string preference; null window defers only an uncached legacy choice. */

@@ -190,7 +190,7 @@ export const en = {
   'settings.claude.localInsightsHint': 'Reads local Claude Code sessions (CLI and VS Code extension — same source) to show how much of your usage happens with a very large context or in very long sessions, which tools/MCP servers you use most and how many tokens you produce per point of quota. It only reads token counts and tool names — never message content. Local sessions do not say which account they belong to: enable it on one Claude account only, the one you use with Claude Code. Sessions older than about 30 days are no longer available.',
 
   // --- Settings: Copilot detail -------------------------------------------------
-  'settings.codex.signInHint': 'Usage is read through Codex signed in on this computer (Codex CLI or the VS Code extension). Sign in there; the app stores no ChatGPT session.',
+  'settings.codex.signInHint': 'Usage is read through Codex signed in on this computer (Codex CLI or the VS Code extension). Sign in there; the app stores no ChatGPT session. Only one Codex account can be active, since there is one Codex sign-in per computer.',
   'settings.codex.binaryPath': 'Codex binary (optional)',
   'settings.codex.binaryPathHint': 'Leave empty: the app finds Codex by itself (CLI on the PATH, npm global install, VS Code extension). Fill it only if Codex is installed somewhere else: the full path of the codex program.',
   'settings.codex.binaryPathPlaceholder': 'Found automatically',

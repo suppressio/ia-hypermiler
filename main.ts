@@ -15,7 +15,7 @@ import { captureGithubOAuthToken } from './main/copilot-oauth';
 import * as providers from './main/providers';
 import * as refreshPolicy from './main/refreshPolicy';
 import type { RefreshMode } from './main/refreshPolicy';
-import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts, purgeClaudeSessions } from './store/migrate';
+import { defaultAccountFor, enforceSingleCodexAccount, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts, purgeClaudeSessions } from './store/migrate';
 import * as budget from './budget';
 import { createUsageCore, refreshIntervalMs } from './core/usage';
 import * as copilotService from './services/copilot';
@@ -683,7 +683,7 @@ function preserveRealSecretsOnWrite(key: string, value: unknown): unknown {
   for (const cur of current) {
     if (!merged.some((m) => m.id === cur.id)) merged.push(cur);
   }
-  return enforceSingleLocalInsights(merged);
+  return enforceSingleCodexAccount(enforceSingleLocalInsights(merged));
 }
 
 // ---------------------------------------------------------------------------
@@ -837,8 +837,11 @@ function registerIpcHandlers(): void {
     const accounts = getAccounts();
     const id = `${provider}-${randomUUID().slice(0, 8)}`;
     accounts.push(defaultAccountFor(provider, id, nextAccountLabel(provider, accounts)));
-    store.set('accounts', accounts);
+    // A new Codex account starts enabled unless another one already is (#178).
+    store.set('accounts', enforceSingleCodexAccount(accounts));
     broadcastSettings();
+    // Codex has no Connect step that would trigger the first read: refresh now.
+    runDetached('refresh usage', refreshAndBroadcast('forced'));
     return id;
   });
 
