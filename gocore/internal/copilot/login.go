@@ -164,10 +164,13 @@ func (p *Provider) Login(ctx context.Context, clientSecret string, announce func
 	case r := <-results:
 		return r.username, r.err
 	case <-ctx.Done():
-		// A callback that completed at the same moment wins: its token is stored.
+		// A callback that succeeded at the same moment wins: its token is stored. A
+		// failed one (cancelled by this very deadline) does not: the answer is timeout.
 		select {
 		case r := <-results:
-			return r.username, r.err
+			if r.err == nil {
+				return r.username, nil
+			}
 		default:
 		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {

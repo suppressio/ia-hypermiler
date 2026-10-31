@@ -38,7 +38,12 @@ func CopilotKey(account string) string { return "copilot/" + account }
 
 // Get reads key within ctx. The keyring calls take no context and can wait on an
 // unlock prompt with no end, so the call runs aside and the caller stops waiting at the
-// deadline (the CLI process exits right after, ending the pending call).
+// deadline. The pending call is not cancelled: in-process backends (Secret Service,
+// Credential Manager) end with the CLI process, but on macOS go-keyring runs
+// /usr/bin/security, which can outlive it and complete once the keychain is unlocked.
+// Accepted: that late completion is exactly the write or delete that was asked for, of
+// the same value, never another one; the caller saw a timeout and retries. Cancelling
+// it would need a context in go-keyring (a fork, or another dependency).
 func Get(ctx context.Context, store Store, key string) (string, error) {
 	type result struct {
 		value string
