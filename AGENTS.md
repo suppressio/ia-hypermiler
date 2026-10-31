@@ -68,6 +68,7 @@ ia-hypermiler/
 │   └── internal/
 │       ├── buildinfo/           ← binary name and build-time version
 │       ├── cli/                 ← command dispatch and exit codes
+│       ├── codex/               ← native binary discovery, one-shot app-server probe and quota mapping
 │       ├── config/              ← OS config directory and development override
 │       ├── logging/             ← stderr text logger and level selection
 │       ├── pacing/              ← pure pacing model

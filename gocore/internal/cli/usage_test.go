@@ -85,7 +85,7 @@ func TestContractFixtures(t *testing.T) {
 		{name: "error-timeout", err: fmt.Errorf("fetch: %w", context.DeadlineExceeded), exit: cli.ExitProviderError},
 		{name: "error-format-drift", err: &usage.Error{Code: usage.CodeFormatDrift, Message: "Unrecognized usage response", Endpoint: "/usage", Shape: usage.ExtractShape(map[string]any{"active": true, "items": []any{map[string]any{"remaining": 42}}, "label": "Private", "reset": nil})}, exit: cli.ExitProviderError},
 		{name: "error-unavailable", err: errors.New("Provider is temporarily unavailable"), exit: cli.ExitProviderError},
-		{name: "error-usage", args: []string{"usage", "codex", "--json"}, exit: cli.ExitUsage},
+		{name: "error-usage", args: []string{"usage", "nope", "--json"}, exit: cli.ExitUsage},
 		{name: "version", args: []string{"version", "--json"}},
 	}
 	for _, tt := range tests {
@@ -169,7 +169,7 @@ func TestUsageErrors(t *testing.T) {
 		stdin   io.Reader
 		factory func() provider.Provider
 	}{
-		{name: "unknown provider", args: []string{"usage", "codex"}},
+		{name: "unknown provider", args: []string{"usage", "nope"}},
 		{name: "missing provider", args: []string{"usage"}},
 		{name: "bad flag", args: []string{"usage", "fake", "--unknown"}},
 		{name: "secret flag forbidden", args: []string{"usage", "fake", "--secret=forbidden"}},
@@ -410,7 +410,7 @@ func TestOutputWriteFailure(t *testing.T) {
 		{"JSON usage", []string{"usage", "fake", "--json"}},
 		{"text version", []string{"version"}},
 		{"JSON version", []string{"version", "--json"}},
-		{"usage error", []string{"usage", "codex", "--json"}},
+		{"usage error", []string{"usage", "nope", "--json"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

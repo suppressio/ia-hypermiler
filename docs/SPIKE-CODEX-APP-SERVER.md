@@ -2,7 +2,7 @@
 
 # Spike #142 — Codex quotas from `codex app-server` (`account/rateLimits/read`)
 
-> Part of #139. Status: **done on Linux, Windows (#158) and Intel macOS (#171), go as the Codex source for the Go core.** Homebrew and Apple Silicon are not checked yet: #174. Extra buckets of paid business plans are to be covered by a schema fixture in the Codex adapter #148 (not built yet), not by a real account.
+> Part of #139. Status: **done on Linux, Windows (#158) and Intel macOS (#171), go as the Codex source for the Go core.** Homebrew and Apple Silicon are not checked yet: #174. Extra buckets of paid business plans are covered by a synthetic schema fixture in the Codex adapter #148, not by a real account.
 
 ## Setup
 
@@ -64,7 +64,7 @@ What we gain: no ChatGPT cookie, no Electron login window or partition, no Cloud
 - **macOS:** look in the fixed prefixes as well as `PATH`, and replace the npm `codex.js` shim with the native binary of its package; never rely on the shell `PATH` or on `node`.
 - **Hard rules:** run only the unmodified `codex` binary with the user's own login; never read or copy `auth.json`; never pass `--analytics-default-enabled`; do not call `account/login/*`, `account/logout` or `account/rateLimitResetCredit/consume`; signed-out → a "sign in with Codex" state, not an error.
 - **No cookie fallback in the Go core.** The chatgpt.com cookie route (#82) stays only in today's Electron app until the Go core replaces it.
-- **To do before shipping:** Homebrew and Apple Silicon discovery (#174); a fixture built from the generated schema with several buckets and `individualLimit`, tested in the Codex adapter (#148): known windows found by duration, unknown buckets ignored.
+- **To do before shipping:** Homebrew and Apple Silicon discovery (#174); **done in #148:** a fixture built from the generated schema with several buckets and `individualLimit`, tested in the Codex adapter: known windows found by duration, unknown buckets ignored.
 
 ## Prototype
 
