@@ -352,6 +352,19 @@ function enforceSingleLocalInsightsDraft(keepIndex: number): void {
   });
 }
 
+// The draft merged with a fresh store copy can hold two enabled Codex accounts (one
+// enabled in the draft, one just added): same rule as enforceSingleCodexAccount in
+// store/migrate.ts, the first enabled one is kept.
+function keepFirstEnabledCodex(list: AccountConfig[]): AccountConfig[] {
+  let seen = false;
+  return list.map((a) => {
+    if (a.provider !== 'codex' || !a.enabled) return a;
+    if (seen) return { ...a, enabled: false };
+    seen = true;
+    return a;
+  });
+}
+
 // At most one enabled Codex account: the core reads the one Codex sign-in of this
 // computer (enforceSingleCodexAccount in store/migrate.ts does the same on save).
 function enforceSingleCodexDraft(keepIndex: number): void {
@@ -374,7 +387,7 @@ async function reloadAfterAccountAction(actedOn: AccountId | null): Promise<void
   savedSettings = structuredClone(fresh);
   if (draft) {
     const draftAccounts = new Map(accounts().map((a) => [a.id, a]));
-    fresh.accounts = fresh.accounts.map((a) => (a.id !== actedOn ? draftAccounts.get(a.id) ?? a : a));
+    fresh.accounts = keepFirstEnabledCodex(fresh.accounts.map((a) => (a.id !== actedOn ? draftAccounts.get(a.id) ?? a : a)));
     for (const [key, value] of Object.entries(draft)) {
       if (key !== 'accounts') (fresh as unknown as PlainRecord)[key] = value;
     }
@@ -530,8 +543,8 @@ function guarded(handler: () => Promise<void>): () => void {
   return () => { runGuarded(handler()); };
 }
 
-async function persist(key: string): Promise<void> {
-  await window.hypermiler.setSettings({ [key]: (settings as unknown as PlainRecord)[key] });
+async function persist(key: string): Promise<AppSettings> {
+  return window.hypermiler.setSettings({ [key]: (settings as unknown as PlainRecord)[key] });
 }
 
 // --- Events ----------------------------------------------------------------------------
@@ -610,7 +623,13 @@ function bindEvents(): void {
     // e.g. a focused number input) and saves everything at once.
     const touchedKeys = captureDraftFromForm();
     for (const key of touchedKeys) {
-      await persist(key);
+      const stored = await persist(key);
+      // The main process normalizes the accounts (e.g. one enabled Codex account): the
+      // form shows what was really saved, not the draft.
+      if (key === 'accounts' && settings) {
+        settings.accounts = structuredClone(stored.accounts);
+        populateForm();
+      }
     }
 
     // Side effects that need a dedicated main-process action: applied only now
