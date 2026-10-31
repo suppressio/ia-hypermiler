@@ -21,6 +21,8 @@ export interface CopilotOAuthPayload {
   host: string;
 }
 
+export type CoreStatus = { ok: true; version: string } | { ok: false; error: string };
+
 // A handler with nothing to return (`void` is only allowed as a generic argument).
 type NoResult = Awaited<Promise<void>>;
 
@@ -42,6 +44,8 @@ export interface IpcInvokeChannels {
   // draft; `created` false when the user cancelled.
   'diagnostics:createReport': { args: []; result: { created: boolean; fileName: string | null } };
   'app:getVersion': { args: []; result: string };
+  // The bundled Go core (#177): its version, or why it cannot run (localized).
+  'core:getStatus': { args: []; result: CoreStatus };
   'updates:check': { args: []; result: UpdateSettings };
   'updates:download': { args: []; result: NoResult };
   'updates:openReleaseNotes': { args: []; result: NoResult };
@@ -91,6 +95,7 @@ export interface HypermilerBridge {
   disconnectAccount(id: AccountId): Promise<void>;
   createDiagnosticReport(): Promise<{ created: boolean; fileName: string | null }>;
   getAppVersion(): Promise<string>;
+  getCoreStatus(): Promise<CoreStatus>;
   checkForUpdates(): Promise<UpdateSettings>;
   downloadUpdate(): Promise<void>;
   openReleaseNotes(): Promise<void>;

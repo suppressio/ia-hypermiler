@@ -8,6 +8,7 @@
 
 - Node.js 22 LTS or later
 - npm
+- Go (version in `gocore/go.mod`) to build the core CLI that `npm start` and the packages bundle; not needed for `npm test`
 
 ## Run from source
 
@@ -18,7 +19,7 @@ npm install
 npm start
 ```
 
-`npm start` compiles TypeScript (main process + renderer) and starts Electron. On first start there are no accounts: open Settings and add one.
+`npm start` compiles TypeScript (main process + renderer), builds the Go core into `core-bin/` (`scripts/build-core.js`) and starts Electron. To use a core built elsewhere, set `HYPERMILER_CORE_BIN` to its absolute path: `npm start` then skips the Go build and the app runs that binary. Settings → Diagnostics shows the core version, or why it cannot run. On first start there are no accounts: open Settings and add one.
 
 ## Build, lint and test
 
@@ -76,14 +77,16 @@ npm run package       # installer for the current platform in release/
 npm run package:test  # local test build: lint + tests, then .deb and Windows packages in release/test/
 ```
 
-- `npm run package`: build + `electron-builder` → `.dmg` on macOS, `.exe`/NSIS on Windows, `.AppImage` and `.deb` on Linux, in `release/`.
-- `npm run package:test`: version `<version>.dev.<timestamp>`, never published. The Windows NSIS `.exe` needs Wine (or Windows); without it, a ready-to-run `.zip`. This is the preferred way to try a change on a real machine.
+- The packages carry the Go core CLI: `npm run build:core` (`scripts/build-core.js`, cgo-free, version from `package.json` or `HYPERMILER_CORE_VERSION`; `--target win32-x64` and the like cross-compile) writes `core-bin/hypermiler[.exe]`, and electron-builder `extraResources` copies it to `<resources>/core/`. The app runs it with `execFile` (`main/coreClient.ts`, see [CORE-CLI](CORE-CLI.md)). `core-bin/` holds one binary at a time, so a Linux core never ships in a Windows package.
+- `npm run package`: build + core + `electron-builder` → `.dmg` on macOS, `.exe`/NSIS on Windows, `.AppImage` and `.deb` on Linux, in `release/`.
+- `npm run package:test`: version `<version>.dev.<timestamp>` (the core gets the same), never published; the core is cross-compiled for each package right before it. The Windows NSIS `.exe` needs Wine (or Windows); without it, a ready-to-run `.zip`. This is the preferred way to try a change on a real machine.
 - Linux: software centers read AppStream metadata, not the `.deb` control file. `build/linux/com.suppressio.ia-hypermiler.metainfo.xml` (license, author, EN + IT description, releases) is installed to `/usr/share/metainfo/` by the `deb.fpm` config in `package.json`; the `.desktop` entry has `Name=IA Hypermiler`. Update the file's `<release>` on every version and validate it with `appstreamcli validate`.
 
 ### Cross-platform build (GitHub Actions)
 
 `.github/workflows/build.yml` builds on macOS, Windows and Linux in parallel from the same commit:
 
+- every job sets up Go and builds the core on its own runner, for its own OS and architecture, before packaging;
 - a pushed `v*` tag (e.g. `v0.4.0-beta`) → lint, tests, packages attached to the GitHub Release of the tag; `-rc` tags (e.g. `v0.4.14-beta-rc.1`) are skipped;
 - a manual run (`gh workflow run build.yml`, or the Actions tab) → test build: packages only as run artifacts (14 days), no release, no update notification.
 

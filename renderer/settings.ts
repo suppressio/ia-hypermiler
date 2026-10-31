@@ -702,6 +702,10 @@ async function init(): Promise<void> {
   populateForm();
   bindEvents();
   byId('app-version', HTMLElement).textContent = await window.hypermiler.getAppVersion();
+  // Not awaited: running the core takes a moment and must not delay the form.
+  runGuarded(window.hypermiler.getCoreStatus().then((status) => {
+    byId('core-status', HTMLElement).textContent = status.ok ? status.version : t('settings.diagnostics.coreUnavailable', { error: status.error });
+  }));
   renderUpdatesCard(settings.updates);
   // Disabled in the markup until the settings are loaded and the handlers bound.
   for (const id of ['btn-add-account', 'btn-cancel', 'btn-save', 'btn-report-responses']) byId(id, HTMLButtonElement).disabled = false;

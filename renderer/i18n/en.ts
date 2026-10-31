@@ -292,6 +292,8 @@ export const en = {
   'settings.diagnostics.hint': 'If an endpoint stops being recognized, a pre-filled GitHub issue draft opens in the browser (field structure only, never real values such as percentages or amounts): it must always be reviewed and submitted by hand, nothing is published automatically.',
   'settings.diagnostics.reportResponses': 'Create diagnostic report (GitHub)',
   'settings.diagnostics.reportResponsesHint': "Saves in your Downloads folder one text file with the usage responses of every connected account (real values; names, ids and credentials redacted), the settings that affect pacing, how the app read the data, recent history, the last errors and a few system facts (time zone, screens, memory used by the app). A confirmation lists everything before anything is read. Then a GitHub issue draft opens: attach the file if you want. Nothing is sent by the app.",
+  'settings.diagnostics.core': 'Core:',
+  'settings.diagnostics.coreUnavailable': 'not available — {error}',
   'settings.diagnostics.reportCreated': 'Report saved in Downloads: {file}. Attach it to the issue draft opened in the browser.',
 } as const;
 

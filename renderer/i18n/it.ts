@@ -272,5 +272,7 @@ export const it: Record<MessageKey, string> = {
   'settings.diagnostics.hint': 'Se un endpoint smette di essere riconosciuto, si apre nel browser una bozza di issue GitHub precompilata (solo struttura dei campi, mai valori reali come percentuali o importi): va sempre rivista e confermata manualmente, non viene pubblicata nulla in automatico.',
   'settings.diagnostics.reportResponses': 'Crea report di diagnosi (GitHub)',
   'settings.diagnostics.reportResponsesHint': "Salva nella cartella Download un file di testo con le risposte di utilizzo di tutti gli account collegati (valori reali; nomi, id e credenziali oscurati), le impostazioni che influiscono sul pacing, come l'app ha letto i dati, lo storico recente, gli ultimi errori e alcuni dati di sistema (fuso orario, schermi, memoria usata dall'app). Prima di leggere qualunque cosa una conferma elenca tutto. Poi si apre una bozza di issue GitHub: allega il file se vuoi. L'app non invia nulla.",
+  'settings.diagnostics.core': 'Core:',
+  'settings.diagnostics.coreUnavailable': 'non disponibile — {error}',
   'settings.diagnostics.reportCreated': 'Report salvato in Download: {file}. Allegalo alla bozza di issue aperta nel browser.',
 };

@@ -26,7 +26,8 @@ import { fetchLatestUpdate, guideUrl, TRUSTED_DOWNLOAD_PREFIX } from './services
 import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost';
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
-import { buildFormatDriftIssueUrl, buildReportIssueUrl } from './diagnostics/githubIssue';
+import { CoreBinaryError, CoreOutputError, CoreTimeoutError, createCoreClient, resolveCoreBinary } from './main/coreClient';
+import { buildFormatDriftIssueUrl, buildReportIssueUrl, shortError } from './diagnostics/githubIssue';
 import { buildDiagnosticReport, neutralize } from './diagnostics/report';
 import type { ReportAccount } from './diagnostics/report';
 import { LogBuffer, captureConsole } from './diagnostics/logBuffer';
@@ -78,6 +79,19 @@ let lastSnapshot: UsageSnapshot | null = null;
 // installed app has no visible console (diagnostics/logBuffer.ts).
 const logBuffer = new LogBuffer(50);
 captureConsole(logBuffer);
+
+// The Go core CLI (#177, docs/CORE-CLI.md): run on demand, nothing to start or stop.
+// The binary is resolved on every call, so a missing one is an explicit error of that
+// read (shown with the stale data), never a startup failure.
+const core = createCoreClient({
+  binary: () => resolveCoreBinary({
+    env: process.env,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+  }),
+});
 
 // Durations of the last refresh and of the last local insights scan, for the
 // diagnostic report (a slow startup had to be inferred before).
@@ -251,6 +265,9 @@ function friendlyErrorMessage(err: unknown): string {
   if (err instanceof providers.ClaudeUsageUnavailableError) {
     return t('error.claudeQuotasUnavailable');
   }
+  if (err instanceof CoreBinaryError) return t('error.coreMissing', { detail: error.message });
+  if (err instanceof CoreTimeoutError) return t('error.coreTimeout');
+  if (err instanceof CoreOutputError) return t('error.coreBadOutput', { detail: error.message });
   return error.message;
 }
 
@@ -889,6 +906,16 @@ function registerIpcHandlers(): void {
 
   handle('app:getVersion', () => app.getVersion());
 
+  // The bundled core's version, or why it cannot run (Settings, next to the app version).
+  handle('core:getStatus', async () => {
+    try {
+      const v = await core.version();
+      return { ok: true, version: `${v.name} ${v.version} (${v.os}/${v.arch})` };
+    } catch (err) {
+      return { ok: false, error: friendlyErrorMessage(err) };
+    }
+  });
+
   handle('updates:check', () => checkForUpdates('manual'));
 
   // The URL to open comes from the store (written only by checkForUpdates), never
@@ -947,10 +974,15 @@ function registerIpcHandlers(): void {
     // The app's reading of the data, once every name is known (errors are neutralized).
     for (const account of accounts) account.interpretation = reportInterpretation(account.id, accounts);
 
+    // The core's version, or the reason it cannot run (no paths: shortError).
+    const coreVersion = await core.version()
+      .then((v) => `${v.version} (${v.os}/${v.arch})`)
+      .catch((err: unknown) => `unavailable: ${shortError(err instanceof Error ? err.message : String(err))}`);
     const text = buildDiagnosticReport({
       generatedAt: now,
       environment: {
         app: app.getVersion(),
+        core: coreVersion,
         platform: process.platform,
         arch: process.arch,
         osRelease: os.release(),
@@ -1054,6 +1086,13 @@ app.whenReady().then(async () => {
 
   scheduleRefreshLoop();
   startWindowHoverPolling();
+  // A core that cannot run is reported in the log buffer (diagnostic report) at once,
+  // not only when a provider first reads through it.
+  runDetached('core version check', core.version().then((v) => {
+    console.log(`[main] core ${v.name} ${v.version} (${v.os}/${v.arch})`);
+  }, (err: unknown) => {
+    console.warn('[main] core unavailable:', friendlyErrorMessage(err));
+  }));
   startUpdateChecks();
 
   app.on('activate', () => {
