@@ -32,16 +32,7 @@ npm run coverage   # tests with Node's built-in coverage
 ```
 
 - **Unit tests** always run and never touch the network (`fetch` and the SDK are mocked). Test data is synthetic only.
-- **Integration tests** (`tests/integration/`) call the real GitHub APIs and **skip themselves** when credentials are missing. To enable them locally, **never pasting credentials in chat or commits**:
-
-```bash
-cp .env.test.example .env.test
-# fill .env.test with your credentials (see the comments in the file)
-npm test
-```
-
-
-`.env.test` is already in `.gitignore` and is loaded automatically by Node (`--env-file-if-exists`), with no extra dependency.
+- **No integration tests** since #179: the provider reads moved to the Go core, whose adapters are tested against fakes (`httptest`, a fake `codex app-server`). Real accounts are checked by hand with the core binary (`hypermiler usage <provider>`, see [CORE-CLI](CORE-CLI.md)), never with credentials pasted in chat or commits.
 
 ## Go core checks
 
@@ -109,7 +100,7 @@ ia-hypermiler/
 ├── budget.ts                  ← budget/efficiency/projection/chart logic (+ budget.test.ts)
 ├── agents/                    ← Claude agent for usage advice (stub)
 ├── types/                     ← shared TypeScript types
-├── tests/                     ← test helpers + integration tests gated by local credentials
+├── tests/                     ← test helpers and the IPC contract guard
 ├── docs/                      ← documentation, English + Italian (this file too) + README screenshots (synthetic data)
 └── README.md, CLAUDE.md       ← user guide, project memory for Claude Code
 ```
@@ -126,7 +117,7 @@ Further reading:
 ## Security rules
 
 - `nodeIntegration: false` and `contextIsolation: true` always: the renderer never has direct access to Node.js; every value coming from it through IPC is validated.
-- Secrets stay in the main process: Claude sessions and Copilot tokens use the encrypted store; Codex keeps nothing secret in the app (read through the core and the user's own Codex sign-in). They never reach the renderer or logs.
+- No provider secret in the app: the Copilot token lives in the OS keyring, owned by the Go core (#179); Codex keeps nothing secret (read through the core and the user's own Codex sign-in). The Copilot OAuth client secret is typed in Settings and handed to the core on stdin, never saved. Nothing reaches the renderer or logs. They never reach the renderer or logs.
 - URLs opened in the browser are built in the main process from fixed prefixes, never taken from the renderer.
 
 ## Project status

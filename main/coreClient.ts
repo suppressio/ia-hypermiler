@@ -8,7 +8,7 @@
 // The parser is checked against the language-neutral fixtures in gocore/contract/v1/,
 // the same files the Go tests reproduce byte for byte (coreClient.test.ts).
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import path from 'node:path';
 import { FormatDriftError } from '../services/_shape';
 import type { QuotaWindow, RawAccountUsage } from '../types/index';
@@ -20,6 +20,9 @@ export const CORE_SCHEMA_VERSION = 1;
 export const CORE_FETCH_TIMEOUT_SECONDS = 25;
 const CLIENT_TIMEOUT_MS = (CORE_FETCH_TIMEOUT_SECONDS + 5) * 1000;
 const VERSION_TIMEOUT_MS = 5000;
+// `login` waits for the user in the browser: the core's deadline, and the client's.
+export const CORE_LOGIN_TIMEOUT_SECONDS = 300;
+const LOGIN_CLIENT_TIMEOUT_MS = (CORE_LOGIN_TIMEOUT_SECONDS + 15) * 1000;
 // One document is a few KB; anything this large is not a contract document.
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 
@@ -60,12 +63,16 @@ export class CoreProviderError extends Error {
   // The provider id the core answered for: the same code reads differently per provider
   // (signed_out is "sign in with Codex" for Codex).
   readonly provider: string;
+  // A known case inside the code (docs/CORE-CLI.md, error `reason`), e.g.
+  // 'enterprise_managed_seat'; null when the core gave none.
+  readonly reason: string | null;
 
-  constructor(code: CoreErrorCode, message: string, provider: string) {
+  constructor(code: CoreErrorCode, message: string, provider: string, reason: string | null = null) {
     super(message);
     this.name = 'CoreProviderError';
     this.code = code;
     this.provider = provider;
+    this.reason = reason;
   }
 }
 
@@ -180,6 +187,61 @@ export const execFileRunner: CoreRunner = (binary, args, stdin, timeoutMs) =>
     child.stdin?.end(stdin ?? '');
   });
 
+/** Like CoreRunner, calling onLine with each stdout line as soon as it is complete. */
+export type CoreStreamRunner = (binary: string, args: string[], stdin: string | null, timeoutMs: number, onLine: (line: string) => void) => Promise<CoreRun>;
+
+/**
+ * spawn without a shell, for `login`: its first document (the URL to open) must reach
+ * the app while the core is still waiting for the browser. Same errors as
+ * execFileRunner; the output cap and the timeout kill the core.
+ */
+export const spawnStreamRunner: CoreStreamRunner = (binary, args, stdin, timeoutMs, onLine) =>
+  new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (action: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+    const child = spawn(binary, args, { windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
+    let stdout = '';
+    let pending = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(() => { reject(new CoreTimeoutError(`Core did not answer within ${String(Math.round(timeoutMs / 1000))} s`)); });
+    }, timeoutMs);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+      if (stdout.length > MAX_OUTPUT_BYTES) {
+        child.kill();
+        finish(() => { reject(new CoreOutputError('Core output exceeds the size limit')); });
+        return;
+      }
+      pending += chunk;
+      let newline = pending.indexOf('\n');
+      while (newline !== -1) {
+        const line = pending.slice(0, newline);
+        pending = pending.slice(newline + 1);
+        if (line.trim() !== '') onLine(line);
+        newline = pending.indexOf('\n');
+      }
+    });
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      finish(() => { reject(new CoreBinaryError(`Core binary cannot be started (${error.code ?? 'error'})`, { cause: error })); });
+    });
+    child.on('close', (code, signal) => {
+      if (code === null) {
+        finish(() => { reject(new CoreOutputError(`Core ended abnormally${signal ? ` (${signal})` : ''}`)); });
+        return;
+      }
+      finish(() => { resolve({ exitCode: code, stdout }); });
+    });
+    child.stdin.on('error', () => { /* reported by close/error */ });
+    child.stdin.end(stdin ?? '');
+  });
+
 // ---------------------------------------------------------------------------
 // Parsing contract v1
 // ---------------------------------------------------------------------------
@@ -254,7 +316,7 @@ function providerError(doc: Record<string, unknown>, provider: string): Error {
     // Same path as a TypeScript service's drift: main.ts opens the report draft (shape only).
     return new FormatDriftError(error.message, typeof error.endpoint === 'string' ? error.endpoint : 'core', error.shape ?? null);
   }
-  return new CoreProviderError(code, error.message, provider);
+  return new CoreProviderError(code, error.message, provider, typeof error.reason === 'string' ? error.reason : null);
 }
 
 /**
@@ -307,6 +369,63 @@ export function parseVersionRun(run: CoreRun): CoreVersion {
   return { name, version, os, arch };
 }
 
+// Account commands (token set/delete, login, raw): exit 0 → their document, exit 1 →
+// the provider error, exit 2 → our bug, like usage.
+function accountDocument(run: CoreRun, provider: string): Record<string, unknown> {
+  const doc = parseDocument(run.stdout);
+  if (run.exitCode === 2) {
+    const message = isRecord(doc.error) && typeof doc.error.message === 'string' ? `: ${doc.error.message}` : '';
+    throw new CoreOutputError(`Core rejected the arguments${message}`);
+  }
+  if (doc.provider !== provider) throw new CoreOutputError(`Core document is for another provider (expected ${provider})`);
+  if (run.exitCode === 1 && 'error' in doc) throw providerError(doc, provider);
+  if (run.exitCode !== 0 || 'error' in doc) throw new CoreOutputError(`Core exited with code ${String(run.exitCode)} without a matching document`);
+  return doc;
+}
+
+/** The provider user name of `token set` / `login` ("" with --no-verify). */
+export function parseConnectedRun(run: CoreRun, provider: string): string {
+  const doc = accountDocument(run, provider);
+  if (typeof doc.username !== 'string') throw new CoreOutputError('Core document: username is required');
+  return doc.username;
+}
+
+export function parseDeletedRun(run: CoreRun, provider: string): void {
+  if (accountDocument(run, provider).deleted !== true) throw new CoreOutputError('Core document: deleted is required');
+}
+
+export interface CoreRawResponse {
+  endpointLabel: string;
+  response: unknown;
+}
+
+export function parseRawRun(run: CoreRun, provider: string): CoreRawResponse {
+  const doc = accountDocument(run, provider);
+  if (typeof doc.endpoint !== 'string' || !('response' in doc)) throw new CoreOutputError('Core document: endpoint and response are required');
+  return { endpointLabel: doc.endpoint, response: doc.response };
+}
+
+/**
+ * `login --json` prints the authorize event, then the result: the event's URL, or null
+ * for a line that is not one (the result, or a document this version does not know).
+ */
+export function authorizeUrlOf(line: string, provider: string): string | null {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!isRecord(doc) || doc.schemaVersion !== CORE_SCHEMA_VERSION || doc.provider !== provider || doc.event !== 'authorize') return null;
+  return typeof doc.url === 'string' ? doc.url : null;
+}
+
+/** The result of `login`: the last line of its output. */
+export function parseLoginRun(run: CoreRun, provider: string): string {
+  const lines = run.stdout.split('\n').filter((line) => line.trim() !== '');
+  return parseConnectedRun({ exitCode: run.exitCode, stdout: lines.at(-1) ?? '' }, provider);
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -319,20 +438,38 @@ export interface CoreUsageRequest {
   secret?: string;
 }
 
+export interface CoreAccountRequest {
+  provider: string;
+  // Account parameters as provider flags (e.g. ['--account', id, '--host', host]). Never secrets.
+  flags: string[];
+}
+
 export interface CoreClient {
   usage(request: CoreUsageRequest): Promise<CoreUsageResult>;
   version(): Promise<CoreVersion>;
+  /** Stores a token (on stdin) in the core's keyring; returns the user name ("" when verify is false). */
+  tokenSet(request: CoreAccountRequest & { token: string; verify: boolean }): Promise<string>;
+  tokenDelete(request: CoreAccountRequest): Promise<void>;
+  /**
+   * OAuth sign-in through the core: onAuthorize gets the URL to open as soon as the
+   * core listens; resolves with the user name once the token is stored.
+   */
+  login(request: CoreAccountRequest & { clientSecret: string; onAuthorize: (url: string) => void }): Promise<string>;
+  raw(request: CoreAccountRequest): Promise<CoreRawResponse>;
 }
 
 export interface CoreClientOptions {
   // Resolved on every call: a missing binary is an error of that read, not of startup.
   binary: () => string;
   run?: CoreRunner;
+  stream?: CoreStreamRunner;
   timeoutMs?: number;
 }
 
 export function createCoreClient(options: CoreClientOptions): CoreClient {
   const run = options.run ?? execFileRunner;
+  const stream = options.stream ?? spawnStreamRunner;
+  const timeout = ['--timeout', `${String(CORE_FETCH_TIMEOUT_SECONDS)}s`];
   const timeoutMs = options.timeoutMs ?? CLIENT_TIMEOUT_MS;
   return {
     async usage(request) {
@@ -343,6 +480,26 @@ export function createCoreClient(options: CoreClientOptions): CoreClient {
     },
     async version() {
       return parseVersionRun(await run(options.binary(), ['version', '--json'], null, Math.min(timeoutMs, VERSION_TIMEOUT_MS)));
+    },
+    async tokenSet(request) {
+      const args = ['token', 'set', request.provider, '--json', ...timeout, ...request.flags, ...(request.verify ? [] : ['--no-verify'])];
+      return parseConnectedRun(await run(options.binary(), args, request.token, timeoutMs), request.provider);
+    },
+    async tokenDelete(request) {
+      const args = ['token', 'delete', request.provider, '--json', ...timeout, ...request.flags];
+      parseDeletedRun(await run(options.binary(), args, null, timeoutMs), request.provider);
+    },
+    async login(request) {
+      const args = ['login', request.provider, '--json', '--timeout', `${String(CORE_LOGIN_TIMEOUT_SECONDS)}s`, ...request.flags];
+      const result = await stream(options.binary(), args, request.clientSecret, LOGIN_CLIENT_TIMEOUT_MS, (line) => {
+        const url = authorizeUrlOf(line, request.provider);
+        if (url !== null) request.onAuthorize(url);
+      });
+      return parseLoginRun(result, request.provider);
+    },
+    async raw(request) {
+      const args = ['raw', request.provider, '--json', ...timeout, ...request.flags];
+      return parseRawRun(await run(options.binary(), args, null, timeoutMs), request.provider);
     },
   };
 }

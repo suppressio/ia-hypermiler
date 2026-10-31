@@ -32,16 +32,7 @@ npm run coverage   # test con la coverage integrata di Node
 ```
 
 - I **test unitari** girano sempre e non toccano mai la rete (`fetch` e l'SDK sono simulati). I dati di test sono solo sintetici.
-- I **test di integrazione** (`tests/integration/`) chiamano le vere API di GitHub e **si saltano da soli** se mancano le credenziali. Per attivarli in locale, **senza mai incollare credenziali in chat o nei commit**:
-
-```bash
-cp .env.test.example .env.test
-# compila .env.test con le tue credenziali (vedi i commenti nel file)
-npm test
-```
-
-
-`.env.test` è già in `.gitignore` e viene caricato automaticamente da Node (`--env-file-if-exists`), senza dipendenze aggiuntive.
+- **Nessun test di integrazione** da #179: le letture dei provider sono passate al core Go, i cui adapter sono testati contro dei finti (`httptest`, un finto `codex app-server`). Gli account reali si verificano a mano con il binario del core (`hypermiler usage <provider>`, vedi [CORE-CLI](CORE-CLI.it.md)), mai con credenziali incollate in chat o nei commit.
 
 ## Controlli del core Go
 
@@ -109,7 +100,7 @@ ia-hypermiler/
 ├── budget.ts                  ← calcolo budget/efficienza/previsionale/grafico (+ budget.test.ts)
 ├── agents/                    ← agente Claude per i consigli d'uso (stub)
 ├── types/                     ← tipi TypeScript condivisi
-├── tests/                     ← helper dei test + test di integrazione attivati da credenziali locali
+├── tests/                     ← helper dei test e controllo del contratto IPC
 ├── docs/                      ← documentazione, inglese + italiano (anche questo file) + screenshot del README (dati sintetici)
 └── README.md, CLAUDE.md       ← guida utente, memoria di progetto per Claude Code
 ```
@@ -126,7 +117,7 @@ Approfondimenti:
 ## Regole di sicurezza
 
 - `nodeIntegration: false` e `contextIsolation: true` sempre attivi: il renderer non ha mai accesso diretto a Node.js; ogni valore che arriva da lui via IPC viene validato.
-- I segreti restano nel main process: sessioni Claude e token Copilot usano lo store cifrato; Codex non tiene nulla di segreto nell'app (letto tramite il core e l'accesso a Codex dell'utente). Non arrivano al renderer né ai log.
+- Nessun segreto dei provider nell'app: il token Copilot sta nel keyring dell'OS, gestito dal core Go (#179); Codex non tiene nulla di segreto (letto tramite il core e l'accesso a Codex dell'utente). Il client secret OAuth di Copilot si digita nelle Impostazioni e passa al core su stdin, mai salvato. Nulla arriva al renderer o ai log.
 - Gli URL aperti nel browser sono costruiti nel main process da prefissi fissi, mai presi dal renderer.
 
 ## Stato del progetto

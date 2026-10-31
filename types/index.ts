@@ -60,7 +60,7 @@ export interface QuotaWindow {
   resetsAt: Date | string | null;
 }
 
-/** Raw data returned by a service (services/codex.ts, services/copilot.ts). */
+/** Raw usage of an account: contract v1 of the Go core (docs/CORE-CLI.md, main/coreClient.ts). */
 export interface RawAccountUsage {
   planTier: string | null;
   subscriptionRenewsAt: Date | string | null;
@@ -358,11 +358,14 @@ export interface CopilotAccountSettings extends AccountConfigBase {
   // renderer/settings.ts (applyAccountDetailState) and main.ts (accounts:connectCopilot*).
   authMethod: 'pat' | 'oauth';
   // Personal plan or company (organization) seat: chooses which endpoints are read
-  // (services/copilot.ts fetchUsage).
+  // (`hypermiler usage copilot --scope`, gocore/internal/copilot).
   accountScope: AccountScope;
   // "github.com" or a GitHub Enterprise Cloud tenant with data residency
   // ("<tenant>.ghe.com"), where company seats live — see services/githubHost.ts.
   host: string;
+  // Since #179 the token lives in the core's OS keyring (entry copilot/<id>), never in
+  // the store: `token` only holds one of an earlier version until main.ts
+  // (moveCopilotTokensToKeyring) hands it over; `username` marks a connected account.
   credentials: { token: string | null; username: string | null };
   // Client ID of a GitHub OAuth App registered by the user (not a secret — see
   // renderer/settings.ts): alternative to the PAT, registered on the account's host.
@@ -489,16 +492,4 @@ export interface AppSettings {
   // rescanning all local Claude Code sessions on every 30-minute refresh — see main.ts
   // LOCAL_INSIGHTS_RECOMPUTE_INTERVAL_MS.
   localInsightsCache: { claudeCode: ClaudeLocalInsights | null };
-}
-
-/** Credenziali passate a services/copilot.ts fetchUsage(). */
-export interface CopilotCredentials {
-  token: string;
-  accountScope?: AccountScope;
-  manualQuota?: number | null;
-  /**
-   * GitHub host of the account (services/githubHost.ts). Required: a forgotten host used
-   * to fall back to github.com silently, sending a tenant token there (v0.4.4/0.4.5).
-   */
-  host: string;
 }
