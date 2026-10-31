@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 
+	"github.com/suppressio/ia-hypermiler/gocore/internal/codex"
 	"github.com/suppressio/ia-hypermiler/gocore/internal/usage"
 )
 
@@ -22,6 +23,6 @@ type Registry map[string]func() Provider
 
 // Default returns the real binary's providers.
 func Default() Registry {
-	// #148 adds Codex; #149 adds Copilot. No real provider is registered yet.
-	return Registry{}
+	// #149 adds Copilot.
+	return Registry{"codex": func() Provider { return codex.New() }}
 }

@@ -2,7 +2,7 @@
 
 # CLI del core Go
 
-> Implementato in #26: contratto JSON v1 indipendente dal trasporto e output per terminale del livello 1 di #139. I provider reali arrivano separatamente.
+> Implementato in #26: contratto JSON v1 indipendente dal trasporto e output per terminale del livello 1 di #139. Adapter Codex implementato in #148; Copilot segue in #149.
 
 ## Comandi e ambito
 
@@ -12,7 +12,7 @@ hypermiler version [--json]
 hypermiler help
 ```
 
-La CLI recupera i dati su richiesta e termina. Non ci sono server, porte, daemon, store condiviso o snapshot del pacing. #31 servirà gli stessi documenti via HTTP; #177 aggiunge il client TypeScript. Il registry è attualmente vuoto: `hypermiler usage codex` fallisce con exit 2, `Unknown provider: codex`. I flag degli account saranno aggiunti da #148 (Codex) e #149 (Copilot); nessuno è ancora registrato. I test registrano un provider sintetico chiamato `fake`.
+La CLI recupera i dati su richiesta e termina. Non ci sono server, porte, daemon, store condiviso o snapshot del pacing. #31 servirà gli stessi documenti via HTTP; #177 aggiunge il client TypeScript. Codex è registrato (#148); Copilot segue in #149. Un provider sconosciuto come `hypermiler usage nope` fallisce con exit 2, `Unknown provider: nope`. I test registrano un provider sintetico chiamato `fake`.
 
 Mettere il provider prima dei suoi flag. Argomenti posizionali inattesi e flag sconosciuti sono errori di utilizzo.
 
@@ -23,6 +23,42 @@ Mettere il provider prima dei suoi flag. Argomenti posizionali inattesi e flag s
 | `--secret-stdin` | Legge stdin solo se il provider accetta secret. Massimo 64 KiB incluso il newline finale; rimuove un solo CRLF o LF finale, conservando gli altri spazi. Input vuoto, errori di lettura e input troppo grande sono errori di utilizzo. |
 
 I secret sono accettati solo su stdin, mai come flag: argv è visibile nell'elenco dei processi. I parametri dell'account vanno nei flag del provider, le credenziali no. Senza `--secret-stdin`, stdin non viene letto e Fetch riceve un secret vuoto. La CLI oscura il secret fornito nei messaggi di errore del provider e nelle motivazioni stale; i provider devono escludere le credenziali da tutti i campi di utilizzo restituiti, dalle etichette degli endpoint diagnostici e dai messaggi.
+
+## Provider
+
+### Codex
+
+```text
+hypermiler usage codex [--json] [--codex-bin /percorso/assoluto/a/codex]
+```
+
+`--codex-bin` seleziona un binario nativo esplicito; un percorso relativo o un binario assente/non eseguibile restituisce `unavailable`, senza fallback. Codex non accetta `--secret-stdin`: usa il login dell'utente nella CLI o nell'estensione. Il core esegue solo `codex app-server`, una volta per fetch, senza shell. Eredita l'ambiente invariato (incluso `CODEX_HOME`); Hypermiler non legge nulla sotto `CODEX_HOME`, nemmeno `auth.json`. Su Windows gira nella sessione di login dell'utente senza finestra console, per mantenere accessibili le credenziali nel keyring.
+
+Ordine di discovery:
+
+1. `--codex-bin` esplicito.
+2. `codex` nativo (`codex.exe` su Windows) nelle directory assolute del PATH, in ordine; su Windows salta gli shim `.cmd`, `.ps1` e senza estensione.
+3. Prefissi fissi macOS: `/opt/homebrew/bin/codex`, poi `/usr/local/bin/codex`.
+4. Percorsi globali npm: `NPM_CONFIG_PREFIX`, poi `npm_config_prefix` (`lib/node_modules` su Unix, `node_modules` su Windows); Windows `APPDATA/npm/node_modules`; Linux `/usr/lib/node_modules`, `/usr/local/lib/node_modules`, `~/.npm-global/lib/node_modules`; macOS `/usr/local/lib/node_modules`, `/opt/homebrew/lib/node_modules`.
+5. Estensione `openai.chatgpt-<version>[-<platform>]` con versione numericamente più recente e binario per l'OS corrente, tra `~/.vscode`, `.vscode-server`, `.vscode-insiders`, `.cursor`, `.windsurf`, `.vscode-oss` (`extensions/` sotto ciascuna). Usa `bin/linux-<arch>`, `bin/windows-<arch>`, oppure su macOS `bin/macos-<arch>` e poi `bin/darwin-<arch>`, con `x86_64`/`aarch64`.
+
+Su Unix, un candidato risolto in `@openai/codex/bin/codex.js` viene sostituito con il binario nativo nel `node_modules/@openai/<native-package>/vendor/<triple>/bin/` dello stesso pacchetto; se manca il nativo, salta il candidato. Controlla gli header eseguibili (ELF, Mach-O o PE per l’OS corrente); salta script shell e altri shim. Non avvia né `node` né lo shim JS. La discovery con Homebrew e su Apple Silicon richiede ancora verifica su macchine reali (#174).
+
+Handshake di sola lettura: `initialize` → `initialized` → `account/rateLimits/read` (`params: null`); chiama `account/read` (`refreshToken: false`) solo dopo `-32600` per distinguere le API key. Nessun metodo/flag di login, logout, consumo di reset credit, prompt o attivazione analytics. Ogni chiamata ha un timeout di 10 s entro la deadline CLI (default 25 s). Dopo la risposta chiude stdin e concede al figlio 3 s per terminare, poi lo uccide; in caso di errore lo uccide subito. Fetch attende sempre la pulizia. Stderr viene svuotato e mai loggato.
+
+| Condizione | Codice | Significato/messaggio |
+|---|---|---|
+| Binario non trovato | `unavailable` | `Codex CLI or VS Code extension not found; install it or set --codex-bin` |
+| Non connesso (`-32600`, senza API key) | `signed_out` | `Sign in with Codex (CLI or extension)` |
+| Login con API key | `unavailable` | `Codex is signed in with an API key, which has no subscription quota` |
+| Offline/errore RPC interno (`-32603`) | `unavailable` | `codex app-server: <rpc message>`; nessun dato fresco o risultato parziale |
+| Deadline della chiamata o del chiamante | `timeout` | Richiesta scaduta; processo raccolto prima del ritorno |
+| Struttura quota assente/nessuna finestra riconosciuta | `format_drift` | `Codex: no quota window recognized`, endpoint `codex app-server account/rateLimits/read`, sola shape |
+| Altri errori RPC / uscita anticipata del processo | `unavailable` | Codice e messaggio RPC / exit code del processo; mai stderr |
+
+Il mapping seleziona `rateLimitsByLimitId["codex"]` quando presente, altrimenti `rateLimits` (lo schema richiede comunque `rateLimits`). Gli altri bucket sono ignorati: il loro significato per piano non è verificato. Ignora anche `individualLimit`, `credits`, `rateLimitResetCredits` e `rateLimitUpsell`. Le fixture sintetiche in `internal/codex/testdata/` seguono gli schemi generati da codex 0.163.0; quella con shape sconosciuta viola intenzionalmente lo schema per provare il drift.
+
+Le finestre sono riconosciute dalla durata in `primary` o `secondary`; in caso di ID duplicato vince la prima. Ore intere positive sotto un giorno diventano `codex-<n>h`, `<n>-hour limit`, `rolling-hours`; giorni interi diventano `codex-<n>d`, `<n>-day limit`, `rolling-days`. Le finestre abituali restano quindi `codex-5h` / `5-hour limit` e `codex-7d` / `7-day limit`, preservando lo storico. Le altre durate sono saltate. `usedPercent` deve essere un numero non negativo e non viene mai limitato a 100; unità `percentage`, totale 100. `resetsAt` positivo in secondi Unix diventa una data UTC; reset assente/null/non positivo resta null. `planTier` è il `planType` del bucket scelto o null; `subscriptionRenewsAt` è sempre null.
 
 ## Output testuale
 
@@ -123,7 +159,7 @@ Sono le fixture normative su singola riga in `gocore/contract/v1/`; quella direc
 #### Errore negli argomenti
 
 ```json
-{"schemaVersion":1,"error":{"code":"usage","message":"Unknown provider: codex"}}
+{"schemaVersion":1,"error":{"code":"usage","message":"Unknown provider: nope"}}
 ```
 
 #### Versione

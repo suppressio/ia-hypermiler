@@ -2,7 +2,7 @@
 
 # Spike #142 — Quote di Codex da `codex app-server` (`account/rateLimits/read`)
 
-> Parte di #139. Stato: **completato su Linux, Windows (#158) e macOS Intel (#171), si procede come fonte Codex per il core Go.** Homebrew e Apple Silicon non sono ancora verificati: #174. I bucket in più dei piani business a pagamento andranno coperti da una fixture ricavata dallo schema nell'adapter Codex #148 (ancora da fare), non da un account vero.
+> Parte di #139. Stato: **completato su Linux, Windows (#158) e macOS Intel (#171), si procede come fonte Codex per il core Go.** Homebrew e Apple Silicon non sono ancora verificati: #174. I bucket in più dei piani business a pagamento sono coperti da una fixture sintetica ricavata dallo schema nell'adapter Codex #148, non da un account vero.
 
 ## Setup
 
@@ -64,7 +64,7 @@ Cosa guadagniamo: nessun cookie ChatGPT, nessuna finestra di login Electron né 
 - **macOS:** cercare nei prefissi fissi oltre che nel `PATH`, e sostituire lo shim npm `codex.js` con il binario nativo del suo pacchetto; mai contare sul `PATH` della shell né su `node`.
 - **Regole ferree:** eseguire solo il binario `codex` non modificato con il login dell'utente; mai leggere né copiare `auth.json`; mai passare `--analytics-default-enabled`; non chiamare `account/login/*`, `account/logout` né `account/rateLimitResetCredit/consume`; non connesso → stato "accedi con Codex", non un errore.
 - **Nessun ripiego con cookie nel core Go.** La via cookie di chatgpt.com (#82) resta solo nell'app Electron attuale, finché il core Go non la sostituisce.
-- **Prima del rilascio:** ricerca con Homebrew e su Apple Silicon (#174); una fixture ricavata dallo schema generato, con più bucket e `individualLimit`, provata nell'adapter Codex (#148): finestre note riconosciute dalla durata, bucket sconosciuti ignorati.
+- **Prima del rilascio:** ricerca con Homebrew e su Apple Silicon (#174); **completato in #148:** una fixture ricavata dallo schema generato, con più bucket e `individualLimit`, provata nell'adapter Codex: finestre note riconosciute dalla durata, bucket sconosciuti ignorati.
 
 ## Prototipo
 
