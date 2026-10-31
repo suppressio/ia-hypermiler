@@ -423,3 +423,37 @@ func TestOutputWriteFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestJSONFlagValue(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		args     []string
+		wantCode int
+		wantJSON bool
+	}{
+		{[]string{"version", "--json=false"}, cli.ExitOK, false},
+		{[]string{"version", "--json=true"}, cli.ExitOK, true},
+		{[]string{"version", "--json", "--json=false"}, cli.ExitOK, false},
+		{[]string{"version", "--json=false", "--json"}, cli.ExitOK, true},
+		{[]string{"help", "--json=false"}, cli.ExitOK, false},
+		{[]string{"unknown", "--json=false"}, cli.ExitUsage, false},
+		{[]string{"usage", "fake", "--bad", "--json=false"}, cli.ExitUsage, false},
+		{[]string{"usage", "fake", "--json=0"}, cli.ExitOK, false},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			t.Parallel()
+			code, out, errOut := run(t, tt.args, strings.NewReader(""), standardFake)
+			if code != tt.wantCode {
+				t.Fatalf("exit=%d; want %d (stdout=%q stderr=%q)", code, tt.wantCode, out, errOut)
+			}
+			isJSON := strings.HasPrefix(out, "{") && json.Valid([]byte(out))
+			if isJSON != tt.wantJSON {
+				t.Errorf("JSON output=%v; want %v (stdout=%q)", isJSON, tt.wantJSON, out)
+			}
+			if !tt.wantJSON && tt.wantCode == cli.ExitUsage && out != "" {
+				t.Errorf("text usage error wrote to stdout: %q", out)
+			}
+		})
+	}
+}

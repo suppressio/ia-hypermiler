@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,13 +61,16 @@ func RunWith(env Env, args []string) int {
 		return usageError(env, jsonMode, "Unknown command: "+command)
 	}
 	flags := newFlags(command)
-	flags.Bool("json", false, "Print the versioned JSON document")
+	jsonFlag := flags.Bool("json", false, "Print the versioned JSON document")
 	if err := flags.Parse(args[1:]); err != nil {
 		return flagError(env, jsonMode, err)
 	}
+	// Parsing stops at the first positional argument, so the flags after it are
+	// unparsed: the pre-parse guess answers that usage error.
 	if flags.NArg() != 0 {
 		return usageError(env, jsonMode, "Unexpected arguments")
 	}
+	jsonMode = *jsonFlag
 	if command != "version" {
 		if jsonMode {
 			return usageError(env, true, "Help is only available as text")
@@ -101,16 +105,19 @@ func runUsage(env Env, args []string, jsonMode bool) int {
 	}
 	p := factory()
 	flags := newFlags("usage " + p.ID())
-	flags.Bool("json", false, "Print the versioned JSON document")
+	jsonFlag := flags.Bool("json", false, "Print the versioned JSON document")
 	timeout := flags.Duration("timeout", 25*time.Second, "Fetch deadline (greater than 0, at most 2m)")
 	secretStdin := flags.Bool("secret-stdin", false, "Read the secret from stdin (at most 64 KiB)")
 	p.BindFlags(flags)
 	if err := flags.Parse(args[1:]); err != nil {
 		return flagError(env, jsonMode, err)
 	}
+	// Parsing stops at the first positional argument, so the flags after it are
+	// unparsed: the pre-parse guess answers that usage error.
 	if flags.NArg() != 0 {
 		return usageError(env, jsonMode, "Unexpected arguments")
 	}
+	jsonMode = *jsonFlag
 	if *timeout <= 0 || *timeout > 2*time.Minute {
 		return usageError(env, jsonMode, "Timeout must be greater than 0 and at most 2m")
 	}
@@ -198,13 +205,30 @@ func outputResult(env Env, err error, code int) int {
 	return code
 }
 
+// wantsJSON guesses the output format before the flags are parsed, so that an
+// invocation that fails before or during parsing still answers in the format
+// asked for. Like the flag package, the last occurrence wins and an explicit
+// false value (--json=false) means text. Once parsing succeeds the parsed value
+// replaces this guess.
 func wantsJSON(args []string) bool {
+	want := false
 	for _, arg := range args {
-		if arg == "--json" || arg == "-json" || strings.HasPrefix(arg, "--json=") || strings.HasPrefix(arg, "-json=") {
-			return true
+		if arg == "--" {
+			break
+		}
+		name, value, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if name != "json" || !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		if !hasValue {
+			want = true
+			continue
+		}
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			want = parsed
 		}
 	}
-	return false
+	return want
 }
 
 func redact(message, secret string) string {

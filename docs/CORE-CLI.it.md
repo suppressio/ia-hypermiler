@@ -18,7 +18,7 @@ Mettere il provider prima dei suoi flag. Argomenti posizionali inattesi e flag s
 
 | Flag comune | Comportamento |
 |---|---|
-| `--json` | Scrive su stdout un documento JSON compatto seguito da un solo newline; stderr contiene solo log. Riconosciuto ovunque negli argomenti, anche nei comandi non validi. |
+| `--json` | Scrive su stdout un documento JSON compatto seguito da un solo newline; stderr contiene solo log. È un flag booleano standard (`--json=false` vuol dire testo, vale l'ultima occorrenza); per un'invocazione che fallisce prima o durante il parsing dei flag è riconosciuto ovunque negli argomenti, così anche l'errore di uso è un documento JSON. |
 | `--timeout <duration>` | Deadline di Fetch, default `25s`; deve essere maggiore di zero e al massimo `2m`. Usa le durate Go, ad esempio `50ms`, `10s`. I provider devono rispettare la deadline del context. |
 | `--secret-stdin` | Legge stdin solo se il provider accetta secret. Massimo 64 KiB incluso il newline finale; rimuove un solo CRLF o LF finale, conservando gli altri spazi. Input vuoto, errori di lettura e input troppo grande sono errori di utilizzo. |
 

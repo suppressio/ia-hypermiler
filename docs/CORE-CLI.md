@@ -18,7 +18,7 @@ Put the provider before its flags. Unexpected positional arguments and unknown f
 
 | Common flag | Behavior |
 |---|---|
-| `--json` | Write one compact JSON document plus a single newline to stdout; stderr carries logs only. Recognized anywhere in the arguments, including invalid commands. |
+| `--json` | Write one compact JSON document plus a single newline to stdout; stderr carries logs only. A standard boolean flag (`--json=false` means text, the last occurrence wins); for an invocation that fails before or during flag parsing it is recognized anywhere in the arguments, so the usage error is a JSON document too. |
 | `--timeout <duration>` | Fetch deadline, default `25s`; must be greater than zero and at most `2m`. Uses Go durations, e.g. `50ms`, `10s`. Providers must honor the context deadline. |
 | `--secret-stdin` | Read stdin only if the provider accepts secrets. At most 64 KiB including a trailing newline; remove one final CRLF or LF, preserving other whitespace. Empty input, read failures and oversized input are usage errors. |
 
