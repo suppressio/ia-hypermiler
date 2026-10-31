@@ -52,8 +52,15 @@ func RunWith(env Env, args []string) int {
 		return usageError(env, jsonMode, "A command is required")
 	}
 	command := args[0]
-	if command == "usage" {
+	switch command {
+	case "usage":
 		return runUsage(env, args[1:], jsonMode)
+	case "token":
+		return runToken(env, args[1:], jsonMode)
+	case "login":
+		return runLogin(env, args[1:], jsonMode)
+	case "raw":
+		return runRaw(env, args[1:], jsonMode)
 	}
 	switch command {
 	case "help", "-h", "--help", "version":
@@ -93,55 +100,25 @@ func RunWith(env Env, args []string) int {
 }
 
 func runUsage(env Env, args []string, jsonMode bool) int {
-	if len(args) == 0 {
-		return usageError(env, jsonMode, "A provider is required")
-	}
-	if args[0] == "--help" || args[0] == "-h" {
-		return flagError(env, jsonMode, flag.ErrHelp)
-	}
-	factory, ok := env.Providers[args[0]]
+	var secretStdin *bool
+	cmd, code, ok := parseProviderCommand(env, "usage", args, jsonMode, 25*time.Second, 2*time.Minute, func(_ provider.Provider, fs *flag.FlagSet) {
+		secretStdin = fs.Bool("secret-stdin", false, "Read the secret from stdin (at most 64 KiB)")
+	})
 	if !ok {
-		return usageError(env, jsonMode, "Unknown provider: "+args[0])
+		return code
 	}
-	p := factory()
-	flags := newFlags("usage " + p.ID())
-	jsonFlag := flags.Bool("json", false, "Print the versioned JSON document")
-	timeout := flags.Duration("timeout", 25*time.Second, "Fetch deadline (greater than 0, at most 2m)")
-	secretStdin := flags.Bool("secret-stdin", false, "Read the secret from stdin (at most 64 KiB)")
-	p.BindFlags(flags)
-	if err := flags.Parse(args[1:]); err != nil {
-		return flagError(env, jsonMode, err)
-	}
-	// Parsing stops at the first positional argument, so the flags after it are
-	// unparsed: the pre-parse guess answers that usage error.
-	if flags.NArg() != 0 {
-		return usageError(env, jsonMode, "Unexpected arguments")
-	}
-	jsonMode = *jsonFlag
-	if *timeout <= 0 || *timeout > 2*time.Minute {
-		return usageError(env, jsonMode, "Timeout must be greater than 0 and at most 2m")
-	}
+	p := cmd.provider
 	secret := ""
 	if *secretStdin {
 		if !p.AcceptsSecret() {
-			return usageError(env, jsonMode, "Provider does not accept a secret on stdin")
+			return usageError(env, cmd.json, "Provider does not accept a secret on stdin")
 		}
-		data, err := io.ReadAll(io.LimitReader(env.Stdin, maxSecretBytes+1))
-		if err != nil {
-			return usageError(env, jsonMode, "Cannot read secret from stdin")
-		}
-		if len(data) > maxSecretBytes {
-			return usageError(env, jsonMode, "Secret exceeds 64 KiB")
-		}
-		secret = strings.TrimSuffix(string(data), "\r\n")
-		if secret == string(data) {
-			secret = strings.TrimSuffix(secret, "\n")
-		}
-		if secret == "" {
-			return usageError(env, jsonMode, "Secret on stdin is empty")
+		var message string
+		if secret, message = readSecret(env.Stdin); message != "" {
+			return usageError(env, cmd.json, message)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), cmd.timeout)
 	defer cancel()
 	u, err := p.Fetch(ctx, secret)
 	// A provider that wraps or replaces the deadline error still reports a timeout;
@@ -150,21 +127,14 @@ func runUsage(env Env, args []string, jsonMode bool) int {
 		err = ctx.Err()
 	}
 	if err != nil {
-		classified := *usage.ClassifyError(err)
-		classified.Message = redact(classified.Message, secret)
-		classified.Endpoint = redact(classified.Endpoint, secret)
-		if jsonMode {
-			return outputResult(env, usage.WriteError(env.Stdout, p.ID(), &classified), ExitProviderError)
-		}
-		_, _ = fmt.Fprintf(env.Stderr, "%s: %s\n", p.ID(), oneLine(classified.Message))
-		return ExitProviderError
+		return providerFailure(env, cmd, err, secret)
 	}
 	if u.Stale != nil {
 		stale := *u.Stale
 		stale.Message = redact(stale.Message, secret)
 		u.Stale = &stale
 	}
-	if jsonMode {
+	if cmd.json {
 		return outputResult(env, usage.WriteSuccess(env.Stdout, p.ID(), u, env.Now()), ExitOK)
 	}
 	var text strings.Builder
@@ -243,5 +213,20 @@ func oneLine(message string) string {
 }
 
 func printUsage(w io.Writer) {
-	_, _ = fmt.Fprintf(w, "Usage: %s <command>\n\nCommands:\n  usage <provider> [flags]  Fetch account usage\n  version [--json]         Print version and platform\n  help                     Show this help\n\nUsage flags:\n  --json                Print the versioned JSON document\n  --timeout <duration>  Fetch deadline (default 25s, greater than 0, at most 2m)\n  --secret-stdin        Read a secret from stdin (at most 64 KiB, if supported)\n", buildinfo.Name)
+	_, _ = fmt.Fprintf(w, `Usage: %s <command>
+
+Commands:
+  usage <provider> [flags]         Fetch account usage
+  token set <provider> [flags]     Check a token read from stdin and keep it in the OS keyring
+  token delete <provider> [flags]  Remove the account's token from the OS keyring
+  login <provider> [flags]         Sign in with an OAuth App (client secret on stdin)
+  raw <provider> [flags]           Print the provider's raw usage response (JSON, for diagnostics)
+  version [--json]                 Print version and platform
+  help                             Show this help
+
+Common flags:
+  --json                Print the versioned JSON document(s)
+  --timeout <duration>  Deadline (usage/token/raw: default 25s, at most 2m; login: default 5m, at most 15m)
+  --secret-stdin        usage only: read a secret from stdin (at most 64 KiB, if supported)
+`, buildinfo.Name)
 }

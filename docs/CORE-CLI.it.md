@@ -2,17 +2,21 @@
 
 # CLI del core Go
 
-> Implementato in #26: contratto JSON v1 indipendente dal trasporto e output per terminale del livello 1 di #139. Adapter Codex implementato in #148; Copilot segue in #149.
+> Implementato in #26: contratto JSON v1 indipendente dal trasporto e output per terminale del livello 1 di #139. Adapter Codex implementato in #148, Copilot in #149.
 
 ## Comandi e ambito
 
 ```text
 hypermiler usage <provider> [--json] [--timeout <duration>] [--secret-stdin] [provider flags]
+hypermiler token set <provider> [--json] [provider flags]      # token su stdin
+hypermiler token delete <provider> [--json] [provider flags]
+hypermiler login <provider> [--json] [--timeout 5m] [provider flags] [login flags]   # client secret su stdin
+hypermiler raw <provider> [provider flags]
 hypermiler version [--json]
 hypermiler help
 ```
 
-La CLI recupera i dati su richiesta e termina. Non ci sono server, porte, daemon, store condiviso o snapshot del pacing. #31 servirà gli stessi documenti via HTTP; #177 aggiunge il client TypeScript. Codex è registrato (#148); Copilot segue in #149. Un provider sconosciuto come `hypermiler usage nope` fallisce con exit 2, `Unknown provider: nope`. I test registrano un provider sintetico chiamato `fake`.
+La CLI recupera i dati su richiesta e termina. Non ci sono server, porte, daemon, store condiviso o snapshot del pacing. #31 servirà gli stessi documenti via HTTP; #177 aggiunge il client TypeScript. Codex (#148) e Copilot (#149) sono registrati; `token`, `login` e `raw` sono di Copilot (comandi per l'account, sotto). Un provider sconosciuto come `hypermiler usage nope` fallisce con exit 2, `Unknown provider: nope`. I test registrano un provider sintetico chiamato `fake`.
 
 Mettere il provider prima dei suoi flag. Argomenti posizionali inattesi e flag sconosciuti sono errori di utilizzo.
 
@@ -60,6 +64,25 @@ Il mapping seleziona `rateLimitsByLimitId["codex"]` quando presente, altrimenti 
 
 Le finestre sono riconosciute dalla durata in `primary` o `secondary`; in caso di ID duplicato vince la prima. Ore intere positive sotto un giorno diventano `codex-<n>h`, `<n>-hour limit`, `rolling-hours`; giorni interi diventano `codex-<n>d`, `<n>-day limit`, `rolling-days`. Le finestre abituali restano quindi `codex-5h` / `5-hour limit` e `codex-7d` / `7-day limit`, preservando lo storico. Le altre durate sono saltate. `usedPercent` deve essere un numero non negativo e non viene mai limitato a 100; unità `percentage`, totale 100. `resetsAt` positivo in secondi Unix diventa una data UTC; reset assente/null/non positivo resta null. `planTier` è il `planType` del bucket scelto o null; `subscriptionRenewsAt` è sempre null.
 
+### Copilot
+
+`hypermiler usage copilot --account <id> [--host github.com|<tenant>.ghe.com] [--scope personal|organization] [--manual-quota <crediti>]`, port di `services/copilot.ts` (#149).
+
+- **Il token sta nel keyring dell'OS** (deciso su #179; libreria `github.com/zalando/go-keyring`): Gestione credenziali di Windows, Portachiavi di macOS (tramite `/usr/bin/security` con il segreto sul suo stdin), Secret Service su Linux. Servizio `hypermiler`, voce `copilot/<id account>`. Non passa mai da argv, dallo stdin di `usage` o da un documento JSON. Non c'è ripiego su file: un keyring irraggiungibile (per esempio una sessione Linux senza Secret Service, o un logon SSH su Windows senza la sessione di logon dell'utente, come per Codex in #158) è `unavailable` con reason `keyring_unavailable`.
+- `--account` è obbligatorio (lettere, cifre, `.`, `_`, `-`, al massimo 128): dà il nome alla voce del keyring. `--host` deve normalizzarsi in `github.com` o `<tenant>.ghe.com` (il token va solo lì: API su `api.<host>`, OAuth su `<host>/login/oauth`). Flag non validi sono errori di uso (exit 2), prima di qualsiasi accesso a keyring o rete.
+- **Fonti**, come nel servizio TypeScript: `copilot_internal/user` (l'endpoint non documentato dietro l'indicatore di quota di VS Code) per entrambi gli ambiti; per l'ambito personale, quando non ha quote, il report di billing (`ai_credit/usage`, poi `premium_request/usage` su un 404 o un 400 "Unable to get billing usage data") con `--manual-quota` come totale. Ogni richiesta ha un timeout di 10 s.
+- **Finestre**: una per categoria di `quota_snapshots`, nell'ordine delle chiavi della risposta, id = la chiave della categoria, etichetta `Copilot — <chiave>`, `billing-cycle` di 1 mese, regole di VS Code (illimitata → crediti usati senza totale, niente se sono zero; entitlement > 0 → entitlement − rimanenti sull'entitlement; entitlement 0 → niente; altrimenti la percentuale). Report di billing → `ai_credits` / `AI credits`, conteggio, reset e rinnovo il 1° del mese UTC successivo. Stessi id di prima, così lo storico salvato continua a combaciare.
+- **Errori**: nessun token salvato → `signed_out`, reason `not_connected`; GitHub risponde 401 → `signed_out`, reason `token_rejected`; licenza github.com gestita da un'enterprise (nessun dato, #7) → `unavailable`, reason `enterprise_managed_seat`; nessuna categoria riconosciuta o niente `usageItems` → `format_drift` con la shape.
+
+## Comandi per l'account
+
+Gestiscono nel core le credenziali dell'account di un provider (per ora solo Copilot). I loro documenti seguono le stesse regole degli altri (un documento compatto per riga, `schemaVersion` 1, documenti di errore ed exit code come per `usage`).
+
+- `token set <provider>`: legge un token (un PAT GitHub) su stdin, lo verifica con `GET /user`, lo salva nel keyring sotto `--account` e stampa `{"schemaVersion":1,"provider":"copilot","username":"<login>"}`. Un token rifiutato non viene mai salvato. È anche il modo in cui Electron consegna il token che teneva prima di #179.
+- `token delete <provider>`: rimuove il token dell'account (disconnessione, rimozione dell'account); cancellare un token assente non è un errore. Stampa `{"schemaVersion":1,"provider":"copilot","deleted":true}`.
+- `login <provider> --client-id <id> [--locale en|it]`: accesso con OAuth App, Authorization Code + PKCE sul loopback `http://127.0.0.1:8123/callback` (la callback registrata nella GitHub OAuth App dell'utente; port di `main/copilot-oauth.ts`). Il **client secret** si legge su stdin. Il core non avvia browser: con `--json` stampa prima l'evento `{"schemaVersion":1,"provider":"copilot","event":"authorize","url":"<URL di autorizzazione>"}` che il chiamante apre (Electron: `shell.openExternal`), poi attende (default `--timeout 5m`, al massimo `15m`); dopo la callback scambia il codice (10 s), verifica il token con `GET /user`, lo salva e stampa il documento con `username`. Quindi stdout porta **due** documenti, uno per riga. Senza `--json` stampa l'URL da aprire, poi `Copilot: connected as <login>`. La pagina del browser dopo la callback è nella lingua di `--locale`. Accesso negato, state falsificato o scambio fallito → `unavailable`; nessuna autorizzazione in tempo → `timeout`; porta 8123 occupata → `unavailable`.
+- `raw <provider>`: la risposta grezza di utilizzo del provider, **con i suoi valori**, per il report di diagnosi (il client la redige prima di scrivere il file): `{"schemaVersion":1,"provider":"copilot","endpoint":"{api}/copilot_internal/user","response":{…}}`. Sempre JSON.
+
 ## Output testuale
 
 L'output predefinito è per persone e agenti nel terminale, **non è un contratto stabile**. Una riga per finestra, ad esempio:
@@ -85,7 +108,7 @@ Tutte le date sono stringhe UTC RFC 3339 con `Z`, alla precisione del secondo. T
 | `stale` | booleano, solo successo | Il provider ha restituito gli ultimi valori noti invece di dati freschi. |
 | `staleReason` | `{code, message}`, solo quando stale | Motivo del fallback, con i codici di errore dei provider. Qui non ci sono endpoint o shape. |
 | `usage` | `RawAccountUsage`, solo successo | Dati del provider, senza pacing o cronologia. |
-| `error` | oggetto, solo errori | `code` stabile e `message` leggibile; format drift ha anche `endpoint` e `shape`. |
+| `error` | oggetto, solo errori | `code` stabile e `message` leggibile; format drift ha anche `endpoint` e `shape`. `reason` facoltativo (additivo, #149): un caso noto dentro il codice, così un client può spiegarlo nella lingua dell'utente senza analizzare `message`. Reason note: `not_connected`, `token_rejected` (con `signed_out`); `enterprise_managed_seat`, `keyring_unavailable` (con `unavailable`). Un client ignora una reason che non conosce. |
 | `name`, `version`, `os`, `arch` | stringhe, solo documento version | Identità del binario, versione di build (default `dev`), OS e architettura Go. |
 
 ### Campi usage e quota
@@ -199,4 +222,4 @@ Con `--json`, gli errori di utilizzo non hanno la chiave provider. L'help è sol
 
 I campi aggiuntivi mantengono `schemaVersion: 1`; i client devono ignorare i campi sconosciuti. Rimuovere o rinominare un campo, o cambiarne il significato, incrementa la versione dello schema. Un client che vede una versione dello schema non supportata deve rifiutare esplicitamente il documento. Un codice di errore sconosciuto viene trattato come `unavailable`, conservando gli ultimi valori come stale.
 
-I file indipendenti dalla lingua in `gocore/contract/v1/` sono esempi normativi. I test black-box Go della CLI riproducono ogni fixture byte per byte attraverso `RunWith`, un provider fake e un orologio fisso. I test del client TypeScript (`main/coreClient.test.ts`, #177) leggono gli stessi file. `version.json` usa `hypermiler`, `dev`, `linux`, `amd64`; il suo test Go sostituisce `buildinfo.Name`, `buildinfo.Version`, `runtime.GOOS` e `runtime.GOARCH` prima del confronto byte per byte per supportare versioni impostate in build ed esecuzioni multipiattaforma. Ogni fixture viene anche verificata come JSON compatto valido con `schemaVersion: 1` ed esattamente un newline finale.
+I file indipendenti dalla lingua in `gocore/contract/v1/` sono esempi normativi. I test black-box Go della CLI riproducono ogni fixture byte per byte attraverso `RunWith`, un provider fake e un orologio fisso. I test del client TypeScript (`main/coreClient.test.ts`, #177) leggono gli stessi file. `version.json` usa `hypermiler`, `dev`, `linux`, `amd64`; il suo test Go sostituisce `buildinfo.Name`, `buildinfo.Version`, `runtime.GOOS` e `runtime.GOARCH` prima del confronto byte per byte per supportare versioni impostate in build ed esecuzioni multipiattaforma. Ogni fixture viene anche verificata come JSON compatto valido con `schemaVersion: 1` ed esattamente un newline finale. I documenti per l'account (`account-connected`, `account-deleted`, `login-authorize`, `raw`) ed `error-unavailable-reason` sono arrivati con #149; il client TypeScript li legge da #179. I documenti sono scritti senza escape HTML (un URL mantiene una `&` letterale).

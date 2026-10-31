@@ -27,12 +27,20 @@ const FIXTURES = path.join(__dirname, '..', '..', 'gocore', 'contract', 'v1');
 const fixture = (name: string): string => fs.readFileSync(path.join(FIXTURES, `${name}.json`), 'utf8');
 const runOf = (name: string, exitCode: number): CoreRun => ({ exitCode, stdout: fixture(name) });
 
+// The account documents (token set/delete, login, raw) and the error reason come with
+// the Copilot adapter (#149); this client reads them from #179.
+const READ_FROM_179 = ['account-connected.json', 'account-deleted.json', 'error-unavailable-reason.json', 'login-authorize.json', 'raw.json'];
+
 test('every shared fixture is read by this client (none left untested)', () => {
-  const files = fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.json')).sort();
+  const files = fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.json') && !READ_FROM_179.includes(f)).sort();
   assert.deepEqual(files, [
     'error-format-drift.json', 'error-not-ready.json', 'error-signed-out.json', 'error-timeout.json',
     'error-unavailable.json', 'error-usage.json', 'usage-count-window.json', 'usage-ok.json', 'usage-stale.json', 'version.json',
   ]);
+});
+
+test('an error reason (additive field) is ignored until #179 reads it', () => {
+  assert.throws(() => parseUsageRun(runOf('error-unavailable-reason', 1), 'fake'), (err: unknown) => err instanceof CoreProviderError && err.code === 'unavailable');
 });
 
 test('usage-ok: RawAccountUsage with ISO strings, every window field', () => {

@@ -29,7 +29,7 @@ Instructions for every coding agent (Claude Code, Codex, pi, Copilot). Read it i
 | Packaging | electron-builder |
 | Runtime | Node.js 22 LTS |
 
-**Do not add dependencies without asking.** Every new library must be justified and agreed before installing it. (Agreed so far: TypeScript, `@types/node`, `@anthropic-ai/claude-agent-sdk`, ESLint + `@eslint/js` + `typescript-eslint` as dev dependencies.)
+**Do not add dependencies without asking.** Every new library must be justified and agreed before installing it. (Agreed so far: TypeScript, `@types/node`, `@anthropic-ai/claude-agent-sdk`, ESLint + `@eslint/js` + `typescript-eslint` as dev dependencies; in the Go core, `github.com/zalando/go-keyring` for the OS keyring, approved on #179.)
 
 ---
 
@@ -70,6 +70,9 @@ ia-hypermiler/
 │       ├── buildinfo/           ← binary name and build-time version
 │       ├── cli/                 ← command dispatch and exit codes
 │       ├── codex/               ← native binary discovery, one-shot app-server probe and quota mapping
+│       ├── copilot/             ← Copilot usage (port of services/copilot.ts), token set/delete, OAuth PKCE login, raw response
+│       ├── github/              ← allowed GitHub hosts (github.com, <tenant>.ghe.com) and JSON client with a 10 s timeout
+│       ├── secrets/             ← OS keyring (go-keyring): the Copilot token, never in argv or documents
 │       ├── config/              ← OS config directory and development override
 │       ├── logging/             ← stderr text logger and level selection
 │       ├── pacing/              ← pure pacing model
