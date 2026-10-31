@@ -18,12 +18,32 @@ type tree struct {
 	root, home string
 	env        map[string]string
 	links      map[string]string
+	noExec     map[string]bool
+}
+
+// simulatedInfo gives fixture files the executable bits of the simulated OS
+// instead of the host's: on a Windows host os.Stat never reports them, so the
+// Linux/macOS cases would fail there.
+type simulatedInfo struct {
+	fs.FileInfo
+	noExec bool
+}
+
+func (i simulatedInfo) Mode() fs.FileMode {
+	mode := i.FileInfo.Mode()
+	if !mode.IsRegular() {
+		return mode
+	}
+	if i.noExec {
+		return mode&^0o777 | 0o600
+	}
+	return mode&^0o777 | 0o700
 }
 
 func newTree(t *testing.T, goos, arch string) *tree {
 	t.Helper()
 	root := t.TempDir()
-	tree := &tree{root: root, home: filepath.Join(root, "home"), env: map[string]string{}, links: map[string]string{}}
+	tree := &tree{root: root, home: filepath.Join(root, "home"), env: map[string]string{}, links: map[string]string{}, noExec: map[string]bool{}}
 	tree.d = codex.Discovery{
 		ReadHeader: func(path string) ([4]byte, error) {
 			var header [4]byte
@@ -34,8 +54,14 @@ func newTree(t *testing.T, goos, arch string) *tree {
 			copy(header[:], data)
 			return header, nil
 		},
-		Getenv:  func(key string) string { return tree.env[key] },
-		Stat:    func(path string) (fs.FileInfo, error) { return os.Stat(tree.local(path)) },
+		Getenv: func(key string) string { return tree.env[key] },
+		Stat: func(path string) (fs.FileInfo, error) {
+			info, err := os.Stat(tree.local(path))
+			if err != nil {
+				return nil, err
+			}
+			return simulatedInfo{info, tree.noExec[path]}, nil
+		},
 		ReadDir: func(path string) ([]os.DirEntry, error) { return os.ReadDir(tree.local(path)) },
 		EvalSymlinks: func(path string) (string, error) {
 			if target, ok := tree.links[path]; ok {
@@ -108,7 +134,11 @@ func TestDiscoveryOrder(t *testing.T) {
 	}
 	npm := tree.file(t, nativeFile(modules, pkg, triple, filename))
 	extension := tree.file(t, filepath.Join(tree.home, ".vscode", "extensions", "openai.chatgpt-26.1021.22027", "bin", platform, filename))
-	tree.env["PATH"] = filepath.Dir(path1) + string(os.PathListSeparator) + filepath.Dir(path2)
+	// A quoted entry is valid only on Windows, where it is common for paths with spaces.
+	tree.env["PATH"] = filepath.Dir(path1) + ":" + filepath.Dir(path2)
+	if goos == "windows" {
+		tree.env["PATH"] = filepath.Dir(path1) + ";" + `"` + filepath.Dir(path2) + `"`
+	}
 	tree.env["NPM_CONFIG_PREFIX"] = prefix
 	assertDiscover(t, tree, explicit, explicit)
 	assertDiscover(t, tree, filepath.Join(tree.root, "missing"), "")
@@ -253,13 +283,9 @@ func TestDiscoveryFailure(t *testing.T) {
 	if err == nil || err.Error() != "Codex CLI or VS Code extension not found; install it or set --codex-bin" {
 		t.Fatalf("error = %v", err)
 	}
-	if runtime.GOOS != "windows" {
-		path := tr.file(t, filepath.Join(tr.root, "codex"))
-		if chmodErr := os.Chmod(path, 0o600); chmodErr != nil {
-			t.Fatal(chmodErr)
-		}
-		assertDiscover(t, tr, path, "")
-	}
+	path := tr.file(t, filepath.Join(tr.root, "codex"))
+	tr.noExec[path] = true
+	assertDiscover(t, tr, path, "")
 }
 
 func TestDiscoverySkipsScripts(t *testing.T) {
@@ -273,4 +299,26 @@ func TestDiscoverySkipsScripts(t *testing.T) {
 	native := tr.file(t, filepath.Join(tr.home, ".vscode", "extensions", "openai.chatgpt-26.1.0", "bin", "linux-x86_64", "codex"))
 	assertDiscover(t, tr, shim, "")
 	assertDiscover(t, tr, "", native)
+}
+
+func TestSplitPathList(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		goos, value string
+		want        []string
+	}{
+		{"linux", "/usr/bin:/opt/codex", []string{"/usr/bin", "/opt/codex"}},
+		{"linux", "", nil},
+		{"windows", `C:\Windows;"D:\Tools\Codex";E:\bin`, []string{`C:\Windows`, `D:\Tools\Codex`, `E:\bin`}},
+		{"windows", `"D:\a;b\Codex";C:\x`, []string{`D:\a;b\Codex`, `C:\x`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.goos+" "+tt.value, func(t *testing.T) {
+			t.Parallel()
+			got := codex.SplitPathListForTest(tt.value, tt.goos)
+			if strings.Join(got, "|") != strings.Join(tt.want, "|") || len(got) != len(tt.want) {
+				t.Errorf("splitPathList(%q) = %q; want %q", tt.value, got, tt.want)
+			}
+		})
+	}
 }
