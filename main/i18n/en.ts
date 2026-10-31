@@ -41,7 +41,6 @@ export const en = {
   'notify.updateAvailable': 'Version {version} is available: open Settings → Updates to download it.',
 
   'startup.failedTitle': 'IA Hypermiler could not start',
-  'login.codexWindowTitle': 'Sign in to ChatGPT (Codex)',
 
   'oauth.successTitle': 'GitHub sign-in complete',
   'oauth.successMessage': 'Authentication succeeded.',
@@ -52,6 +51,7 @@ export const en = {
 
   'error.sessionExpired': 'Session expired or invalid — reconnect the account from Settings. ({detail})',
   'error.invalidGithubHost': 'GitHub domain not supported: use github.com or your company domain <name>.ghe.com.',
+  'error.codexSignedOut': 'Sign in with Codex on this computer (CLI: `codex login`, or the Codex extension of VS Code): this app reads the usage through your Codex sign-in and stores no ChatGPT session.',
   'error.coreMissing': 'The IA Hypermiler core cannot be started: reinstall the app (in development run `npm start`, which builds it, or set HYPERMILER_CORE_BIN). ({detail})',
   'error.coreTimeout': 'The IA Hypermiler core did not answer in time; the last values stay shown and the next refresh retries.',
   'error.coreBadOutput': 'The IA Hypermiler core gave an answer this version cannot read: update the app or report it. ({detail})',

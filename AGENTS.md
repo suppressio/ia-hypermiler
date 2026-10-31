@@ -79,13 +79,12 @@ ia-hypermiler/
 │   └── usage.ts                 ← fetch orchestration + snapshot computation (createUsageCore, computeAccountSnapshot…): store, provider fetch, local insights, clock and error reporting injected, no Electron (+ usage.test.ts)
 ├── main/
 │   ├── ipc.ts                   ← typed handle/listen/sendToRenderer wrappers keyed on types/ipc.ts
+│   ├── core.ts                  ← the app's one core client (binary resolved per call)
 │   ├── coreClient.ts            ← runs the bundled core CLI (execFile, no shell, timeout, --json, secrets on stdin) and parses contract v1 against gocore/contract/v1 (+ test)
 │   ├── windows.ts               ← main window (skins filled/filled-dark/transparent-digital) and Settings window
 │   ├── tray.ts                  ← cross-platform tray; createTray returns { tray, refreshMenu }
 │   ├── trayBadge.ts             ← tray usage badge: account choice, tone, icon bitmap (+ test)
 │   ├── claude-auth.ts           ← cleanup of claude.ai sessions stored by earlier versions (no Claude sign-in since #140)
-│   ├── codex-auth.ts            ← ChatGPT login in a per-account partition, stock User-Agent
-│   ├── codex-session-cookie.ts  ← recognizes ChatGPT session cookies, including chunks (+ test)
 │   ├── providers.ts             ← provider-specific part of the account registry (connection, fetch, disconnect, secret redaction)
 │   ├── refreshPolicy.ts         ← adaptive refresh pace, per-account backoff, manual-refresh cache (+ test)
 │   ├── copilot-oauth.ts         ← GitHub OAuth App login (loopback PKCE), experimental alternative to the PAT (+ test)
@@ -103,7 +102,6 @@ ia-hypermiler/
 ├── services/
 │   ├── _http.ts                 ← shared fetch helper (10s timeout, explicit errors)
 │   ├── _shape.ts                ← response → structure only (never values), FormatDriftError (+ test)
-│   ├── codex.ts                 ← ChatGPT session → ephemeral Bearer → Codex usage (+ test)
 │   ├── copilot.ts               ← Copilot usage fetch (+ test)
 │   ├── claudeLocalSessions.ts   ← insights from LOCAL Claude Code sessions, opt-in (+ test)
 │   ├── claudeLocalSessions.worker.ts ← utility-process entry: the scan runs off the main process
@@ -145,16 +143,16 @@ ia-hypermiler/
 - Think through every path on Windows, macOS and Linux before writing it.
 
 ### Service interface
-Every usage service (`services/copilot.ts`, `services/codex.ts`) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
+Every TypeScript usage service (`services/copilot.ts`; Codex is read by the Go core since #178 and Copilot follows in #179) exports exactly (full types in `types/index.ts`, multi-window rationale in docs/ARCHITECTURE.md §0):
 
 ```ts
-export async function fetchUsage(credentials: CopilotCredentials | CodexCredentials): Promise<RawAccountUsage> { ... }
+export async function fetchUsage(credentials: CopilotCredentials): Promise<RawAccountUsage> { ... }
 
 // RawAccountUsage = { planTier, subscriptionRenewsAt, quotaWindows: QuotaWindow[] }
 // QuotaWindow    = { id, label, periodType, periodLength, unit: 'percentage'|'count', used, total, resetsAt }
 ```
 
-When a service cannot get the data it **throws an explicit error** with a readable message — never returns `null`/`undefined` silently. No `dailyHistory` from services: none of these providers exposes it, the daily history is built locally by `main.ts` in `store.history.dailyUsage` on every successful refresh. Adding a provider = a service with `fetchUsage` + a branch in every function of `main/providers.ts` (exhaustive switches make tsc fail if one is forgotten) + a detail template in `settings.html` + dictionary keys.
+When a service cannot get the data it **throws an explicit error** with a readable message — never returns `null`/`undefined` silently. No `dailyHistory` from services: none of these providers exposes it, the daily history is built locally by `main.ts` in `store.history.dailyUsage` on every successful refresh. A provider read by the core (Codex) returns the same `RawAccountUsage` through `main/core.ts` (`hypermiler usage <provider> --json`, docs/CORE-CLI.md); its adapter lives in `gocore/internal/`. Adding a provider = an adapter in the core (or, until the migration ends, a service with `fetchUsage`) + a branch in every function of `main/providers.ts` (exhaustive switches make tsc fail if one is forgotten) + a detail template in `settings.html` + dictionary keys.
 
 ### Error handling
 - Every network call has an explicit timeout (max 10 seconds) — use `services/_http.ts`.
@@ -237,6 +235,7 @@ Implemented in `budget.ts` (do not duplicate it here: update this section only i
 
 - Do not invent API endpoints not documented in `docs/RESEARCH.md`.
 - Do not sign in to claude.ai or collect, store or forward claude.ai credentials or session tokens (#140): Anthropic forbids it for third-party apps ([Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)). Claude data may come only through Anthropic's own binaries and sign-in (#139).
+- Do not sign in to chatgpt.com or store ChatGPT cookies or tokens: Codex is read only through the user's own unmodified `codex` binary and sign-in, by the Go core (#142, #178). Never read or copy `auth.json` or anything under `CODEX_HOME`.
 - Animations are allowed but must be switchable off in Settings, low-key, carry state, and off with `prefers-reduced-motion`. Keep them in the visible widget renderer only (never the tray), animate only `opacity`/`transform`, and stop timers when hidden. With animations disabled, only the refresh icon rotates during refresh; reduced motion uses a static refresh state. Not an animation: the tray badge's critical alert (#122) alternates the normal frame with the alert frame every 2 s while another view is over the threshold. It carries information that would otherwise stay hidden, changes state far below the WCAG flash limit (3/s), and does not follow `ui.animations` or reduced motion.
 - Do not expose secrets or credentials in any git-tracked file.
 - Do not use `any`. If a type is really dynamic use `unknown` with explicit narrowing.
@@ -339,8 +338,8 @@ Condensed history; the full session-by-session log is in the git history (CLAUDE
 | 2026-10-25 | v0.4.18-beta | Hotfix: no claude.ai sign-in and stored sessions deleted, Anthropic forbids third-party apps from storing claude.ai session tokens; Claude accounts keep the local insights, quotas return with the Go core (#140, #139) |
 
 ### Lessons learned (still relevant)
-- **Codex login User-Agent**: Google refuses embedded login when a rewritten User-Agent contradicts the client hints. Never change the UA of the Codex login window or its partition.
-- **ChatGPT usage authentication**: cookies alone get 401 on `wham/usage`; the Bearer from `/api/auth/session` is required. Node `fetch` works with the partition cookies + UA (probe #86, docs/RESEARCH.md §6); `session.fetch` is the fallback.
+- **Codex login User-Agent** (historical: the chatgpt.com login route was removed in #178): Google refuses embedded login when a rewritten User-Agent contradicts the client hints. Never change the UA of the Codex login window or its partition.
+- **ChatGPT usage authentication** (historical, #178): cookies alone get 401 on `wham/usage`; the Bearer from `/api/auth/session` is required. Node `fetch` works with the partition cookies + UA (probe #86, docs/RESEARCH.md §6); `session.fetch` is the fallback.
 - **electron-store shallow merge**: new nested fields were `undefined` on existing stores → solved by `store/normalize.ts`.
 - **ESM-only SDK in a CommonJS main process**: `require()` and even a TS-compiled `import()` fail with ERR_REQUIRE_ESM inside Electron → `new Function('s', 'return import(s)')` in `services/claudeLocalSessions.ts`.
 - **claude.ai behind Cloudflare**: `sessionKey` alone gets a 403 challenge; the full cookie header (incl. `cf_clearance`) + a browser User-Agent are needed. Usage field names are obfuscated and rotate → windows are recognized by value shape.

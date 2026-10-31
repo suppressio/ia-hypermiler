@@ -32,7 +32,7 @@ npm run coverage   # test con la coverage integrata di Node
 ```
 
 - I **test unitari** girano sempre e non toccano mai la rete (`fetch` e l'SDK sono simulati). I dati di test sono solo sintetici.
-- I **test di integrazione** (`tests/integration/`) chiamano le vere API di Claude, Codex e GitHub e **si saltano da soli** se mancano le credenziali. Per attivarli in locale, **senza mai incollare credenziali in chat o nei commit**:
+- I **test di integrazione** (`tests/integration/`) chiamano le vere API di GitHub e **si saltano da soli** se mancano le credenziali. Per attivarli in locale, **senza mai incollare credenziali in chat o nei commit**:
 
 ```bash
 cp .env.test.example .env.test
@@ -40,7 +40,6 @@ cp .env.test.example .env.test
 npm test
 ```
 
-Codex richiede sia `HYPERMILER_TEST_CODEX_COOKIE_HEADER` sia `HYPERMILER_TEST_CODEX_USER_AGENT` della stessa partition dell’account (vedi `.env.test.example`).
 
 `.env.test` è già in `.gitignore` e viene caricato automaticamente da Node (`--env-file-if-exists`), senza dipendenze aggiuntive.
 
@@ -57,7 +56,7 @@ golangci-lint run    # config rigorosa in .golangci.yml, include le regole di im
 
 Il job `go-checks` in `.github/workflows/ci.yml` esegue gli stessi controlli su ogni PR verso `next` e la fa fallire come `lint-test`. Dopo i test, lo step `cross-compile` compila `./cmd/hypermiler` per Linux amd64/arm64, Windows amd64 e macOS arm64/amd64 con `CGO_ENABLED=0`, `-trimpath` e `-ldflags "-s -w"`, stampando ogni dimensione da una directory temporanea. Le regole di import (quale pacchetto può importare quale) sono la sezione `depguard` di `gocore/.golangci.yml`; una violazione è un errore di lint.
 
-`cmd/hypermiler/main.go` chiama soltanto `internal/cli.Run`: un binario con `usage`, `version` e `help` (funzionano anche `-h`/`--help`). `usage <provider>` supporta testo leggibile e il contratto versionato `--json`; `version --json` riporta build e piattaforma del core. Codex è registrato (#148); Copilot segue in #149; `serve` resta lavoro futuro (#31). Gli exit code sono 0 per successo (anche con dati stale), 1 per errori dei provider e 2 per argomenti non validi. `internal/usage` contiene modello indipendente dai provider, documenti JSON, codici di errore, diagnostica con sola struttura e rendering testuale; `internal/provider` contiene l'interfaccia dei provider e le factory. Le fixture JSON normative condivise sono in `gocore/contract/v1/`, verificate byte per byte dai test Go e destinate ai test del client TypeScript di #177. Vedi [CORE-CLI](CORE-CLI.it.md) per il contratto completo e la gestione dei secret.
+`cmd/hypermiler/main.go` chiama soltanto `internal/cli.Run`: un binario con `usage`, `version` e `help` (funzionano anche `-h`/`--help`). `usage <provider>` supporta testo leggibile e il contratto versionato `--json`; `version --json` riporta build e piattaforma del core. Codex è registrato (#148); Copilot segue in #149; `serve` resta lavoro futuro (#31). Gli exit code sono 0 per successo (anche con dati stale), 1 per errori dei provider e 2 per argomenti non validi. `internal/usage` contiene modello indipendente dai provider, documenti JSON, codici di errore, diagnostica con sola struttura e rendering testuale; `internal/provider` contiene l'interfaccia dei provider e le factory. Le fixture JSON normative condivise sono in `gocore/contract/v1/`, verificate byte per byte dai test Go e lette dai test del client TypeScript (`main/coreClient.test.ts`). Vedi [CORE-CLI](CORE-CLI.it.md) per il contratto completo e la gestione dei secret.
 
 `internal/codex` contiene discovery del binario nativo, sonda app-server one-shot e mapping delle quote, con fixture sintetiche da schema e test del ciclo di vita del processo (#148).
 
@@ -102,9 +101,9 @@ I pacchetti non sono firmati: macOS Gatekeeper e Windows SmartScreen mostrano un
 ia-hypermiler/
 ├── main.ts, preload.ts        ← processo principale Electron + bridge sicuro verso il renderer
 ├── core/                      ← orchestrazione dei fetch e calcolo degli snapshot, store iniettato, senza Electron (+ test)
-├── main/                      ← finestre, tray, login Claude/Codex, OAuth, logica per provider, ritmo dei refresh, i18n del main
+├── main/                      ← finestre, tray, OAuth Copilot, logica per provider, client della CLI del core, ritmo dei refresh, i18n del main
 ├── renderer/                  ← widget e finestra Impostazioni (HTML/CSS/TS vanilla) + i18n dell'interfaccia
-├── services/                  ← fetch dell'utilizzo Claude/Copilot/Codex, sessioni locali, controllo aggiornamenti (+ test)
+├── services/                  ← fetch dell'utilizzo Copilot, sessioni locali di Claude Code, controllo aggiornamenti (+ test)
 ├── diagnostics/               ← segnalazione dei cambi di formato e file di report diagnostico
 ├── store/                     ← persistenza locale (electron-store cifrato), default, normalizzazione, migrazione
 ├── budget.ts                  ← calcolo budget/efficienza/previsionale/grafico (+ budget.test.ts)
@@ -127,13 +126,13 @@ Approfondimenti:
 ## Regole di sicurezza
 
 - `nodeIntegration: false` e `contextIsolation: true` sempre attivi: il renderer non ha mai accesso diretto a Node.js; ogni valore che arriva da lui via IPC viene validato.
-- I segreti restano nel main process: sessioni Claude e token Copilot usano lo store cifrato; i cookie Codex restano nella partition dell’account e il suo access token non viene mai salvato. Non arrivano al renderer né ai log.
+- I segreti restano nel main process: sessioni Claude e token Copilot usano lo store cifrato; Codex non tiene nulla di segreto nell'app (letto tramite il core e l'accesso a Codex dell'utente). Non arrivano al renderer né ai log.
 - Gli URL aperti nel browser sono costruiti nel main process da prefissi fissi, mai presi dal renderer.
 
 ## Stato del progetto
 
 - ✅ Dati reali da Claude (endpoint interno + sessione) e Copilot (piani personali e licenze aziendali su un tenant `.ghe.com`; una licenza su github.com gestita da un'enterprise non espone dati, vedi `RESEARCH.it.md`)
-- ✅ Utilizzo Codex tramite sessione web ChatGPT, con finestre rolling (vedi `RESEARCH.it.md` §6 per i limiti delle verifiche)
+- ✅ Utilizzo Codex tramite il core Go e `codex app-server` con l'accesso a Codex dell'utente (#148, #178), finestre rolling di 5 ore e settimanale
 - ✅ Più account, interfaccia italiano/inglese, controllo aggiornamenti, diagnostica dei cambi di formato, report diagnostico
 - ✅ Visualizzazioni proprie: consumo giornaliero vs budget mobile, verdetti per finestra, gauge istantaneo, rating, valore per token
 - ✅ TypeScript severo (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), ESLint con controllo dei tipi a zero segnalazioni, test unitari su tutti i moduli puri

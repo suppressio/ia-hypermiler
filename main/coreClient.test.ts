@@ -15,6 +15,7 @@ import {
   execFileRunner,
   parseUsageRun,
   parseVersionRun,
+  requireFresh,
   resolveCoreBinary,
   type CoreRun,
   type CoreRunner,
@@ -70,7 +71,7 @@ for (const [name, code] of [
   ['error-unavailable', 'unavailable'],
 ] as const) {
   test(`${name}: exit 1 → CoreProviderError ${code}`, () => {
-    assert.throws(() => parseUsageRun(runOf(name, 1), 'fake'), (err: unknown) => err instanceof CoreProviderError && err.code === code);
+    assert.throws(() => parseUsageRun(runOf(name, 1), 'fake'), (err: unknown) => err instanceof CoreProviderError && err.code === code && err.provider === 'fake');
   });
 }
 
@@ -190,4 +191,11 @@ test('execFileRunner: missing binary → CoreBinaryError, no answer in time → 
 
 test('execFileRunner: an output over the size limit is refused', async () => {
   await assert.rejects(execFileRunner(node, ['-e', "process.stdout.write('x'.repeat(2*1024*1024))"], null, 10000), CoreOutputError);
+});
+
+test('requireFresh: the usage of a fresh result; a stale one throws its reason', () => {
+  const fresh = parseUsageRun(runOf('usage-ok', 0), 'fake');
+  assert.equal(requireFresh(fresh, 'fake'), fresh.usage);
+  const stale = parseUsageRun(runOf('usage-stale', 0), 'fake');
+  assert.throws(() => requireFresh(stale, 'fake'), (err: unknown) => err instanceof CoreProviderError && err.code === 'unavailable' && err.message === 'Provider is temporarily unavailable');
 });

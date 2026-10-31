@@ -32,7 +32,7 @@ npm run coverage   # tests with Node's built-in coverage
 ```
 
 - **Unit tests** always run and never touch the network (`fetch` and the SDK are mocked). Test data is synthetic only.
-- **Integration tests** (`tests/integration/`) call the real Claude, Codex and GitHub APIs and **skip themselves** when credentials are missing. To enable them locally, **never pasting credentials in chat or commits**:
+- **Integration tests** (`tests/integration/`) call the real GitHub APIs and **skip themselves** when credentials are missing. To enable them locally, **never pasting credentials in chat or commits**:
 
 ```bash
 cp .env.test.example .env.test
@@ -40,7 +40,6 @@ cp .env.test.example .env.test
 npm test
 ```
 
-Codex requires both `HYPERMILER_TEST_CODEX_COOKIE_HEADER` and `HYPERMILER_TEST_CODEX_USER_AGENT` from the same account partition (see `.env.test.example`).
 
 `.env.test` is already in `.gitignore` and is loaded automatically by Node (`--env-file-if-exists`), with no extra dependency.
 
@@ -57,7 +56,7 @@ golangci-lint run    # strict config in .golangci.yml, includes the depguard imp
 
 The `go-checks` job in `.github/workflows/ci.yml` runs the same checks on every PR to `next` and fails the PR like `lint-test`. After the tests, its `cross-compile` step builds `./cmd/hypermiler` for Linux amd64/arm64, Windows amd64 and macOS arm64/amd64 with `CGO_ENABLED=0`, `-trimpath` and `-ldflags "-s -w"`, printing each size from a temporary directory. Import rules (which package may import which) are the `depguard` section of `gocore/.golangci.yml`; a violation is a lint failure.
 
-`cmd/hypermiler/main.go` only calls `internal/cli.Run`: one binary with `usage`, `version` and `help` (`-h`/`--help` also work). `usage <provider>` supports readable text and the versioned `--json` contract; `version --json` reports the core build and platform. Codex is registered (#148); Copilot follows in #149; `serve` remains future work (#31). Exit codes are 0 for success (including stale usage), 1 for provider errors and 2 for invalid arguments. `internal/usage` owns the provider-neutral model, JSON documents, error codes, structure-only diagnostics and text rendering; `internal/provider` owns the provider interface and factories. Shared normative JSON fixtures live in `gocore/contract/v1/`, verified byte for byte by Go tests and intended for the #177 TypeScript client tests. See [CORE-CLI](CORE-CLI.md) for the full contract and secret handling.
+`cmd/hypermiler/main.go` only calls `internal/cli.Run`: one binary with `usage`, `version` and `help` (`-h`/`--help` also work). `usage <provider>` supports readable text and the versioned `--json` contract; `version --json` reports the core build and platform. Codex is registered (#148); Copilot follows in #149; `serve` remains future work (#31). Exit codes are 0 for success (including stale usage), 1 for provider errors and 2 for invalid arguments. `internal/usage` owns the provider-neutral model, JSON documents, error codes, structure-only diagnostics and text rendering; `internal/provider` owns the provider interface and factories. Shared normative JSON fixtures live in `gocore/contract/v1/`, verified byte for byte by Go tests and read by the TypeScript client tests (`main/coreClient.test.ts`). See [CORE-CLI](CORE-CLI.md) for the full contract and secret handling.
 
 `internal/codex` owns native binary discovery, the one-shot app-server probe and quota mapping, with synthetic schema fixtures and process lifecycle tests (#148).
 
@@ -102,9 +101,9 @@ Packages are not signed: macOS Gatekeeper and Windows SmartScreen show a warning
 ia-hypermiler/
 ├── main.ts, preload.ts        ← Electron main process + secure bridge to the renderer
 ├── core/                      ← fetch orchestration and snapshot computation, store injected, no Electron (+ tests)
-├── main/                      ← windows, tray, Claude/Codex login, OAuth, per-provider logic, refresh pace, main-process i18n
+├── main/                      ← windows, tray, Copilot OAuth, per-provider logic, core CLI client, refresh pace, main-process i18n
 ├── renderer/                  ← widget and Settings window (vanilla HTML/CSS/TS) + UI i18n
-├── services/                  ← Claude/Copilot/Codex usage fetch, local sessions, update check (+ tests)
+├── services/                  ← Copilot usage fetch, local Claude Code sessions, update check (+ tests)
 ├── diagnostics/               ← format-drift report and diagnostic report file
 ├── store/                     ← local persistence (encrypted electron-store), defaults, normalization, migration
 ├── budget.ts                  ← budget/efficiency/projection/chart logic (+ budget.test.ts)
@@ -127,13 +126,13 @@ Further reading:
 ## Security rules
 
 - `nodeIntegration: false` and `contextIsolation: true` always: the renderer never has direct access to Node.js; every value coming from it through IPC is validated.
-- Secrets stay in the main process: Claude sessions and Copilot tokens use the encrypted store; Codex cookies stay in the account partition and its access token is never stored. They never reach the renderer or logs.
+- Secrets stay in the main process: Claude sessions and Copilot tokens use the encrypted store; Codex keeps nothing secret in the app (read through the core and the user's own Codex sign-in). They never reach the renderer or logs.
 - URLs opened in the browser are built in the main process from fixed prefixes, never taken from the renderer.
 
 ## Project status
 
 - ✅ Real data from Claude (internal endpoint + session) and Copilot (personal plans, and company seats on a `.ghe.com` tenant; a github.com seat managed by an enterprise exposes no data, see `RESEARCH.md`)
-- ✅ Codex usage through a ChatGPT web session, with rolling quota windows (see `RESEARCH.md` §6 for verification limits)
+- ✅ Codex usage through the Go core and `codex app-server` with the user's own Codex sign-in (#148, #178), rolling 5-hour and weekly windows
 - ✅ Several accounts, English/Italian UI, update check, format-drift diagnostics, diagnostic report
 - ✅ Own visualizations: daily consumption vs moving budget, window verdicts, instant gauge, rating, value per token
 - ✅ Strict TypeScript (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, …), type-aware ESLint at zero findings, unit tests on every pure module

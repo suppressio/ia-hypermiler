@@ -3,7 +3,7 @@
 // of the Day 1 mock. When a fetch fails, the last known data is shown with its
 // timestamp (never a blank screen, see AGENTS.md).
 
-import { app, dialog, BrowserWindow, Notification, shell, Menu, screen, utilityProcess } from 'electron';
+import { app, dialog, BrowserWindow, Notification, shell, Menu, screen, session, utilityProcess } from 'electron';
 import store, { DEFAULTS } from './store/index';
 import { normalizeSettings } from './store/normalize';
 import { isPlainRecord } from './store/merge';
@@ -18,15 +18,14 @@ import type { RefreshMode } from './main/refreshPolicy';
 import { defaultAccountFor, enforceSingleLocalInsights, nextAccountLabel, normalizeAccounts, purgeClaudeSessions } from './store/migrate';
 import * as budget from './budget';
 import { createUsageCore, refreshIntervalMs } from './core/usage';
-import { captureCodexSession } from './main/codex-auth';
-import { CodexSignInRequiredError } from './services/codex';
 import * as copilotService from './services/copilot';
 import path from 'path';
 import { fetchLatestUpdate, guideUrl, TRUSTED_DOWNLOAD_PREFIX } from './services/updates';
 import { DEFAULT_GITHUB_HOST, normalizeGithubHost } from './services/githubHost';
 import type { TrayHandle } from './main/tray';
 import { FormatDriftError, shapeSignature } from './services/_shape';
-import { CoreBinaryError, CoreOutputError, CoreTimeoutError, createCoreClient, resolveCoreBinary } from './main/coreClient';
+import { CoreBinaryError, CoreOutputError, CoreProviderError, CoreTimeoutError } from './main/coreClient';
+import { core } from './main/core';
 import { buildFormatDriftIssueUrl, buildReportIssueUrl, shortError } from './diagnostics/githubIssue';
 import { buildDiagnosticReport, neutralize } from './diagnostics/report';
 import type { ReportAccount } from './diagnostics/report';
@@ -80,18 +79,6 @@ let lastSnapshot: UsageSnapshot | null = null;
 const logBuffer = new LogBuffer(50);
 captureConsole(logBuffer);
 
-// The Go core CLI (#177, docs/CORE-CLI.md): run on demand, nothing to start or stop.
-// The binary is resolved on every call, so a missing one is an explicit error of that
-// read (shown with the stale data), never a startup failure.
-const core = createCoreClient({
-  binary: () => resolveCoreBinary({
-    env: process.env,
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    appPath: app.getAppPath(),
-    platform: process.platform,
-  }),
-});
 
 // Durations of the last refresh and of the last local insights scan, for the
 // diagnostic report (a slow startup had to be inferred before).
@@ -256,7 +243,11 @@ function updateAccount(id: AccountId, update: (cfg: AccountConfig) => AccountCon
 // progress log, session about the account_session_invalid error.
 function friendlyErrorMessage(err: unknown): string {
   const error = err as Error & { status?: number };
-  if (err instanceof CodexSignInRequiredError || error.status === 401 || error.status === 403) {
+  // Codex signed out is a state, not a failure: say where to sign in (#178).
+  if (err instanceof CoreProviderError && err.code === 'signed_out' && err.provider === 'codex') {
+    return t('error.codexSignedOut');
+  }
+  if (error.status === 401 || error.status === 403) {
     return t('error.sessionExpired', { detail: error.message });
   }
   if (err instanceof copilotService.CopilotUsageUnavailableError) {
@@ -322,7 +313,8 @@ function reportConfig(cfg: AccountConfig): Record<string, unknown> {
     workSchedule: cfg.workSchedule,
   };
   switch (cfg.provider) {
-    case 'codex': return common;
+    // Never the path itself (it can hold the user name): only whether one is set.
+    case 'codex': return { ...common, binaryPath: cfg.binaryPath ? 'set' : 'auto-detect' };
     case 'claude':
       return { ...common, authMethod: cfg.authMethod, localInsights: cfg.localInsights };
     case 'copilot':
@@ -394,6 +386,7 @@ function reportInterpretation(accountId: AccountId, accounts: Pick<ReportAccount
     lastUpdatedAt: account.lastUpdatedAt ?? null,
     stale: account.stale ?? false,
     lastError: account.lastError ? neutralize(account.lastError, accounts) : null,
+    notice: account.notice ?? null,
     criticalWindow: account.criticalWindow?.id ?? null,
     windows: account.windows.map((w) => ({
       id: w.window.id,
@@ -494,6 +487,7 @@ const usageCore = createUsageCore({
   },
   fetchUsage: providers.fetchUsage,
   isConnected: providers.isConnected,
+  accountNotice: (err) => (err instanceof CoreProviderError && err.code === 'signed_out' && err.provider === 'codex' ? t('error.codexSignedOut') : null),
   quotasUnavailable: (cfg) => (cfg.provider === 'claude' ? t('error.claudeQuotasUnavailable') : null),
   localInsights: computeLocalInsightsIfNeeded,
   describeError: friendlyErrorMessage,
@@ -860,15 +854,6 @@ function registerIpcHandlers(): void {
     runDetached('refresh usage', refreshAndBroadcast('forced'));
   });
 
-  handle('accounts:connectCodex', async (_event, rawId: unknown) => {
-    const id = requireString(rawId, 'Account');
-    const cfg = findAccount(id);
-    if (!cfg || cfg.provider !== 'codex') throw new Error(`Codex account not found: ${id}`);
-    const { capturedAt } = await captureCodexSession(cfg.partition);
-    updateAccount(id, (a) => a.provider === 'codex' ? { ...a, enabled: true, session: { capturedAt } } : a);
-    broadcastSettings();
-    runDetached('refresh usage', refreshAndBroadcast('forced'));
-  });
 
   handle('accounts:connectCopilot', async (_event, rawId: unknown, rawToken: unknown, rawHost: unknown) => {
     const id = requireString(rawId, 'Account');
@@ -1022,6 +1007,28 @@ function registerIpcHandlers(): void {
 // #140: once, remove every claude.ai session stored by earlier versions (account
 // partitions, the pre-#4 defaultSession cookies, the stored sessionKey) and the last
 // fetched Claude quotas. Retried on the next start if anything fails.
+// #178: once, remove the chatgpt.com cookies that the Codex login window stored in each
+// account partition before Codex moved to the core. The store side (the `session`
+// field) is already dropped by normalizeAccounts.
+async function purgeStoredCodexSessions(): Promise<void> {
+  if (store.get('meta').codexSessionsPurged === true) return;
+  let failures = 0;
+  for (const cfg of getAccounts()) {
+    if (cfg.provider !== 'codex') continue;
+    try {
+      await session.fromPartition(cfg.partition).clearStorageData();
+    } catch (err) {
+      failures += 1;
+      console.error(`[main] removing the chatgpt.com cookies of account '${cfg.label}' failed:`, (err as Error).message);
+    }
+  }
+  if (failures === 0) {
+    store.set('meta', { ...store.get('meta'), codexSessionsPurged: true });
+  } else {
+    console.error(`[main] ${String(failures)} Codex cookie store(s) not cleared, retrying at the next start`);
+  }
+}
+
 async function purgeStoredClaudeSessions(): Promise<void> {
   if (store.get('meta').claudeSessionsPurged === true) return;
   // The store part runs first and always: it cannot fail on a single partition.
@@ -1067,6 +1074,7 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   applyMainLocale();
   await purgeStoredClaudeSessions();
+  await purgeStoredCodexSessions();
 
   const win = createMainWindow(store);
   mainWindow = win;
